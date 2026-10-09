@@ -1,6 +1,6 @@
 {
   "source": "https://api-hc.metatft.com/tft-comps-api/comps_data + comps_stats",
-  "fetchedAt": "2026-10-09T15:43:30.579Z",
+  "fetchedAt": "2026-10-09T17:30:02.710Z",
   "set": "TFTSet18",
   "patch": null,
   "comps": [
@@ -27,15 +27,15 @@
         "DA_18_MasterYi_AD"
       ],
       "builds": {
-        "DA_18_Cassiopeia": [
-          "DA_ArchangelsStaff",
-          "DA_BlueBuff",
-          "DA_HextechGunblade"
-        ],
         "DA_18_Rengar": [
           "DA_18_EmblemDefender",
           "DA_GuinsoosRageblade",
           "DA_TitansResolve"
+        ],
+        "DA_18_Cassiopeia": [
+          "DA_ArchangelsStaff",
+          "DA_BlueBuff",
+          "DA_HextechGunblade"
         ],
         "DA_18_Rammus": [
           "DA_BrambleVest",
@@ -48,10 +48,10 @@
           "DA_IonicSpark"
         ]
       },
-      "games": 10548,
-      "avg": 4.08,
-      "top4": 58.2,
-      "win": 14.6
+      "games": 11611,
+      "avg": 4.1,
+      "top4": 57.9,
+      "win": 14.4
     },
     {
       "id": "426001",
@@ -90,10 +90,10 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 17350,
-      "avg": 4.28,
-      "top4": 55.6,
-      "win": 9.6
+      "games": 18773,
+      "avg": 4.27,
+      "top4": 55.8,
+      "win": 9.8
     },
     {
       "id": "426002",
@@ -110,7 +110,7 @@
       ],
       "key": ["DA_18_Elderwood", "DA_18_Aphelios"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Rengar"],
+      "stars": ["DA_18_Rengar", "DA_18_Veigar"],
       "builds": {
         "DA_18_Aphelios": [
           "DA_18_EmblemElderwood",
@@ -129,8 +129,8 @@
         ],
         "DA_18_Hecarim": ["DA_Evenshroud", "DA_SpiritVisage", "DA_SunfireCape"]
       },
-      "games": 51681,
-      "avg": 4.2,
+      "games": 56511,
+      "avg": 4.19,
       "top4": 55.1,
       "win": 14.9
     },
@@ -156,8 +156,8 @@
         "DA_18_Ornn",
         "DA_18_Rengar",
         "DA_18_Akali_AD",
-        "DA_18_Camille",
-        "DA_18_Xayah"
+        "DA_18_Xayah",
+        "DA_18_Camille"
       ],
       "builds": {
         "DA_18_Azir": [
@@ -177,10 +177,10 @@
           "DA_SunfireCape"
         ]
       },
-      "games": 178301,
+      "games": 193325,
       "avg": 4.13,
       "top4": 56.8,
-      "win": 15.4
+      "win": 15.3
     },
     {
       "id": "426004",
@@ -225,7 +225,7 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 188689,
+      "games": 203738,
       "avg": 4.18,
       "top4": 58.4,
       "win": 8.6
@@ -263,9 +263,9 @@
           "DA_SpearOfShojin"
         ]
       },
-      "games": 42549,
-      "avg": 4.35,
-      "top4": 54,
+      "games": 46665,
+      "avg": 4.34,
+      "top4": 54.1,
       "win": 9.5
     },
     {
@@ -295,28 +295,28 @@
       ],
       "builds": {
         "DA_18_Teemo": [
-          "DA_Morellonomicon",
+          "DA_JeweledGauntlet",
           "DA_SpearOfShojin",
-          "DA_VoidStaff"
+          "DA_StrikersFlail"
         ],
         "DA_18_Alistar": [
-          "DA_BrambleVest",
-          "DA_DragonsClaw",
+          "DA_GargoyleStoneplate",
+          "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ],
         "DA_18_LeBlanc": [
-          "DA_18_EmblemInvoker",
           "DA_JeweledGauntlet",
+          "DA_SpearOfShojin",
           "DA_StrikersFlail"
         ],
         "DA_18_Hecarim": [
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
-          "DA_SteadfastHeart"
+          "DA_GargoyleStoneplate",
+          "DA_SpiritVisage"
         ]
       },
-      "games": 13769,
-      "avg": 4.29,
+      "games": 15100,
+      "avg": 4.3,
       "top4": 56.4,
       "win": 6.7
     },
@@ -340,10 +340,11 @@
         "DA_Scuttlecrab18",
         "DA_Cinderling18",
         "DA_Gromp18_AP",
+        "DA_18_Varus",
         "DA_18_Xayah",
         "DA_18_Camille",
         "DA_Karma18",
-        "DA_18_Leona"
+        "DA_18_Veigar"
       ],
       "builds": {
         "DA_18_ElderDragon": [
@@ -367,7 +368,7 @@
           "DA_SpearOfShojin"
         ]
       },
-      "games": 205196,
+      "games": 222926,
       "avg": 4.16,
       "top4": 56.6,
       "win": 14.3
@@ -389,15 +390,15 @@
       "levelling": "Fast 9",
       "stars": ["DA_18_Ornn"],
       "builds": {
-        "DA_18_Morgana": [
-          "DA_HextechGunblade",
-          "DA_Morellonomicon",
-          "DA_VoidStaff"
-        ],
         "DA_18_Alune": [
           "DA_ArchangelsStaff",
           "DA_JeweledGauntlet",
           "DA_SpearOfShojin"
+        ],
+        "DA_18_Morgana": [
+          "DA_HextechGunblade",
+          "DA_Morellonomicon",
+          "DA_VoidStaff"
         ],
         "DA_Sentinel18": [
           "DA_GargoyleStoneplate",
@@ -405,14 +406,14 @@
           "DA_WarmogsArmor"
         ],
         "DA_Taric18": [
-          "DA_GargoyleStoneplate",
+          "DA_Crownguard",
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ]
       },
-      "games": 33404,
-      "avg": 4.18,
-      "top4": 54.3,
+      "games": 37421,
+      "avg": 4.19,
+      "top4": 54.2,
       "win": 19.7
     },
     {
@@ -430,7 +431,7 @@
       ],
       "key": ["DA_18_Invoker", "DA_18_Morgana"],
       "levelling": "Fast 8",
-      "stars": ["DA_Murkwolf18", "DA_18_KhaZix", "DA_18_Rengar"],
+      "stars": ["DA_Murkwolf18", "DA_18_Rengar"],
       "builds": {
         "DA_18_Morgana": [
           "DA_18_EmblemLunar",
@@ -442,18 +443,18 @@
           "DA_GargoyleStoneplate",
           "DA_ProtectorsVow"
         ],
-        "DA_Brambleback18": [
-          "DA_EdgeOfNight",
-          "DA_HandOfJustice",
-          "DA_Quicksilver"
-        ],
         "DA_18_Alune": [
           "DA_18_EmblemInvoker",
           "DA_ArchangelsStaff",
           "DA_RabadonsDeathcap"
+        ],
+        "DA_Brambleback18": [
+          "DA_EdgeOfNight",
+          "DA_HandOfJustice",
+          "DA_Quicksilver"
         ]
       },
-      "games": 30678,
+      "games": 32685,
       "avg": 4.43,
       "top4": 51.3,
       "win": 12.4
@@ -495,7 +496,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 132225,
+      "games": 142480,
       "avg": 4.33,
       "top4": 53.8,
       "win": 11.8
@@ -538,10 +539,10 @@
           "DA_StrikersFlail"
         ]
       },
-      "games": 143307,
+      "games": 155338,
       "avg": 4.39,
-      "top4": 49.9,
-      "win": 19.1
+      "top4": 50,
+      "win": 19
     },
     {
       "id": "426012",
@@ -580,12 +581,12 @@
         ],
         "DA_18_Ezreal": ["DA_Deathblade", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_18_Diana": [
+          "DA_18_EmblemExecutioner",
           "DA_HandOfJustice",
-          "DA_IonicSpark",
-          "DA_JeweledGauntlet"
+          "DA_IonicSpark"
         ]
       },
-      "games": 95997,
+      "games": 103699,
       "avg": 4.36,
       "top4": 52.8,
       "win": 13.6
@@ -618,9 +619,9 @@
       ],
       "builds": {
         "DA_18_Teemo": [
-          "DA_HextechGunblade",
-          "DA_JeweledGauntlet",
-          "DA_RabadonsDeathcap"
+          "DA_18_EmblemFloraFatalisAugment",
+          "DA_ArchangelsStaff",
+          "DA_JeweledGauntlet"
         ],
         "DA_18_Morgana": [
           "DA_AdaptiveHelm",
@@ -628,9 +629,9 @@
           "DA_VoidStaff"
         ],
         "DA_18_Rammus": [
+          "DA_18_EmblemBrawler",
           "DA_GargoyleStoneplate",
-          "DA_GargoyleStoneplate",
-          "DA_SunfireCape"
+          "DA_WarmogsArmor"
         ],
         "DA_Sentinel18": [
           "DA_AdaptiveHelm",
@@ -638,9 +639,9 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 12499,
-      "avg": 4.37,
-      "top4": 53.8,
+      "games": 13712,
+      "avg": 4.38,
+      "top4": 53.7,
       "win": 7.6
     },
     {
@@ -669,9 +670,8 @@
         "DA_18_Yorick",
         "DA_18_Rakan",
         "DA_18_Akali_AD",
-        "DA_18_KhaZix",
-        "DA_18_Varus",
-        "DA_18_Camille"
+        "DA_18_Camille",
+        "DA_18_Varus"
       ],
       "builds": {
         "DA_18_Alistar": [
@@ -684,16 +684,16 @@
           "DA_GargoyleStoneplate",
           "DA_SpiritVisage"
         ],
-        "DA_18_LeBlanc": ["DA_RedBuff", "DA_SpearOfShojin", "DA_VoidStaff"],
+        "DA_18_LeBlanc": ["DA_BlueBuff", "DA_Morellonomicon", "DA_VoidStaff"],
         "DA_18_Veigar": [
           "DA_18_EmblemFloraFatalis",
           "DA_BlueBuff",
           "DA_JeweledGauntlet"
         ]
       },
-      "games": 99812,
-      "avg": 4.33,
-      "top4": 53.2,
+      "games": 107878,
+      "avg": 4.34,
+      "top4": 53.1,
       "win": 13.9
     },
     {
@@ -710,7 +710,7 @@
       ],
       "key": ["DA_Juggernaut18", "DA_18_Zyra", "DA_Nidalee18_AP"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Rengar", "DA_18_Veigar", "DA_18_Kobuko", "DA_18_Xayah"],
+      "stars": ["DA_18_Rengar", "DA_18_Veigar", "DA_18_Xayah", "DA_18_Kobuko"],
       "builds": {
         "DA_18_Zyra": [
           "DA_ArchangelsStaff",
@@ -722,16 +722,20 @@
           "DA_GuinsoosRageblade",
           "DA_RabadonsDeathcap"
         ],
-        "DA_Amumu18": ["DA_IonicSpark", "DA_SunfireCape", "DA_WarmogsArmor"],
+        "DA_Amumu18": [
+          "DA_GargoyleStoneplate",
+          "DA_SunfireCape",
+          "DA_WarmogsArmor"
+        ],
         "DA_18_Maokai": [
           "DA_GargoyleStoneplate",
           "DA_SpiritVisage",
           "DA_WarmogsArmor"
         ]
       },
-      "games": 34673,
+      "games": 37633,
       "avg": 4.58,
-      "top4": 48.5,
+      "top4": 48.4,
       "win": 9.7
     },
     {
@@ -762,15 +766,15 @@
           "DA_SteraksGage"
         ],
         "DA_Sentinel18": [
-          "DA_ProtectorsVow",
+          "DA_AdaptiveHelm",
           "DA_ProtectorsVow",
           "DA_ProtectorsVow"
         ]
       },
-      "games": 22459,
+      "games": 24343,
       "avg": 4.48,
-      "top4": 51.5,
-      "win": 8.4
+      "top4": 51.7,
+      "win": 8.5
     },
     {
       "id": "426017",
@@ -793,26 +797,26 @@
           "DA_KrakensFury",
           "DA_StrikersFlail"
         ],
-        "DA_Brambleback18": [
-          "DA_18_EmblemRapidfire",
-          "DA_EdgeOfNight",
-          "DA_SteraksGage"
-        ],
         "DA_Sentinel18": [
           "DA_GargoyleStoneplate",
           "DA_ProtectorsVow",
           "DA_WarmogsArmor"
         ],
+        "DA_Brambleback18": [
+          "DA_18_EmblemRapidfire",
+          "DA_EdgeOfNight",
+          "DA_Quicksilver"
+        ],
         "DA_CrimsonRaptor18": [
-          "DA_Deathblade",
           "DA_GuinsoosRageblade",
+          "DA_HextechGunblade",
           "DA_KrakensFury"
         ]
       },
-      "games": 24454,
+      "games": 26570,
       "avg": 4.51,
       "top4": 50.6,
-      "win": 8.2
+      "win": 8.1
     },
     {
       "id": "426018",
@@ -856,7 +860,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 52619,
+      "games": 56885,
       "avg": 4.49,
       "top4": 50.7,
       "win": 8.1
@@ -884,19 +888,19 @@
         "DA_18_KhaZix"
       ],
       "builds": {
-        "DA_18_Yunara": [
-          "DA_18_EmblemBlackthorn",
-          "DA_LastWhisper",
-          "DA_SpearOfShojin"
-        ],
         "DA_18_Warwick": [
           "DA_18_EmblemExecutioner",
           "DA_SpearOfShojin",
           "DA_SteraksGage"
         ],
+        "DA_18_Yunara": [
+          "DA_18_EmblemBlackthorn",
+          "DA_LastWhisper",
+          "DA_SpearOfShojin"
+        ],
         "DA_18_Alistar": [
+          "DA_BrambleVest",
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
           "DA_WarmogsArmor"
         ],
         "DA_18_Azir": [
@@ -905,10 +909,10 @@
           "DA_StrikersFlail"
         ]
       },
-      "games": 9676,
+      "games": 10368,
       "avg": 4.55,
-      "top4": 50.2,
-      "win": 9.8
+      "top4": 50.3,
+      "win": 9.7
     },
     {
       "id": "426020",
@@ -924,7 +928,7 @@
       ],
       "key": ["DA_18_Blossom", "DA_18_Ahri", "DA_18_Sett"],
       "levelling": "Fast 8",
-      "stars": ["DA_CrimsonRaptor18"],
+      "stars": ["DA_CrimsonRaptor18", "DA_18_Akali_AD"],
       "builds": {
         "DA_18_Ahri": [
           "DA_JeweledGauntlet",
@@ -947,9 +951,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 22706,
-      "avg": 4.56,
-      "top4": 49.2,
+      "games": 24394,
+      "avg": 4.55,
+      "top4": 49.5,
       "win": 9.2
     },
     {
@@ -983,7 +987,8 @@
         "DA_18_Elise",
         "DA_18_Teemo",
         "DA_18_LeBlanc",
-        "DA_18_RekSai"
+        "DA_18_RekSai",
+        "DA_18_Warwick"
       ],
       "builds": {
         "DA_18_Kayle": [
@@ -1003,9 +1008,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 83024,
+      "games": 90397,
       "avg": 4.33,
-      "top4": 53.3,
+      "top4": 53.4,
       "win": 14
     },
     {
@@ -1051,9 +1056,9 @@
           "DA_SteraksGage"
         ]
       },
-      "games": 31614,
+      "games": 34195,
       "avg": 4.5,
-      "top4": 50.4,
+      "top4": 50.3,
       "win": 10.3
     },
     {
@@ -1075,10 +1080,10 @@
         "DA_Murkwolf18",
         "DA_18_Elise",
         "DA_18_Camille",
-        "DA_18_KhaZix",
         "DA_18_Alistar",
-        "DA_18_Rengar",
+        "DA_18_KhaZix",
         "DA_Scuttlecrab18",
+        "DA_18_Rengar",
         "DA_18_Yunara",
         "DA_18_Caitlyn",
         "DA_18_Sejuani"
@@ -1099,11 +1104,15 @@
           "DA_GiantSlayer",
           "DA_Quicksilver"
         ],
-        "DA_Murkwolf18": ["DA_Deathblade", "DA_EdgeOfNight", "DA_Quicksilver"]
+        "DA_Murkwolf18": [
+          "DA_EdgeOfNight",
+          "DA_HandOfJustice",
+          "DA_InfinityEdge"
+        ]
       },
-      "games": 23014,
-      "avg": 4.38,
-      "top4": 53.7,
+      "games": 24914,
+      "avg": 4.39,
+      "top4": 53.5,
       "win": 7.3
     },
     {
@@ -1129,8 +1138,8 @@
       "builds": {
         "DA_18_Rengar": [
           "DA_EdgeOfNight",
-          "DA_GuinsoosRageblade",
-          "DA_TitansResolve"
+          "DA_HandOfJustice",
+          "DA_Quicksilver"
         ],
         "DA_18_KhaZix": [
           "DA_HandOfJustice",
@@ -1138,13 +1147,13 @@
           "DA_NashorsTooth"
         ],
         "DA_18_Hecarim": [
-          "DA_AdaptiveHelm",
+          "DA_Evenshroud",
           "DA_GargoyleStoneplate",
-          "DA_ProtectorsVow"
+          "DA_SteadfastHeart"
         ],
         "DA_18_Diana": ["DA_SunfireCape"]
       },
-      "games": 28330,
+      "games": 30666,
       "avg": 4.68,
       "top4": 46.8,
       "win": 9.8
@@ -1177,24 +1186,24 @@
         "DA_Karma18"
       ],
       "builds": {
+        "DA_18_Camille": [
+          "DA_HandOfJustice",
+          "DA_Quicksilver",
+          "DA_SteraksGage"
+        ],
         "DA_18_Akali_AD": [
           "DA_EdgeOfNight",
           "DA_HandOfJustice",
           "DA_InfinityEdge"
-        ],
-        "DA_18_Camille": [
-          "DA_EdgeOfNight",
-          "DA_SteraksGage",
-          "DA_TitansResolve"
         ],
         "DA_18_Ornn": [
           "DA_Crownguard",
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ],
-        "DA_18_Varus": ["DA_GiantSlayer", "DA_InfinityEdge", "DA_SpearOfShojin"]
+        "DA_18_Varus": ["DA_InfinityEdge", "DA_LastWhisper", "DA_SpearOfShojin"]
       },
-      "games": 36264,
+      "games": 39221,
       "avg": 4.58,
       "top4": 49.9,
       "win": 9
@@ -1222,18 +1231,18 @@
           "DA_LastWhisper"
         ],
         "DA_18_Lillia": [
-          "DA_18_EmblemElderwood",
-          "DA_Evenshroud",
-          "DA_SunfireCape"
+          "DA_ProtectorsVow",
+          "DA_ProtectorsVow",
+          "DA_ProtectorsVow"
         ],
         "DA_18_Alune": [
           "DA_JeweledGauntlet",
           "DA_SpearOfShojin",
           "DA_StrikersFlail"
         ],
-        "DA_18_Diana": ["DA_18_EmblemPrimal"]
+        "DA_18_Diana": ["DA_TacticiansCape"]
       },
-      "games": 12300,
+      "games": 13485,
       "avg": 4.71,
       "top4": 45.9,
       "win": 10.2
@@ -1252,7 +1261,7 @@
       ],
       "key": ["DA_18_Vanguard", "DA_18_Morgana"],
       "levelling": "Fast 9",
-      "stars": [],
+      "stars": ["DA_18_Ornn"],
       "builds": {
         "DA_18_Morgana": [
           "DA_18_EmblemSpellweaver",
@@ -1275,10 +1284,10 @@
           "DA_NashorsTooth"
         ]
       },
-      "games": 36249,
+      "games": 39496,
       "avg": 4.28,
-      "top4": 52.6,
-      "win": 18.9
+      "top4": 52.7,
+      "win": 19
     },
     {
       "id": "426028",
@@ -1313,7 +1322,7 @@
           "DA_VoidStaff"
         ],
         "DA_18_Soraka": [
-          "DA_AdaptiveHelm",
+          "DA_HextechGunblade",
           "DA_RabadonsDeathcap",
           "DA_SpearOfShojin"
         ],
@@ -1323,9 +1332,9 @@
           "DA_RabadonsDeathcap"
         ]
       },
-      "games": 89072,
-      "avg": 4.56,
-      "top4": 49.4,
+      "games": 96097,
+      "avg": 4.55,
+      "top4": 49.5,
       "win": 9.1
     },
     {
@@ -1348,7 +1357,8 @@
         "DA_Vi18",
         "DA_CrimsonRaptor18",
         "DA_18_Hecarim",
-        "DA_18_KhaZix"
+        "DA_18_KhaZix",
+        "DA_18_Rammus"
       ],
       "builds": {
         "DA_18_MasterYi_AD": [
@@ -1356,7 +1366,7 @@
           "DA_EdgeOfNight",
           "DA_GuinsoosRageblade"
         ],
-        "DA_KogMaw18_AD": ["DA_GiantSlayer", "DA_InfinityEdge", "DA_RedBuff"],
+        "DA_KogMaw18_AD": ["DA_InfinityEdge", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_Nidalee18_AP": [
           "DA_Bloodthirster",
           "DA_InfinityEdge",
@@ -1368,10 +1378,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 16833,
+      "games": 18290,
       "avg": 4.52,
-      "top4": 51,
-      "win": 6.9
+      "top4": 50.9,
+      "win": 6.8
     },
     {
       "id": "426030",
@@ -1394,26 +1404,26 @@
           "DA_LastWhisper",
           "DA_StrikersFlail"
         ],
-        "DA_18_Maokai": [
-          "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
-          "DA_WarmogsArmor"
-        ],
         "DA_Draven18": [
           "DA_GiantSlayer",
           "DA_GuinsoosRageblade",
           "DA_KrakensFury"
         ],
+        "DA_18_Maokai": [
+          "DA_GargoyleStoneplate",
+          "DA_SpiritVisage",
+          "DA_WarmogsArmor"
+        ],
         "DA_18_Kennen": [
           "DA_EdgeOfNight",
           "DA_HandOfJustice",
-          "DA_RabadonsDeathcap"
+          "DA_JeweledGauntlet"
         ]
       },
-      "games": 287765,
+      "games": 312150,
       "avg": 4.52,
       "top4": 48.7,
-      "win": 18.9
+      "win": 19
     },
     {
       "id": "426031",
@@ -1441,11 +1451,11 @@
         "DA_18_Shen",
         "DA_18_Elise",
         "DA_Scuttlecrab18",
-        "DA_18_Veigar",
         "DA_18_Yorick",
+        "DA_18_Veigar",
         "DA_Karma18",
-        "DA_18_RekSai",
         "DA_18_Akali_AD",
+        "DA_18_RekSai",
         "DA_18_Kobuko",
         "DA_18_Camille"
       ],
@@ -1467,9 +1477,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 69707,
+      "games": 75536,
       "avg": 4.74,
-      "top4": 45.9,
+      "top4": 45.8,
       "win": 11.6
     },
     {
@@ -1491,9 +1501,8 @@
         "DA_18_Rengar",
         "DA_18_Veigar",
         "DA_18_Kobuko",
-        "DA_18_Camille",
         "DA_18_Ornn",
-        "DA_18_Leona"
+        "DA_18_Camille"
       ],
       "builds": {
         "DA_18_Zyra": [
@@ -1507,15 +1516,15 @@
           "DA_WarmogsArmor"
         ],
         "DA_Amumu18": [
-          "DA_DragonsClaw",
           "DA_GargoyleStoneplate",
-          "DA_WarmogsArmor"
+          "DA_IonicSpark",
+          "DA_SunfireCape"
         ],
         "DA_18_Sivir": ["DA_InfinityEdge", "DA_LastWhisper", "DA_RedBuff"]
       },
-      "games": 73257,
+      "games": 78901,
       "avg": 4.63,
-      "top4": 46.9,
+      "top4": 47,
       "win": 10.9
     },
     {
@@ -1542,9 +1551,14 @@
         "DA_Vi18"
       ],
       "builds": {
+        "DA_18_Hecarim": [
+          "DA_Evenshroud",
+          "DA_GargoyleStoneplate",
+          "DA_SunfireCape"
+        ],
         "DA_CrimsonRaptor18": [
-          "DA_Deathblade",
-          "DA_GuinsoosRageblade",
+          "DA_KrakensFury",
+          "DA_LastWhisper",
           "DA_RedBuff"
         ],
         "DA_18_Rengar": [
@@ -1552,20 +1566,15 @@
           "DA_EdgeOfNight",
           "DA_SteraksGage"
         ],
-        "DA_18_Hecarim": [
-          "DA_GargoyleStoneplate",
-          "DA_SunfireCape",
-          "DA_WarmogsArmor"
-        ],
         "DA_18_Diana": [
           "DA_HandOfJustice",
           "DA_JeweledGauntlet",
           "DA_Quicksilver"
         ]
       },
-      "games": 7965,
+      "games": 8500,
       "avg": 4.77,
-      "top4": 44.9,
+      "top4": 45,
       "win": 10.4
     },
     {
@@ -1589,7 +1598,8 @@
         "DA_CrimsonRaptor18",
         "DA_Krug18",
         "DA_18_Rengar",
-        "DA_18_Rammus"
+        "DA_18_Rammus",
+        "DA_18_Hecarim"
       ],
       "builds": {
         "DA_18_Azir": [
@@ -1598,9 +1608,9 @@
           "DA_RabadonsDeathcap"
         ],
         "DA_Vi18": [
+          "DA_BrambleVest",
           "DA_GargoyleStoneplate",
-          "DA_ProtectorsVow",
-          "DA_SteadfastHeart"
+          "DA_GargoyleStoneplate"
         ],
         "DA_18_Zyra": [
           "DA_ArchangelsStaff",
@@ -1613,9 +1623,9 @@
           "DA_SunfireCape"
         ]
       },
-      "games": 17016,
+      "games": 18476,
       "avg": 4.62,
-      "top4": 48.3,
+      "top4": 48.4,
       "win": 9.2
     },
     {
@@ -1664,10 +1674,10 @@
           "DA_RabadonsDeathcap"
         ]
       },
-      "games": 18822,
-      "avg": 4.92,
-      "top4": 43.2,
-      "win": 10
+      "games": 20455,
+      "avg": 4.93,
+      "top4": 42.9,
+      "win": 9.9
     },
     {
       "id": "426036",
@@ -1684,13 +1694,9 @@
       ],
       "key": ["DA_18_Elderwood", "DA_18_Ezreal"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Veigar", "DA_18_Rengar", "DA_18_Cassiopeia"],
+      "stars": ["DA_18_Veigar", "DA_18_Rengar"],
       "builds": {
-        "DA_18_Ezreal": [
-          "DA_Deathblade",
-          "DA_SpearOfShojin",
-          "DA_StrikersFlail"
-        ],
+        "DA_18_Ezreal": ["DA_Deathblade", "DA_LastWhisper", "DA_SpearOfShojin"],
         "DA_18_Hecarim": ["DA_Evenshroud", "DA_SunfireCape", "DA_WarmogsArmor"],
         "DA_18_Soraka": [
           "DA_18_EmblemElderwood",
@@ -1703,7 +1709,7 @@
           "DA_TitansResolve"
         ]
       },
-      "games": 70149,
+      "games": 76319,
       "avg": 4.5,
       "top4": 49.1,
       "win": 13.4
@@ -1752,9 +1758,9 @@
           "DA_JeweledGauntlet"
         ]
       },
-      "games": 5991,
+      "games": 6536,
       "avg": 4.34,
-      "top4": 55.1,
+      "top4": 55,
       "win": 7.7
     },
     {
@@ -1772,28 +1778,28 @@
       ],
       "key": ["DA_18_Blossom", "DA_18_Ahri"],
       "levelling": "Fast 9",
-      "stars": ["DA_18_Ornn", "DA_18_Rengar"],
+      "stars": ["DA_18_Ornn", "DA_18_Rengar", "DA_18_Xayah"],
       "builds": {
-        "DA_18_Sett": [
-          "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
-          "DA_WarmogsArmor"
-        ],
         "DA_18_Ahri": [
           "DA_JeweledGauntlet",
           "DA_SpearOfShojin",
           "DA_StrikersFlail"
         ],
+        "DA_18_Sett": [
+          "DA_GargoyleStoneplate",
+          "DA_SpiritVisage",
+          "DA_WarmogsArmor"
+        ],
         "DA_18_Ashe": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_Lux18_Base": [
           "DA_JeweledGauntlet",
-          "DA_SpearOfShojin",
-          "DA_StrikersFlail"
+          "DA_RabadonsDeathcap",
+          "DA_SpearOfShojin"
         ]
       },
-      "games": 60387,
+      "games": 65558,
       "avg": 4.71,
-      "top4": 45.2,
+      "top4": 45.3,
       "win": 11
     },
     {
@@ -1825,20 +1831,20 @@
         ],
         "DA_18_Sivir": ["DA_InfinityEdge", "DA_LastWhisper", "DA_RedBuff"],
         "DA_Scuttlecrab18": [
-          "DA_BrambleVest",
+          "DA_DragonsClaw",
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ],
         "DA_18_Sejuani": [
-          "DA_DragonsClaw",
           "DA_GargoyleStoneplate",
+          "DA_SpiritVisage",
           "DA_WarmogsArmor"
         ]
       },
-      "games": 23668,
+      "games": 25583,
       "avg": 4.98,
-      "top4": 41.4,
-      "win": 5.4
+      "top4": 41.5,
+      "win": 5.5
     },
     {
       "id": "426040",
@@ -1870,9 +1876,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 92686,
+      "games": 100280,
       "avg": 4.62,
-      "top4": 46.5,
+      "top4": 46.4,
       "win": 13.3
     },
     {
@@ -1908,10 +1914,10 @@
         ],
         "DA_KogMaw18_AD": ["DA_Component_BFSword"]
       },
-      "games": 11657,
-      "avg": 4.76,
-      "top4": 46,
-      "win": 7
+      "games": 12602,
+      "avg": 4.77,
+      "top4": 45.6,
+      "win": 6.9
     },
     {
       "id": "426042",
@@ -1944,11 +1950,11 @@
         ],
         "DA_18_Rengar": [
           "DA_18_EmblemFae",
-          "DA_18_EmblemHunter",
-          "DA_TitansResolve"
+          "DA_18_EmblemSprykin",
+          "DA_EdgeOfNight"
         ],
         "DA_18_Rammus": [
-          "DA_18_EmblemBrawler",
+          "DA_18_EmblemVanguard",
           "DA_GargoyleStoneplate",
           "DA_SpiritVisage"
         ],
@@ -1958,8 +1964,8 @@
           "DA_SpiritVisage"
         ]
       },
-      "games": 18287,
-      "avg": 5.07,
+      "games": 19754,
+      "avg": 5.08,
       "top4": 39.2,
       "win": 11.7
     },
@@ -1980,13 +1986,13 @@
       "stars": ["DA_18_KhaZix", "DA_CrimsonRaptor18"],
       "builds": {
         "DA_18_Zyra": [
-          "DA_18_EmblemExecutioner",
-          "DA_SpearOfShojin",
-          "DA_VoidStaff"
+          "DA_ArchangelsStaff",
+          "DA_ArchangelsStaff",
+          "DA_HextechGunblade"
         ],
         "DA_18_Azir": [
-          "DA_GiantSlayer",
           "DA_GuinsoosRageblade",
+          "DA_HextechGunblade",
           "DA_RabadonsDeathcap"
         ],
         "DA_Amumu18": [
@@ -2000,7 +2006,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 17267,
+      "games": 18717,
       "avg": 5,
       "top4": 40.4,
       "win": 6.4
@@ -2050,9 +2056,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 23752,
-      "avg": 4.88,
-      "top4": 43.5,
+      "games": 25817,
+      "avg": 4.87,
+      "top4": 43.6,
       "win": 5.1
     },
     {
@@ -2073,8 +2079,8 @@
       "builds": {
         "DA_Nidalee18_AP": [
           "DA_18_EmblemHunter",
-          "DA_Bloodthirster",
-          "DA_SteraksGage"
+          "DA_EdgeOfNight",
+          "DA_SpearOfShojin"
         ],
         "DA_18_Sivir": ["DA_Deathblade", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_Amumu18": [
@@ -2084,10 +2090,10 @@
         ],
         "DA_18_Ashe": ["DA_18_EmblemPrimal", "DA_RedBuff", "DA_SpearOfShojin"]
       },
-      "games": 12154,
-      "avg": 4.93,
+      "games": 13266,
+      "avg": 4.92,
       "top4": 41.9,
-      "win": 6.3
+      "win": 6.4
     },
     {
       "id": "426046",
@@ -2116,9 +2122,9 @@
           "DA_InfinityEdge",
           "DA_SpearOfShojin"
         ],
-        "DA_18_GnarSmall": ["DA_HandOfJustice"]
+        "DA_18_GnarSmall": ["DA_Bloodthirster", "DA_TitansResolve"]
       },
-      "games": 15763,
+      "games": 17062,
       "avg": 4.74,
       "top4": 45.1,
       "win": 10
@@ -2143,8 +2149,8 @@
         "DA_18_Teemo",
         "DA_18_Rengar",
         "DA_18_KhaZix",
-        "DA_18_Warwick",
-        "DA_CrimsonRaptor18"
+        "DA_CrimsonRaptor18",
+        "DA_18_Warwick"
       ],
       "builds": {
         "DA_18_Rammus": [
@@ -2158,9 +2164,9 @@
           "DA_LastWhisper"
         ],
         "DA_18_Teemo": [
-          "DA_BlueBuff",
           "DA_HextechGunblade",
-          "DA_JeweledGauntlet"
+          "DA_JeweledGauntlet",
+          "DA_SpearOfShojin"
         ],
         "DA_18_GnarSmall": [
           "DA_Bloodthirster",
@@ -2168,10 +2174,10 @@
           "DA_SteraksGage"
         ]
       },
-      "games": 12638,
+      "games": 13738,
       "avg": 5.02,
-      "top4": 40,
-      "win": 4.2
+      "top4": 40.1,
+      "win": 4.1
     },
     {
       "id": "426048",
@@ -2206,8 +2212,8 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 27846,
-      "avg": 4.85,
+      "games": 30189,
+      "avg": 4.84,
       "top4": 43.3,
       "win": 8.8
     },
@@ -2243,7 +2249,7 @@
         "DA_18_Malphite": [
           "DA_GargoyleStoneplate",
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage"
+          "DA_WarmogsArmor"
         ],
         "DA_18_RekSai": [
           "DA_GargoyleStoneplate",
@@ -2251,15 +2257,15 @@
           "DA_WarmogsArmor"
         ],
         "DA_18_Azir": [
-          "DA_GuinsoosRageblade",
           "DA_HextechGunblade",
+          "DA_RabadonsDeathcap",
           "DA_VoidStaff"
         ]
       },
-      "games": 9546,
+      "games": 10414,
       "avg": 4.95,
       "top4": 42,
-      "win": 8.2
+      "win": 8.1
     },
     {
       "id": "426050",
@@ -2283,18 +2289,18 @@
           "DA_RabadonsDeathcap",
           "DA_SpearOfShojin"
         ],
+        "DA_18_Ezreal": ["DA_Deathblade", "DA_Deathblade", "DA_SpearOfShojin"],
         "DA_Amumu18": [
           "DA_GargoyleStoneplate",
           "DA_ProtectorsVow",
           "DA_WarmogsArmor"
         ],
-        "DA_18_Ezreal": ["DA_Deathblade", "DA_Deathblade", "DA_SpearOfShojin"],
         "DA_18_Kennen": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_VoidStaff"]
       },
-      "games": 9939,
-      "avg": 4.98,
-      "top4": 40.2,
-      "win": 7.9
+      "games": 10748,
+      "avg": 5,
+      "top4": 39.9,
+      "win": 7.7
     },
     {
       "id": "426051",
@@ -2327,15 +2333,15 @@
         "DA_18_Shen"
       ],
       "builds": {
-        "DA_Gromp18_AP": [
-          "DA_Morellonomicon",
-          "DA_SpearOfShojin",
-          "DA_VoidStaff"
-        ],
         "DA_Scuttlecrab18": [
           "DA_DragonsClaw",
           "DA_GargoyleStoneplate",
           "DA_GargoyleStoneplate"
+        ],
+        "DA_Gromp18_AP": [
+          "DA_Morellonomicon",
+          "DA_SpearOfShojin",
+          "DA_VoidStaff"
         ],
         "DA_18_Sentry": [
           "DA_ArchangelsStaff",
@@ -2348,9 +2354,9 @@
           "DA_HextechGunblade"
         ]
       },
-      "games": 15981,
+      "games": 17351,
       "avg": 5.09,
-      "top4": 39.5,
+      "top4": 39.6,
       "win": 5.4
     },
     {
@@ -2359,21 +2365,20 @@
         "DA_18_Ahri",
         "DA_18_Alune",
         "DA_18_Cassiopeia",
+        "DA_18_GnarSmall",
         "DA_18_Lillia",
-        "DA_18_Rakan",
-        "DA_18_Yorick",
+        "DA_18_Sett",
         "DA_Fiddlesticks18",
-        "DA_Karma18",
-        "DA_Sentinel18"
+        "DA_Karma18"
       ],
       "key": ["DA_18_Spellweaver", "DA_18_Ahri"],
       "levelling": "Fast 8",
       "stars": [],
       "builds": {
         "DA_18_Ahri": [
+          "DA_ArchangelsStaff",
           "DA_RabadonsDeathcap",
-          "DA_SpearOfShojin",
-          "DA_StrikersFlail"
+          "DA_SpearOfShojin"
         ],
         "DA_18_Alune": [
           "DA_AdaptiveHelm",
@@ -2381,20 +2386,20 @@
           "DA_SpearOfShojin"
         ],
         "DA_18_Sett": [
-          "DA_DragonsClaw",
+          "DA_BrambleVest",
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ],
         "DA_18_Lillia": [
-          "DA_18_EmblemSpellweaver",
-          "DA_ProtectorsVow",
-          "DA_ProtectorsVow"
+          "DA_Crownguard",
+          "DA_GargoyleStoneplate",
+          "DA_WarmogsArmor"
         ]
       },
-      "games": 11712,
-      "avg": 4.96,
-      "top4": 41.7,
-      "win": 7.3
+      "games": 12764,
+      "avg": 4.97,
+      "top4": 41.5,
+      "win": 7.2
     },
     {
       "id": "426053",
@@ -2410,7 +2415,7 @@
         "DA_Taric18"
       ],
       "key": ["DA_18_Lunar", "DA_18_Aphelios"],
-      "levelling": "Fast 9",
+      "levelling": "Fast 8",
       "stars": ["DA_18_Rengar"],
       "builds": {
         "DA_18_Aphelios": ["DA_Deathblade", "DA_GiantSlayer", "DA_LastWhisper"],
@@ -2425,12 +2430,12 @@
           "DA_ProtectorsVow"
         ],
         "DA_18_Maokai": [
+          "DA_18_EmblemVanguard",
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
-          "DA_SteadfastHeart"
+          "DA_SpiritVisage"
         ]
       },
-      "games": 20825,
+      "games": 22811,
       "avg": 4.78,
       "top4": 44.8,
       "win": 10.5
@@ -2458,8 +2463,8 @@
         "DA_18_RekSai",
         "DA_18_Xayah",
         "DA_18_Leona",
-        "DA_18_Kobuko",
-        "DA_18_Rengar"
+        "DA_18_Rengar",
+        "DA_18_Kobuko"
       ],
       "builds": {
         "DA_18_Elise": [
@@ -2483,9 +2488,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 110900,
+      "games": 120988,
       "avg": 5.35,
-      "top4": 33,
+      "top4": 33.1,
       "win": 10.3
     },
     {
@@ -2515,21 +2520,21 @@
           "DA_ProtectorsVow",
           "DA_SpiritVisage"
         ],
-        "DA_Lux18_Base": [
-          "DA_JeweledGauntlet",
-          "DA_SpearOfShojin",
-          "DA_StrikersFlail"
-        ],
         "DA_18_Kennen": [
           "DA_EdgeOfNight",
           "DA_HandOfJustice",
           "DA_RabadonsDeathcap"
+        ],
+        "DA_18_Alune": [
+          "DA_JeweledGauntlet",
+          "DA_SpearOfShojin",
+          "DA_StrikersFlail"
         ]
       },
-      "games": 12186,
-      "avg": 5.26,
-      "top4": 35.6,
-      "win": 7
+      "games": 13324,
+      "avg": 5.25,
+      "top4": 35.8,
+      "win": 7.1
     },
     {
       "id": "426056",
@@ -2547,26 +2552,26 @@
       "levelling": "lvl 7",
       "stars": ["DA_18_Azir", "DA_18_KhaZix", "DA_Krug18", "DA_18_Rengar"],
       "builds": {
-        "DA_18_Azir": [
-          "DA_ArchangelsStaff",
-          "DA_HextechGunblade",
-          "DA_RabadonsDeathcap"
-        ],
         "DA_18_Malphite": [
           "DA_GargoyleStoneplate",
           "DA_ProtectorsVow",
           "DA_SteadfastHeart"
         ],
+        "DA_18_Azir": [
+          "DA_GuinsoosRageblade",
+          "DA_RabadonsDeathcap",
+          "DA_RabadonsDeathcap"
+        ],
         "DA_18_KhaZix": [
           "DA_18_EmblemBlackthorn",
           "DA_HandOfJustice",
-          "DA_RabadonsDeathcap"
+          "DA_JeweledGauntlet"
         ],
         "DA_Lux18_Base": ["DA_RedBuff", "DA_SpearOfShojin", "DA_VoidStaff"]
       },
-      "games": 14410,
+      "games": 15637,
       "avg": 5.24,
-      "top4": 36.4,
+      "top4": 36.3,
       "win": 6.5
     },
     {
@@ -2606,10 +2611,10 @@
         ],
         "DA_18_Varus": ["DA_Deathblade", "DA_InfinityEdge", "DA_SpearOfShojin"]
       },
-      "games": 10123,
+      "games": 11018,
       "avg": 5.79,
-      "top4": 27.3,
-      "win": 4.3
+      "top4": 27.4,
+      "win": 4.2
     },
     {
       "id": "426059",
@@ -2653,10 +2658,10 @@
           "DA_HextechGunblade"
         ]
       },
-      "games": 11972,
-      "avg": 6.1,
-      "top4": 21,
-      "win": 2.7
+      "games": 13067,
+      "avg": 6.09,
+      "top4": 21.2,
+      "win": 2.8
     }
   ]
 }

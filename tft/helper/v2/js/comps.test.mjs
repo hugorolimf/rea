@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import * as comps from "./comps.js";
 import {
   disputeLevel,
   filterComps,
@@ -109,4 +110,23 @@ test("comp fixada: escolhida fora de partida vale para a próxima; escolhida num
   assert.equal(goals.get("43"), null);
   storage.setItem("tft-compass-goal", "{quebrado");
   assert.equal(goals.get(lobby), null);
+});
+
+test("com seus itens: só anuncia ganho relevante, e marca subida de tier", () => {
+  const { itemUpgrade } = comps;
+  assert.equal(
+    itemUpgrade({
+      tier: "B",
+      fit: { itemGain: 0.02, itemTier: "A", adjustedAvg: 4.38 },
+    }),
+    null,
+  );
+  assert.equal(itemUpgrade({ tier: "B", fit: null }), null);
+  assert.deepEqual(
+    itemUpgrade({
+      tier: "B",
+      fit: { itemGain: 0.12, itemTier: "A", adjustedAvg: 4.38 },
+    }),
+    { from: "B", to: "A", avg: 4.38, gain: 0.12, tierUp: true },
+  );
 });

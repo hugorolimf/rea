@@ -289,7 +289,7 @@
     margin-top: 8px;
     & li {
       display: grid;
-      grid-template-columns: auto 90px 1fr;
+      grid-template-columns: auto 90px auto minmax(0, 1fr);
       align-items: center;
       gap: 8px;
     }
@@ -320,5 +320,61 @@
     &:hover {
       text-decoration: underline;
     }
+  }
+
+  /* Itens: tier ajustado pelos itens que você tem e builds com a variação publicada. */
+  .tier-up {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .comp-edge {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 2px 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--go), var(--surface) 92%);
+    color: var(--muted);
+    font-size: 12px;
+    & > .i {
+      grid-row: span 2;
+      width: 18px;
+      height: 18px;
+      color: var(--go);
+    }
+    & b {
+      color: var(--text);
+    }
+    & .tier {
+      min-width: 18px;
+      height: 18px;
+      vertical-align: -4px;
+    }
+    & small {
+      color: var(--faint);
+      font-size: 11px;
+    }
+  }
+  .comp-item {
+    display: inline-grid;
+    border-radius: 9px;
+    &.is-held {
+      box-shadow: 0 0 0 2px var(--go);
+    }
+  }
+  .comp-build-stat {
+    justify-self: end;
+    color: var(--faint);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .comp-build-note {
+    margin-top: 6px;
+    color: var(--faint);
+    font-size: 11px;
   }
 }

@@ -463,6 +463,7 @@ const server = http.createServer(async (req, res) => {
           rerollLevel: c.rerollLevel,
           stars3: c.stars3,
           builds: c.builds,
+          buildStats: c.buildStats ?? {},
           games: c.games,
           avg: c.avg,
           top4: c.top4,

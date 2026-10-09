@@ -1,5 +1,6 @@
 import { POOL, ODDS } from "./rules.mjs";
 import { rollLevelOf, isContested } from "./economy.mjs";
+import { itemEdge, tierOf } from "./item-edge.mjs";
 export { POOL, ODDS };
 const STICKY_BONUS = 10;
 export function analyze(snapshot, catalog, options) {
@@ -116,6 +117,17 @@ export function analyze(snapshot, catalog, options) {
   }
   const equippedItems = [...own.values()].flatMap((u) => u.items);
   const ownedItems = [...equippedItems, ...(options.inventory ?? [])];
+  // Estoque para medir builds: itens completos (equipados ou no banco) e componentes livres no banco.
+  const isComponent = (id) => id.startsWith("DA_Component_");
+  const itemStock = {
+      completed: ownedItems.filter((id) => !isComponent(id)),
+      components: (options.inventory ?? []).filter(isComponent),
+    },
+    recipes = new Map(
+      catalog.items
+        .filter((i) => i.composition?.length === 2)
+        .map((i) => [i.apiName, i.composition]),
+    );
   const itemProfile = { ad: 0, ap: 0, tank: 0, flex: 0 };
   for (const i of ownedItems) {
     if (/Component_/.test(i)) {
@@ -468,14 +480,21 @@ export function analyze(snapshot, catalog, options) {
           component.access +
           component.matchup -
           component.dispute;
-        component.meta = (5 - m.avg) * 25;
-        component.total = component.fit + component.meta;
         const carry =
           board.find((c) => c.apiName === m.carry) ??
           board
             .filter((c) => c.stats.range >= 3)
             .sort((a, b) => b.cost - a.cost)[0] ??
           board[0];
+        // Força de meta pela colocação média ajustada aos seus itens: a build publicada de cada campeão que
+        // você já tem (ou monta com o banco) puxa a média da comp para baixo (ver item-edge.mjs).
+        const edge = itemEdge(m, itemStock, recipes, (unit) => {
+          const c = byId.get(unit);
+          return !c ? 0 : c === carry ? 1 : role(c) === "tank" ? 0 : 0.5;
+        });
+        component.edge = edge;
+        component.meta = (5 - edge.adjustedAvg) * 25;
+        component.total = component.fit + component.meta;
         const build = buildFit(m, carry);
         component.build = build.points;
         component.buildFit = build;
@@ -523,6 +542,10 @@ export function analyze(snapshot, catalog, options) {
       dispute: round(r.component.dispute),
       carryItems: r.component.buildFit.carryHits,
       carryWanted: r.component.buildFit.carryWanted,
+      adjustedAvg: r.component.edge.adjustedAvg,
+      itemTier: tierOf(r.component.edge.adjustedAvg),
+      itemGain: r.component.edge.gain,
+      itemGains: r.component.edge.gains,
     }));
   }
   const focuses = selected.length

@@ -23,9 +23,25 @@ export const STYLES = [
 export const TIERS = ["S", "A", "B", "C"];
 export const SORTS = [
   { key: "fit", label: "Encaixe na partida" },
+  { key: "items", label: "Com seus itens" },
   { key: "avg", label: "Colocação média" },
   { key: "top4", label: "Top 4" },
 ];
+
+/** Ganho mínimo (em colocações) para anunciar "com seus itens": abaixo disso é ruído de fronteira. */
+export const ITEM_EDGE_MIN = 0.05;
+/** Comp que melhora de forma relevante com os seus itens: {from, to, avg, gain, tierUp} ou null. */
+export function itemUpgrade(comp) {
+  const f = comp.fit;
+  if (!f || !(f.itemGain >= ITEM_EDGE_MIN)) return null;
+  return {
+    from: comp.tier,
+    to: f.itemTier,
+    avg: f.adjustedAvg,
+    gain: f.itemGain,
+    tierUp: f.itemTier !== comp.tier,
+  };
+}
 
 /** Disputa da pool: soma, por unidade da comp, da fração das cópias com rivais (escala do motor). */
 export const disputeLevel = (d) =>
@@ -74,6 +90,7 @@ export function sortComps(list, by = "fit") {
   const key =
     {
       fit: (c) => c.fit?.rank ?? Infinity,
+      items: (c) => c.fit?.adjustedAvg ?? c.avg,
       avg: (c) => c.avg,
       top4: (c) => -c.top4,
     }[by] ?? ((c) => c.fit?.rank ?? Infinity);

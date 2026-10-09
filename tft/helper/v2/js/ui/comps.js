@@ -5,10 +5,17 @@ import {
   TIERS,
   disputeLevel,
   filterComps,
+  itemUpgrade,
   mergeComps,
   sortComps,
 } from "../comps.js";
-import { getCatalog, glyph, itemPortrait, portrait } from "./glyphs.js";
+import {
+  getCatalog,
+  glyph,
+  itemName,
+  itemPortrait,
+  portrait,
+} from "./glyphs.js";
 
 const PREFS = "tft-compass-comps-filters";
 const pct = (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : "—");
@@ -54,27 +61,49 @@ function units(c) {
     .join("");
 }
 
+const num = (v, d = 2) => v.toFixed(d).replace(".", ",");
+const signed = (v) => `${v > 0 ? "+" : "−"}${num(Math.abs(v))}`;
+// Itens que o motor encontrou com você (prontos ou montáveis) para as builds desta comp.
+const heldItems = (c) =>
+  new Set((c.fit?.itemGains ?? []).flatMap((g) => [...g.ready, ...g.craft]));
+
 function details(c) {
-  const { champions } = getCatalog(),
+  const held = heldItems(c),
+    { champions } = getCatalog(),
     builds = Object.entries(c.builds ?? {})
       .filter(([id]) => c.units.includes(id))
       .sort(([a], [b]) => (b === c.carry) - (a === c.carry));
   const rows = builds
     .map(([id, items]) => {
-      const ch = champions.get(id);
-      return `<li>${portrait(id, ch?.name ?? id, { size: 28 })}<b>${esc(ch?.name ?? id)}</b><span class="comp-items">${items.map((i) => itemPortrait({ id: i }, { size: 26 })).join("")}</span></li>`;
+      const ch = champions.get(id),
+        st = c.buildStats?.[id];
+      return `<li>${portrait(id, ch?.name ?? id, { size: 28 })}<b>${esc(ch?.name ?? id)}</b><span class="comp-items">${items.map((i) => `<span class="comp-item${held.has(i) ? " is-held" : ""}" title="${esc(itemName(i))}${held.has(i) ? " · você tem ou monta" : ""}">${itemPortrait({ id: i }, { size: 26 })}</span>`).join("")}</span>${st && Number.isFinite(st.delta) ? `<small class="comp-build-stat" title="Variação publicada da colocação com esta build, contra outras builds de 3 itens neste campeão na comp">${signed(st.delta)} · ${thousands(st.n)} partidas</small>` : ""}</li>`;
     })
     .join("");
   const stars3 = (c.stars3 ?? [])
     .map((id) => esc(champions.get(id)?.name ?? id))
     .join(", ");
-  return `${rows ? `<ul class="comp-builds">${rows}</ul>` : '<p class="muted">Sem builds publicadas para esta comp.</p>'}${stars3 ? `<p class="comp-3star"><b>3★:</b> ${stars3}</p>` : ""}`;
+  return `${rows ? `<ul class="comp-builds">${rows}</ul><p class="comp-build-note">A fonte publica só a melhor build de cada campeão; a variação vem inflada e o motor a usa com desconto.</p>` : '<p class="muted">Sem builds publicadas para esta comp.</p>'}${stars3 ? `<p class="comp-3star"><b>3★:</b> ${stars3}</p>` : ""}`;
 }
 
 function card(c, { goalId, open }) {
   const pinned = c.id === goalId,
     f = c.fit,
-    dispute = disputeLevel(f?.dispute);
+    dispute = disputeLevel(f?.dispute),
+    up = itemUpgrade(c);
+  const { champions } = getCatalog();
+  // Com seus itens: nova média esperada e de onde vem (campeão e itens da build que você tem ou monta).
+  const edge = up
+    ? `<p class="comp-edge">${glyph("items")}<span>Com seus itens: média <b>${num(up.avg)}</b> (${signed(-up.gain)})${up.tierUp ? ` · tier <span class="tier tier-${esc(up.to)}">${esc(up.to)}</span>` : ""}</span><small>${f.itemGains
+        .map(
+          (g) =>
+            `${esc(champions.get(g.unit)?.name ?? g.unit)}: ${[
+              ...g.ready.map((i) => esc(itemName(i))),
+              ...g.craft.map((i) => `${esc(itemName(i))} (montar)`),
+            ].join(", ")}`,
+        )
+        .join(" · ")}</small></p>`
+    : "";
   const fit = f
     ? [
         `<span><b>${f.owned}/${f.size}</b> já em campo</span>`,
@@ -90,7 +119,7 @@ function card(c, { goalId, open }) {
     : '<span class="muted">Encaixe indisponível nesta leitura</span>';
   return `<li class="comp" data-id="${esc(c.id)}"${pinned ? ' data-pinned=""' : ""}>
     <header class="comp-head">
-      <span class="tier tier-${esc(c.tier)}" title="Tier ${esc(c.tier)} (faixa deste helper sobre a colocação média)">${esc(c.tier)}</span>
+      <span class="tier tier-${esc(c.tier)}" title="Tier ${esc(c.tier)} (faixa deste helper sobre a colocação média)">${esc(c.tier)}</span>${up?.tierUp ? `<span class="tier-up" title="Tier com os seus itens">→ <span class="tier tier-${esc(up.to)}">${esc(up.to)}</span></span>` : ""}
       <h3>${esc(c.title)}</h3>
       <span class="chip">${esc(c.style.label)}</span>
       ${f?.suggested ? '<span class="chip chip-go" title="Entre as 3 sugeridas para esta partida">Sugerida</span>' : ""}
@@ -99,6 +128,7 @@ function card(c, { goalId, open }) {
     <ul class="comp-units">${units(c)}</ul>
     <p class="comp-stats"><span>média <b>${c.avg.toFixed(2)}</b></span><span>top 4 <b>${pct(c.top4)}</b></span><span>1º <b>${pct(c.win)}</b></span><span>${thousands(c.games)} partidas</span></p>
     <p class="comp-fit">${fit}</p>
+    ${edge}
     <div class="comp-actions">
       ${pinned ? '<button type="button" class="btn" data-release>Liberar</button>' : `<button type="button" class="btn btn-go" data-pick="${esc(c.id)}">Seguir esta comp</button>`}
       <details class="comp-more" data-more="${esc(c.id)}"${open ? " open" : ""}><summary>Builds e 3★</summary>${details(c)}</details>

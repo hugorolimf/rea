@@ -3,15 +3,13 @@
 // com origem/data e segue com ela se a rede falhar.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { compBuildStats, tierOf } from "./item-edge.mjs";
 const BASE = "https://api-hc.metatft.com/tft-comps-api/";
 const STATS_QUERY =
   "comps_stats?queue=1100&patch=current&days=3&rank=CHALLENGER,DIAMOND,EMERALD,GRANDMASTER,MASTER,PLATINUM&permit_filter_adjustment=true";
 // A MetaTFT agrega os últimos 3 dias; renovar a cada 2 h acompanha o dia do patch sem pesar na API.
 const MAX_AGE_MS = 2 * 60 * 60 * 1000,
   MIN_GAMES = 5000;
-// Faixas próprias deste helper sobre a colocação média (1 a 8, menor é melhor); não são os tiers da MetaTFT.
-const tierOf = (avg) =>
-  avg <= 4.25 ? "S" : avg <= 4.4 ? "A" : avg <= 4.6 ? "B" : "C";
 const filePath = (root) => path.join(root, "meta-comps.json");
 /** Lê a cópia local e resolve nomes com o catálogo; devolve {comps:[], ...} quando ausente ou de outro set. */
 export async function loadComps(root, set, catalog) {
@@ -88,12 +86,11 @@ export async function refreshComps(root, set) {
     if (!p || p.length !== 8) continue;
     const games = p.reduce((a, b) => a + b, 0);
     if (games < MIN_GAMES) continue;
-    const builds = {};
-    for (const b of [...(d.builds ?? [])].sort(
-      (a, b) => (b.score ?? 0) - (a.score ?? 0),
-    ))
-      if (b.unit && Array.isArray(b.buildName) && !builds[b.unit])
-        builds[b.unit] = b.buildName;
+    // Build de cada campeão (a de maior pontuação), com quanto ela muda a colocação nesta comp.
+    const buildStats = compBuildStats(d),
+      builds = Object.fromEntries(
+        Object.entries(buildStats).map(([unit, b]) => [unit, b.items]),
+      );
     comps.push({
       id,
       units: String(d.units_string ?? "")
@@ -103,6 +100,7 @@ export async function refreshComps(root, set) {
       levelling: String(d.levelling ?? ""),
       stars: Array.isArray(d.stars) ? d.stars : [],
       builds,
+      buildStats,
       games,
       avg:
         Math.round((p.reduce((a, b, i) => a + b * (i + 1), 0) / games) * 100) /
