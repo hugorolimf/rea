@@ -1051,6 +1051,16 @@
       ).toISOString();
     return c;
   };
+  // O mock é estático: sem SSE. A galeria abre dezenas de iframes e esgotaria as 6 conexões por origem do navegador.
+  window.EventSource = class {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 2;
+    }
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+  };
   window.fetch = async (input, init) => {
     const url = new URL(
       typeof input === "string" ? input : input.url,

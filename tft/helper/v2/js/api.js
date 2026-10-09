@@ -1,3 +1,5 @@
+import { shareEvents } from "./sse-share.js";
+
 /** Camada de rede da v2: usa os mesmos endpoints da v1, sem alterar o contrato. */
 const getJSON = async (url, init = {}) => {
   const response = await fetch(url, {
@@ -62,8 +64,4 @@ export const analysisKey = (state, payload) =>
   });
 
 /** Assina os avisos de novos dados do jogo (SSE); devolve uma função que encerra a assinatura. */
-export function subscribe(onTick) {
-  const source = new EventSource("/api/events");
-  source.onmessage = () => onTick();
-  return () => source.close();
-}
+export const subscribe = (onTick) => shareEvents(() => onTick());

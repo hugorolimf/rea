@@ -17,10 +17,17 @@ import { strategy } from "./strategy.mjs";
 import { augmentAdvice } from "./augment-advice.mjs";
 import { loadComps, refreshComps, compsAreStale } from "./meta-comps.mjs";
 import { screenReader } from "./screen-reader.mjs";
+import { installDiagnostics } from "./diagnostics.mjs";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.TFT_HELPER_PORT ?? 3218);
 if (!Number.isInteger(port) || port < 1024 || port > 65535)
   throw Error("Porta inválida.");
+// Log em server.log (rotaciona em 1 MB); erros não tratados são registrados sem derrubar o servidor.
+const diag = installDiagnostics(
+  path.join(root, "server.log"),
+  path.join(root, `server.${port}.run`),
+  { port },
+);
 const icons = JSON.parse(
   await fs.readFile(path.join(root, "assets-manifest.json"), "utf8"),
 );
@@ -633,6 +640,10 @@ const server = http.createServer(async (req, res) => {
     }
     json(404, { error: "Rota não encontrada." });
   } catch (e) {
+    diag.write(
+      "AVISO",
+      `${req.method} ${req.url} → 400: ${e.stack ?? e.message}`,
+    );
     json(400, { error: e.message });
   }
 });
@@ -641,5 +652,6 @@ server.listen(port, "127.0.0.1", () =>
 );
 server.on("error", (e) => {
   console.error(e.message);
+  diag.write("ERRO", `servidor HTTP: ${e.stack ?? e.message}`);
   process.exitCode = 1;
 });

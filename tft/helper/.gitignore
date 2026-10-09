@@ -1,3 +1,6 @@
 server.stdout.log
 server.stderr.log
 catalog.raw.json
+server.log
+server.log.1
+server.*.run

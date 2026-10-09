@@ -11,6 +11,7 @@ import {
   itemPlansHTML,
   inspectPlannerChampion,
 } from "/planner.js";
+import { shareEvents } from "/v2/js/sse-share.js";
 const $ = (id) => document.getElementById(id);
 const esc = (v) =>
   String(v ?? "").replace(
@@ -655,27 +656,28 @@ try {
 }
 
 function connectCapture() {
-  const stream = new EventSource("/api/events");
-  stream.onmessage = (e) => {
-    try {
-      const snapshot = JSON.parse(e.data);
-      if (!$("autoscoute").checked) return;
+  shareEvents(
+    (text) => {
+      try {
+        const snapshot = JSON.parse(text);
+        if (!$("autoscoute").checked) return;
+        $("capturestatus").textContent =
+          "Captura automática · fonte " +
+          new Date(snapshot.sourceAt).toLocaleTimeString("pt-BR") +
+          " · " +
+          snapshot.players.length +
+          " jogadores · espera somente o jogo publicar novos dados";
+        // A single recommendation response feeds every panel; SSE only invalidates it.
+        if (!document.hidden) void update();
+      } catch (err) {
+        $("capturestatus").textContent = "Captura: " + err.message;
+      }
+    },
+    () => {
       $("capturestatus").textContent =
-        "Captura automática · fonte " +
-        new Date(snapshot.sourceAt).toLocaleTimeString("pt-BR") +
-        " · " +
-        snapshot.players.length +
-        " jogadores · espera somente o jogo publicar novos dados";
-      // A single recommendation response feeds every panel; SSE only invalidates it.
-      if (!document.hidden) void update();
-    } catch (err) {
-      $("capturestatus").textContent = "Captura: " + err.message;
-    }
-  };
-  stream.onerror = () => {
-    $("capturestatus").textContent =
-      "Reconectando captura; leitura periódica continua ativa.";
-  };
+        "Reconectando captura; leitura periódica continua ativa.";
+    },
+  );
   $("rivals").addEventListener("click", (e) => {
     const card = e.target.closest("[data-view]");
     if (card) {
