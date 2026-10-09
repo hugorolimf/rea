@@ -1,5 +1,102 @@
 # Changelog
 
+## [6.2.0](https://github.com/morluto/rea/compare/rea-agents-6.1.0...rea-agents-6.2.0) (2026-10-09)
+
+
+### Features
+
+* **mcp:** select views of retained analysis results ([#1180](https://github.com/morluto/rea/issues/1180)) ([db675f1](https://github.com/morluto/rea/commit/db675f1d52acda62b6f57b5a8773532f49b259e7))
+* **website:** add beginner examples and synchronized publishing ([0fec65d](https://github.com/morluto/rea/commit/0fec65d06b2f5431e704c472e53015d4b3cc967c))
+* **website:** add beginner examples and synchronized publishing ([#1203](https://github.com/morluto/rea/issues/1203)) ([0fec65d](https://github.com/morluto/rea/commit/0fec65d06b2f5431e704c472e53015d4b3cc967c))
+* **website:** clarify reverse engineering and showcase goals ([e750c26](https://github.com/morluto/rea/commit/e750c262fbf37100369ab25bf8659daa1a2c4cc7))
+* **website:** explain REA through a first investigation ([5160d9b](https://github.com/morluto/rea/commit/5160d9b717d0207a357c754bdf72e215e59d19d1))
+* **website:** explain REA with Calculator and a playable dinosaur lab ([11b9f03](https://github.com/morluto/rea/commit/11b9f0346cf5413045b41ff552a024e11ba46ccc))
+* **website:** lead with the playable dinosaur example ([19c52f5](https://github.com/morluto/rea/commit/19c52f5e3f42fb754fc154bbd16552c5111df0c5))
+* **website:** show manual analysis beside a one-prompt workflow ([291bc6f](https://github.com/morluto/rea/commit/291bc6fb70f47d28d23440f03a8a7fa49eb9a391))
+
+
+### Bug Fixes
+
+* **android:** validate engine archive prerequisites ([#1145](https://github.com/morluto/rea/issues/1145)) ([e9ebfb9](https://github.com/morluto/rea/commit/e9ebfb94eff0699b1ea84bba000c4467fa1cb998))
+* **apple:** report unusable dylib-resolution roots as invalid input ([6a1e558](https://github.com/morluto/rea/commit/6a1e558db3ec2b69561e91ea817f1c2065dfc676))
+* **apple:** report unusable dylib-resolution roots as invalid input ([24a30fd](https://github.com/morluto/rea/commit/24a30fd91c144b7f2533e5f5de8c91268773519c))
+* **artifacts:** keep cancellation and the caller path in extraction refusals ([37025cc](https://github.com/morluto/rea/commit/37025cc09f12d49f46e61eedc3564c710089146b))
+* **artifacts:** keep cancellation and the caller path in extraction refusals ([eacf846](https://github.com/morluto/rea/commit/eacf8461dad6bab11a3d5438e6db001a10f33a9b))
+* **artifacts:** match lipo arm64e variant names to their FAT slices ([de5bfec](https://github.com/morluto/rea/commit/de5bfec79fe862816350b2deeb42a12c0734d855))
+* **artifacts:** match lipo arm64e variant names to their FAT slices ([0b32577](https://github.com/morluto/rea/commit/0b32577a90aef97e36adf2a7af4f3eccd5d82357)), closes [#1168](https://github.com/morluto/rea/issues/1168)
+* **artifacts:** recheck failed DMG detaches before reporting cleanup failure ([#1155](https://github.com/morluto/rea/issues/1155)) ([58a91f0](https://github.com/morluto/rea/commit/58a91f03d72162849991caf537ab058ccc918594))
+* **artifacts:** refuse unsupported extraction formats before scanning ([8e74c9c](https://github.com/morluto/rea/commit/8e74c9c62fb44556b90f20bb6c12771ac05a18f2))
+* **artifacts:** report encrypted archive entries as unsupported extraction ([de43da7](https://github.com/morluto/rea/commit/de43da71ae982dd0f3d7b5ae49c914729db3a6ec))
+* **artifacts:** report wrong target kinds as unsupported targets ([b34bdcd](https://github.com/morluto/rea/commit/b34bdcdb2877be394c59c9cbf70269dc1841ff78))
+* **artifacts:** report wrong target kinds as unsupported targets ([637bcb5](https://github.com/morluto/rea/commit/637bcb5e4182b6c60e922b18688642d8e1008e90))
+* **browser:** report Windows HAR heap exhaustion ([#1147](https://github.com/morluto/rea/issues/1147)) ([1393507](https://github.com/morluto/rea/commit/13935077ba039f6e342f9c11ab5eea935a335ae6))
+* **cli:** advertise defaulted inputs as optional in --schema and help ([#1175](https://github.com/morluto/rea/issues/1175)) ([b4927a0](https://github.com/morluto/rea/commit/b4927a0a4fa7e8935b101d214b396bfa78208281)), closes [#1169](https://github.com/morluto/rea/issues/1169)
+* **cli:** cancel routed JavaScript analysis in rea analyze ([#1156](https://github.com/morluto/rea/issues/1156)) ([089bbf5](https://github.com/morluto/rea/commit/089bbf58f3561e3f465c544bbcf8c307287b1256))
+* **cli:** complete cleanup after relayed interrupts ([#1202](https://github.com/morluto/rea/issues/1202)) ([911152a](https://github.com/morluto/rea/commit/911152a04d3aeb0d361141a8d54959009b269e49))
+* **cli:** resolve xrefs symbol selectors after address validation ([#1209](https://github.com/morluto/rea/issues/1209)) ([7e9c911](https://github.com/morluto/rea/commit/7e9c91199ecd133d26a51cb33b6e63e1f942df7e))
+* **config:** name the rejected setting and its constraint in configuration errors ([c3acc34](https://github.com/morluto/rea/commit/c3acc34475ca22387ea674839acfa1891b0b9f66))
+* **config:** name the rejected setting and its constraint in configuration errors ([0a0244d](https://github.com/morluto/rea/commit/0a0244db4212bc1f59dec4b925fa90b3b473136a)), closes [#1184](https://github.com/morluto/rea/issues/1184)
+* **doctor:** find the Homebrew Hopper cask without writing Homebrew caches ([98b07d0](https://github.com/morluto/rea/commit/98b07d07ddd20bea2c3bdf8d55ac2776a263bcf4))
+* **doctor:** find the Homebrew Hopper cask without writing Homebrew caches ([a503376](https://github.com/morluto/rea/commit/a503376b2f9d9ba14d1602e58e0e93059e9d9181)), closes [#1165](https://github.com/morluto/rea/issues/1165)
+* **domain:** report target read-permission denials as access_denied ([f36c10f](https://github.com/morluto/rea/commit/f36c10f9e8dc45a298d668e608f8e945bde487cf))
+* **domain:** report target read-permission denials as access_denied ([d0ff57a](https://github.com/morluto/rea/commit/d0ff57a45c8da8938e7ae16d00bfd5ec63310af3)), closes [#1188](https://github.com/morluto/rea/issues/1188)
+* **evidence:** cancel exports before atomic publication ([16624f1](https://github.com/morluto/rea/commit/16624f1324e156d14025b2c346596c9781c07488))
+* **ghidra:** keep and name a runtime directory that close could not remove ([5b769d3](https://github.com/morluto/rea/commit/5b769d3a781c645ed8885e4fabf01a00f0bbc89b))
+* **ghidra:** keep and name a runtime directory that close could not remove ([b79d379](https://github.com/morluto/rea/commit/b79d379c25bcc8ed61571c41a94b912b5704a067)), closes [#1190](https://github.com/morluto/rea/issues/1190)
+* **ghidra:** keep the NativeAOT target refusal's own recovery advice ([f198993](https://github.com/morluto/rea/commit/f198993f418e6aaa9755e7e6413abcb27c6cd684))
+* **ghidra:** reject relative installation and Java paths in doctor and setup ([8998438](https://github.com/morluto/rea/commit/8998438c23aa19e68f4ffa7574c5d341aa419165))
+* **ghidra:** reject relative installation and Java paths in doctor and setup ([5356856](https://github.com/morluto/rea/commit/53568568bf32b36274ba3a532f1e2cfb2daed271)), closes [#1183](https://github.com/morluto/rea/issues/1183)
+* **ghidra:** report NativeAOT host and target refusals as unsupported, not failures ([cfb49eb](https://github.com/morluto/rea/commit/cfb49eb8a88fc51f460907024c51e05a2f272502))
+* **ghidra:** report NativeAOT host and target refusals as unsupported, not failures ([42c276a](https://github.com/morluto/rea/commit/42c276af1ec02473a7b6700a31292aae9e53d53e)), closes [#1185](https://github.com/morluto/rea/issues/1185)
+* **ghidra:** resolve secondary symbols at function entries ([#1195](https://github.com/morluto/rea/issues/1195)) ([6fbdbd6](https://github.com/morluto/rea/commit/6fbdbd682038d012b04f0fe92c470cf1789fb101))
+* **hopper:** keep the OS error when the FAT64 source cannot be reopened ([9f5dc52](https://github.com/morluto/rea/commit/9f5dc52be8420fb5e874595d63312bf80d07a3a2))
+* **hopper:** reserve Linux demo application before launch ([#1158](https://github.com/morluto/rea/issues/1158)) ([33d5ae0](https://github.com/morluto/rea/commit/33d5ae0b52b8684634ecf14d4e9469968c69d462))
+* **javascript:** omit self-referential static references with disclosure ([#1157](https://github.com/morluto/rea/issues/1157)) ([b620e2a](https://github.com/morluto/rea/commit/b620e2a2bdcf3683b494d137bc409813735d5572))
+* **javascript:** preserve graphs with async chunk self-references ([#1152](https://github.com/morluto/rea/issues/1152)) ([7220166](https://github.com/morluto/rea/commit/72201668ed88c2cc822a07c08cf35a1e5ba88f35))
+* **javascript:** resolve package exports targets only to the exact file ([#1181](https://github.com/morluto/rea/issues/1181)) ([2a620c0](https://github.com/morluto/rea/commit/2a620c06cdcaa32844c4a80aeb3df1793f1ce09e)), closes [#1174](https://github.com/morluto/rea/issues/1174)
+* **native:** refuse truncated executable headers at target admission ([d39a450](https://github.com/morluto/rea/commit/d39a450bdfac425962c3a6a6f47b45600057a230))
+* **native:** refuse truncated executable headers at target admission ([0b04d38](https://github.com/morluto/rea/commit/0b04d384cca4f22f271d60bcfe67f79cab89c8de)), closes [#1189](https://github.com/morluto/rea/issues/1189)
+* **process:** stop cancelled Swift helper builds before removing their files ([cf41561](https://github.com/morluto/rea/commit/cf415619cadcfcb18cda59a54b26c9d164f750a4))
+* **process:** stop cancelled Swift helper builds before removing their files ([c717204](https://github.com/morluto/rea/commit/c7172047951e7dbb9df58b57ff1b43ac9bd47909)), closes [#1173](https://github.com/morluto/rea/issues/1173)
+* **server:** report 2025-era client identity and features in binary_session ([e6abaef](https://github.com/morluto/rea/commit/e6abaefbbc2bd81a6be34cbe71b87be801158c16))
+* **server:** report 2025-era client identity and features in binary_session ([b8312fa](https://github.com/morluto/rea/commit/b8312fa8d184ba9f422d1f5592fb41e49811544a)), closes [#1167](https://github.com/morluto/rea/issues/1167)
+* **session:** require an open target for session-bound native and artifact tools ([d8e314c](https://github.com/morluto/rea/commit/d8e314cb24e7a4a494347e45474234e0aad74ad1))
+* **session:** require an open target for session-bound native and artifact tools ([cf77d07](https://github.com/morluto/rea/commit/cf77d073fc06ab95ce4181c30d68b1346e990b64)), closes [#1166](https://github.com/morluto/rea/issues/1166)
+* **setup:** keep Codex TOML comments when adding or removing REA ([f5539cf](https://github.com/morluto/rea/commit/f5539cfc2f6c0daf6c275fc97f3351e2cf89b2c3))
+* **setup:** keep Codex TOML comments when adding or removing REA ([e9c48a6](https://github.com/morluto/rea/commit/e9c48a61e4c2c05c5b77ef4a815c5b2a65a9337e)), closes [#1163](https://github.com/morluto/rea/issues/1163)
+* **setup:** preserve initial backups and Codex comments ([#1204](https://github.com/morluto/rea/issues/1204)) ([6051cb2](https://github.com/morluto/rea/commit/6051cb2c0c723d88dc43ee5ef8a96971bf84d49e))
+* **setup:** stop remaining uninstall removals after a client fails ([fd975c7](https://github.com/morluto/rea/commit/fd975c75fa353840e6e887232ca68496cf8705ea))
+* **setup:** stop uninstall before removals when a client config is unsafe ([4fb2f3e](https://github.com/morluto/rea/commit/4fb2f3e6ed0233505eada3cddeeff0ea0bfc6fe5))
+* **setup:** stop uninstall before removals when a client config is unsafe ([5cc841d](https://github.com/morluto/rea/commit/5cc841d5c154f692bdc257e106cc4b212dc19dc0)), closes [#1164](https://github.com/morluto/rea/issues/1164)
+
+
+### Performance Improvements
+
+* **mcp:** reuse input schemas without losing caller guidance ([#1162](https://github.com/morluto/rea/issues/1162)) ([e1afbc1](https://github.com/morluto/rea/commit/e1afbc1914cc7ff90265313e942f34ea4a58a4fc))
+
+
+### Documentation
+
+* add French README translation ([84094af](https://github.com/morluto/rea/commit/84094af54a4e0a6247445e59abff27bc4eca361b))
+* add French README translation ([9664b2b](https://github.com/morluto/rea/commit/9664b2b101fe4ac334b2911f9210b50d58d90a89))
+* celebrate 30,000 GitHub stars 🎉 ([6987cb0](https://github.com/morluto/rea/commit/6987cb066a5aa5e51480bb06a93a758e6f67cd1e))
+* celebrate 30,000 GitHub stars 🎉 ([beca997](https://github.com/morluto/rea/commit/beca9977eb2b18fc7b9844cff0ca70004b6ff21a))
+* thank feature request contributors ([9db1fd0](https://github.com/morluto/rea/commit/9db1fd0bd7b17ed1dd21b9c72dabfa4ec6c23a3f))
+
+
+### Tests
+
+* **artifacts:** assert asset-catalog target refusal only on macOS ([44d5b4b](https://github.com/morluto/rea/commit/44d5b4b25e0831769c1bd4e5426ef498d0bd3c74))
+* **native:** build the .app fixture executable with a complete Mach-O header ([facaae8](https://github.com/morluto/rea/commit/facaae865af243656ab8f557aeb42f5909748f2b))
+
+
+### Continuous Integration
+
+* **website:** allow explicitly requested Pages-only publication ([796b65e](https://github.com/morluto/rea/commit/796b65e1cd15f3cf819396716320db007655ee3f))
+* **website:** allow explicitly requested Pages-only publication ([864160d](https://github.com/morluto/rea/commit/864160d8858fad3c0afebff81c31b090a1ebf823))
+* **website:** allow explicitly requested Pages-only publication ([#1205](https://github.com/morluto/rea/issues/1205)) ([796b65e](https://github.com/morluto/rea/commit/796b65e1cd15f3cf819396716320db007655ee3f))
+* **website:** publish Cloudflare and Pages from one artifact ([761881c](https://github.com/morluto/rea/commit/761881cec33b18d7228bae5e2093e5d44b96ceb1))
+
 ## [6.1.0](https://github.com/morluto/rea/compare/rea-agents-6.0.0...rea-agents-6.1.0) (2026-10-09)
 
 
