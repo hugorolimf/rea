@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>TFT Compass v2</title>
+<link rel="stylesheet" href="/v2/css/tokens.css">
+<link rel="stylesheet" href="/v2/css/base.css">
+<link rel="stylesheet" href="/v2/css/hud.css">
+<link rel="stylesheet" href="/v2/css/field.css">
+<link rel="stylesheet" href="/v2/css/panel.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 3 20h18L12 4Zm0 6v5m0 3v.01"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8"/></symbol>
+    <symbol id="i-roll" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4m0 1h11l-2.5 4L17 13H6"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="m4 18-1-10 5 4 4-7 4 7 5-4-1 10H4Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-no" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m6.5 6.5 11 11"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
+    <symbol id="i-swords" viewBox="0 0 24 24"><path d="m5 5 8 8m-3 3-2 2-3-3 2-2m10-9-8 8m3 3 2 2 3-3-2-2"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 5 8-5M12 12.5V21"/></symbol>
+    <symbol id="i-comps" viewBox="0 0 24 24"><path d="M5 4v16M5 8h7l6-4M5 15h7l6 5"/><circle cx="18" cy="4" r="2"/><circle cx="18" cy="20" r="2"/></symbol>
+    <symbol id="i-items" viewBox="0 0 24 24"><path d="m12 3 7 7-7 11-7-11 7-7ZM5 10h14M9 10l3 11 3-11"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app" data-state="loading">
+  <nav class="rail" aria-label="Navegação principal">
+    <a class="brand" href="/v2/" aria-label="TFT Compass v2"><svg class="i"><use href="#i-plan"/></svg><span>v2</span></a>
+    <a class="nav" href="/v2/" aria-current="page" title="Ao vivo"><svg class="i"><use href="#i-live"/></svg><span>Ao vivo</span></a>
+    <a class="nav" href="/#planner" title="Planejador"><svg class="i"><use href="#i-plan"/></svg><span>Planejar</span></a>
+    <a class="nav" href="/#paths" title="Composições"><svg class="i"><use href="#i-comps"/></svg><span>Comps</span></a>
+    <a class="nav" href="/#owneditems" title="Itens e receitas"><svg class="i"><use href="#i-items"/></svg><span>Itens</span></a>
+    <a class="nav" href="/#scouting" title="Scouting"><svg class="i"><use href="#i-eye"/></svg><span>Lobby</span></a>
+  </nav>
+
+  <main class="stage" id="stage" tabindex="-1">
+    <header class="hud" id="hud" aria-label="Estado da partida"></header>
+    <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+    <div class="deck">
+      <div class="col">
+        <section class="field" aria-labelledby="field-title">
+          <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span></div>
+          <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
+          <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
+        </section>
+        <section class="items-sec" aria-labelledby="items-title">
+          <div class="section-head"><h2 id="items-title">Itens</h2></div>
+          <ol class="steps" id="steps-items"></ol>
+        </section>
+      </div>
+      <section class="todo" aria-labelledby="todo-title">
+        <div class="section-head"><h2 id="todo-title">Agora</h2></div>
+        <ol class="steps" id="steps"></ol>
+        <p class="empty-steps">Nada a fazer nesta leitura.</p>
+      </section>
+    </div>
+    <div class="skeleton" aria-hidden="true"></div>
+  </main>
+
+  <aside class="panel" id="panel" aria-label="Decisão da rodada"></aside>
+</div>
+
+<script src="/live-mock.js"></script>
+<script type="module" src="/v2/js/main.js"></script>
+</body>
+</html>

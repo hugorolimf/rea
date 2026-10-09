@@ -1,0 +1,173 @@
+// Rodar com: node --test tft/helper/v2/js/
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { buildCurve, buildModel } from "./model.js";
+import { binomialTail } from "./math.js";
+
+const { state, rec } = JSON.parse(
+  readFileSync(new URL("../../live-mock-base.json", import.meta.url), "utf8"),
+);
+const live = () => {
+  const s = structuredClone(state),
+    r = structuredClone(rec);
+  s.screen = {
+    running: true,
+    stage: "4-2",
+    gold: 54,
+    level: 8,
+    xp: "23/68",
+    items: [],
+  };
+  r.metadata.actionable = true;
+  r.self.health = 58;
+  return { state: s, rec: r };
+};
+
+test("modelo ao vivo: números do HUD vêm da tela e a fase é interpretada", () => {
+  const m = buildModel(live());
+  assert.equal(m.status.live, true);
+  assert.deepEqual(m.hero.stage, { stage: 4, round: 2 });
+  assert.deepEqual(m.hero.xp, { have: 23, total: 68 });
+  assert.equal(m.hero.gold, 54);
+  assert.equal(m.hero.level, 8);
+  assert.equal(m.hero.levelSource, "tela");
+});
+
+test("partida encerrada nunca é considerada ao vivo", () => {
+  const input = live();
+  input.rec.self.health = 0;
+  const m = buildModel(input);
+  assert.equal(m.status.live, false);
+  assert.equal(m.status.ended, true);
+});
+
+test("formação: cada posição vira uma célula única com status e custo", () => {
+  const m = buildModel(live()),
+    ids = m.plan.cells.map((c) => c.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const c of m.plan.cells) {
+    assert.ok(c.row >= 0 && c.row < 4 && c.col >= 0 && c.col < 7);
+    assert.ok(["owned", "incoming", "reserve"].includes(c.status));
+    assert.ok(c.cost >= 1 && c.cost <= 5);
+  }
+  assert.equal(m.plan.cells.filter((c) => c.carry).length <= 1, true);
+});
+
+test("trocas: classificação ready/hold/slot e passos agrupados sem duplicar", () => {
+  const input = live();
+  input.rec.recommendations[0].transitions = [
+    {
+      enter: { id: "DA_18_Aphelios", name: "Aphelios" },
+      exit: { id: "DA_Vi18", name: "Vi", items: ["x", "y"] },
+      ready: true,
+      enterCopies: 3,
+      requiredStars: 2,
+    },
+    {
+      enter: { id: "DA_18_Rakan", name: "Rakan" },
+      exit: { id: "DA_Nidalee18_AP", name: "Nidalee", items: [] },
+      ready: false,
+      enterCopies: 1,
+      requiredStars: 2,
+    },
+    {
+      enter: { id: "DA_18_Xayah", name: "Xayah" },
+      exit: null,
+      source: "reserve",
+    },
+    {
+      enter: { id: "DA_Krug18", name: "Krug" },
+      exit: { id: "DA_Sentinel18", name: "Sentinel", items: [] },
+      ready: false,
+      requiredStars: null,
+    },
+  ];
+  const m = buildModel(input);
+  assert.deepEqual(
+    m.plan.dock.map((d) => d.kind),
+    ["ready", "hold", "slot", "blocked"],
+  );
+  assert.equal(m.plan.dock[0].held, 2);
+  assert.equal(m.plan.dock[1].need, 3);
+  assert.equal(m.plan.dock[1].have, 1);
+  assert.deepEqual(m.plan.counts, { ready: 1, hold: 1 });
+  const byId = Object.fromEntries(m.plan.steps.map((s) => [s.id, s]));
+  assert.equal(byId.swap.rows.length, 1);
+  assert.equal(byId.hold.rows.length, 2, "hold inclui as bloqueadas");
+  assert.equal(byId.slot.rows.length, 1);
+  assert.ok(m.plan.steps.every((s) => ["now", "items"].includes(s.group)));
+  const keys = m.plan.steps.flatMap((s) =>
+    s.rows.map((r) => `${s.id}:${r.key}`),
+  );
+  assert.equal(new Set(keys).size, keys.length, "chaves de linha únicas");
+});
+
+test("trilho de nível marca nível atual, próximo (quando sobe) e níveis de roll/final", () => {
+  const input = live(),
+    p = input.rec.recommendations[0];
+  p.strategy = {
+    action: "SUBIR NÍVEL",
+    headline: "Suba",
+    steps: [],
+    reasons: [],
+    panels: {
+      economy: { gold: 44, interest: 4, next: 50, keep: 10 },
+      leveling: {
+        level: 7,
+        xp: { have: 40, total: 68 },
+        cost: 4,
+        go: true,
+        curve: 7,
+        finalLevel: 9,
+      },
+      rolling: {
+        level: 7,
+        at: 8,
+        go: false,
+        spend: 0,
+        shops: 0,
+        keep: null,
+        targets: [],
+      },
+    },
+  };
+  const { panel } = buildModel(input).plan,
+    byN = Object.fromEntries(panel.level.nodes.map((n) => [n.n, n]));
+  assert.equal(byN[7].state, "now");
+  assert.equal(byN[8].next, true);
+  assert.equal(byN[8].roll, true);
+  assert.equal(byN[9].final, true);
+  assert.equal(panel.tone, "subirnvel");
+});
+
+test("curva de chance: monótona, consistente com a cauda binomial e quantil 80%", () => {
+  const target = {
+    id: "a",
+    name: "Aphelios",
+    goalStars: 2,
+    own: 1,
+    goal: 3,
+    need: 3,
+    chancePerShop: 0.12,
+  };
+  const c = buildCurve(target, 15);
+  assert.equal(c.k, 2);
+  for (let i = 1; i < c.points.length; i++)
+    assert.ok(c.points[i].v >= c.points[i - 1].v);
+  assert.ok(Math.abs(c.plannedValue - binomialTail(2, 15, 0.12)) < 1e-12);
+  assert.ok(
+    binomialTail(2, c.q80, 0.12) >= 0.8 &&
+      binomialTail(2, c.q80 - 1, 0.12) < 0.8,
+  );
+  assert.equal(buildCurve(null, 3), null);
+});
+
+test("sem recomendação o modelo ainda devolve HUD e status", () => {
+  const m = buildModel({
+    state,
+    rec: { recommendations: [], metadata: {}, self: { health: 10 } },
+  });
+  assert.equal(m.plan, null);
+  assert.equal(m.hero.hp, 10);
+});

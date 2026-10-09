@@ -1,0 +1,316 @@
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  ul,
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  :where(a) {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+@layer base {
+  body {
+    background:
+      radial-gradient(90rem 50rem at 15% -10%, color-mix(in oklab, var(--bg), var(--blue) 9%), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font: 14px/1.45 var(--font);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    text-wrap: pretty;
+  }
+  :focus-visible {
+    outline: 2px solid var(--go);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  .i {
+    width: 1.15em;
+    height: 1.15em;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: -0.2em;
+  }
+  .eyebrow {
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--surface), transparent 20%);
+    color: var(--muted);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+  }
+  .chip-go {
+    border-color: color-mix(in oklab, var(--go), transparent 55%);
+    background: color-mix(in oklab, var(--go), transparent 88%);
+    color: var(--go);
+  }
+  .chip-amber {
+    border-color: color-mix(in oklab, var(--amber), transparent 55%);
+    background: color-mix(in oklab, var(--amber), transparent 88%);
+    color: var(--amber);
+  }
+  .tier {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: var(--line);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .tier-S {
+    background: var(--gold);
+    color: oklch(0.25 0.04 80);
+  }
+  .tier-A {
+    background: var(--go);
+    color: oklch(0.25 0.05 168);
+  }
+  .tier-B {
+    background: var(--blue);
+    color: oklch(0.25 0.05 245);
+  }
+  /* Contador numérico animado por CSS */
+  .num {
+    --n: 0;
+    counter-reset: num var(--n);
+    transition: --n var(--settle-ms) var(--settle-ease);
+  }
+  .num::after {
+    content: counter(num);
+  }
+  .num[data-empty]::after {
+    content: "—";
+  }
+}
+
+@layer layout {
+  /* A barra do mock (live-mock.js) define --mockbar-h; sem ela o app ocupa a janela inteira. */
+  body {
+    padding-bottom: 0 !important;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--panel-w);
+    height: calc(100dvh - var(--mockbar-h, 0px));
+    overflow: hidden;
+  }
+  .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 0;
+    border-right: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--bg), black 25%);
+  }
+  .brand {
+    display: grid;
+    place-items: center;
+    margin-bottom: 10px;
+    color: var(--go);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    gap: 2px;
+  }
+  .brand .i {
+    width: 26px;
+    height: 26px;
+  }
+  .nav {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    width: 52px;
+    padding: 9px 0 7px;
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    transition: background 0.2s, color 0.2s;
+    & .i {
+      width: 20px;
+      height: 20px;
+    }
+    &:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+    &[aria-current="page"] {
+      background: color-mix(in oklab, var(--go), transparent 86%);
+      color: var(--go);
+    }
+  }
+  .stage {
+    container: stage / inline-size;
+    min-width: 0;
+    overflow: auto;
+    padding: 18px clamp(18px, 2.4vw, 36px) 32px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 18px 20px;
+    overflow: hidden;
+    border-left: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--surface), var(--bg) 55%);
+  }
+  .deck {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+    gap: 0 clamp(24px, 3vw, 44px);
+    align-items: start;
+    margin-top: 22px;
+  }
+  .col {
+    display: grid;
+    gap: 26px;
+    min-width: 0;
+    align-content: start;
+  }
+  .items-sec:has(.steps[data-empty="1"]) {
+    display: none;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    & h2 {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    &::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--line), transparent);
+      order: 1;
+    }
+    & .chips {
+      order: 2;
+      display: flex;
+      gap: 6px;
+    }
+  }
+  .notice {
+    margin-top: 12px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+    &[data-kind="warn"] {
+      border-color: color-mix(in oklab, var(--amber), transparent 50%);
+      color: var(--amber);
+    }
+    &[data-kind="error"] {
+      border-color: color-mix(in oklab, var(--danger), transparent 40%);
+      background: color-mix(in oklab, var(--danger), var(--bg) 88%);
+      color: oklch(0.88 0.08 25);
+    }
+  }
+  .skeleton {
+    display: none;
+  }
+  .app[data-state="loading"] .skeleton {
+    display: block;
+    height: 320px;
+    margin-top: 22px;
+    border-radius: var(--radius);
+    background: linear-gradient(100deg, var(--surface) 30%, var(--surface-2) 50%, var(--surface) 70%) 0 0 / 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .app[data-state="loading"] .deck {
+    display: none;
+  }
+  @media (max-width: 1180px) {
+    .app {
+      grid-template-columns: var(--rail-w) minmax(0, 1fr);
+      height: auto;
+      min-height: 100dvh;
+      overflow: visible;
+    }
+    .panel {
+      grid-column: 1 / -1;
+      border-left: 0;
+      border-top: 1px solid var(--line-soft);
+    }
+    .stage {
+      overflow: visible;
+    }
+    .deck {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 28px;
+    }
+  }
+}
+
+@layer motion {
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}

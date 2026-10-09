@@ -575,6 +575,37 @@ const server = http.createServer(async (req, res) => {
         return json(404, { error: "Ícone não encontrado." });
       }
     }
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/v2" || url.pathname.startsWith("/v2/"))
+    ) {
+      // Interface v2: arquivos estáticos de ./v2, apenas tipos web e sem sair do diretório.
+      if (url.pathname === "/v2") {
+        res.writeHead(301, { Location: "/v2/" });
+        return res.end();
+      }
+      const base = path.resolve(root, "v2"),
+        target = path.resolve(base, url.pathname.slice(4) || "index.html"),
+        types = {
+          ".html": "text/html; charset=utf-8",
+          ".js": "text/javascript",
+          ".mjs": "text/javascript",
+          ".css": "text/css",
+          ".svg": "image/svg+xml",
+        },
+        type = types[path.extname(target)];
+      if (!type || !target.startsWith(base + path.sep))
+        return json(404, { error: "Rota não encontrada." });
+      try {
+        res.writeHead(200, {
+          "Content-Type": type,
+          "Cache-Control": "no-cache",
+        });
+        return res.end(await fs.readFile(target));
+      } catch {
+        return json(404, { error: "Arquivo não encontrado." });
+      }
+    }
     const files = {
       "/": "index.html",
       "/app.js": "app.js",

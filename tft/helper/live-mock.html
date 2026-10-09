@@ -30,6 +30,7 @@
   <label>Largura <select id="width"><option value="1440">1440 · desktop</option><option value="1180">1180 · notebook</option><option value="1024">1024 · tablet largo</option><option value="768">768 · tablet</option><option value="390">390 · celular</option></select></label>
   <label>Altura <select id="height"><option value="900">900</option><option value="1400">1400</option><option value="2000" selected>2000 · rolagem longa</option></select></label>
   <label>Zoom <select id="zoom"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5" selected>50%</option><option value="0.33">33%</option></select></label>
+  <label>Versão <select id="ver"><option value="/v2/">v2</option><option value="/">v1</option></select></label>
   <label><input id="more" type="checkbox"> Abrir “Mais sobre a partida”</label>
   <input id="filter" type="search" placeholder="Filtrar cenário…" aria-label="Filtrar cenário">
 </header>
@@ -48,12 +49,12 @@
       const list = scenarios.filter((s) => s.group === g && (s.label + s.id + s.hint).toLowerCase().includes(q));
       if (!list.length) return "";
       return `<h2>${g}</h2><div class="grid">${list.map((s) => {
-        const url = `/?mock=${s.id}${$("more").checked ? "&open=1" : ""}#live`;
+        const url = `${$("ver").value}?mock=${s.id}${$("more").checked ? "&open=1" : ""}#live`;
         return `<figure><figcaption><a href="${url}" target="_blank" rel="noopener">${s.label} ↗</a><small>${s.hint}</small></figcaption><div class="frame"><iframe src="${url}" title="${s.label}" loading="lazy"></iframe></div></figure>`;
       }).join("")}</div>`;
     }).join("") || "<p>Nenhum cenário encontrado.</p>";
   }
-  for (const id of ["width", "height", "zoom", "more"]) $(id).onchange = draw;
+  for (const id of ["width", "height", "zoom", "more", "ver"]) $(id).onchange = draw;
   let timer;
   $("filter").oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 200); };
   draw();

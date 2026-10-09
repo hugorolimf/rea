@@ -904,6 +904,7 @@
     {
       after: () => {
         const $ = (id) => document.getElementById(id);
+        if (!$("autolevel")) return; // só a v1 tem esses campos
         $("autolevel").checked = false;
         $("level").value = "7";
         $("gold").value = "47";

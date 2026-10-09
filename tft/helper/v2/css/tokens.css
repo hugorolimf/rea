@@ -1,0 +1,54 @@
+/* Ordem das camadas: o que vem depois vence o que vem antes, sem brigar por especificidade. */
+@layer reset, tokens, base, layout, components, motion;
+
+/* Valores animáveis: permitem transicionar contadores e anéis só com CSS. */
+@property --p {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --n {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@layer tokens {
+  :root {
+    color-scheme: dark;
+    /* Superfícies e texto (OKLCH: luminosidade perceptual uniforme) */
+    --bg: oklch(0.155 0.02 255);
+    --surface: oklch(0.2 0.025 252);
+    --surface-2: oklch(0.245 0.03 250);
+    --line: oklch(0.34 0.03 245);
+    --line-soft: oklch(0.27 0.025 248);
+    --text: oklch(0.96 0.01 240);
+    --muted: oklch(0.76 0.03 240);
+    --faint: oklch(0.6 0.03 240);
+    /* Semântica */
+    --go: oklch(0.83 0.15 168);
+    --amber: oklch(0.8 0.14 78);
+    --violet: oklch(0.75 0.14 305);
+    --blue: oklch(0.77 0.11 245);
+    --gold: oklch(0.86 0.14 88);
+    --danger: oklch(0.69 0.19 25);
+    /* Custo dos campeões */
+    --cost-1: oklch(0.72 0.03 250);
+    --cost-2: oklch(0.82 0.13 165);
+    --cost-3: oklch(0.77 0.12 245);
+    --cost-4: oklch(0.73 0.17 305);
+    --cost-5: oklch(0.86 0.14 85);
+    /* Geometria */
+    --rail-w: 68px;
+    --panel-w: 348px;
+    --radius: 14px;
+    --gap: 20px;
+    /* Tipografia */
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    /* Movimento: o JS publica as molas calculadas (math.js → linear()) */
+    --spring-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+    --spring-ms: 480ms;
+    --settle-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+    --settle-ms: 700ms;
+  }
+}
