@@ -6,7 +6,8 @@ import path from "node:path";
 const BASE = "https://api-hc.metatft.com/tft-comps-api/";
 const STATS_QUERY =
   "comps_stats?queue=1100&patch=current&days=3&rank=CHALLENGER,DIAMOND,EMERALD,GRANDMASTER,MASTER,PLATINUM&permit_filter_adjustment=true";
-const MAX_AGE_MS = 6 * 60 * 60 * 1000,
+// A MetaTFT agrega os últimos 3 dias; renovar a cada 2 h acompanha o dia do patch sem pesar na API.
+const MAX_AGE_MS = 2 * 60 * 60 * 1000,
   MIN_GAMES = 5000;
 // Faixas próprias deste helper sobre a colocação média (1 a 8, menor é melhor); não são os tiers da MetaTFT.
 const tierOf = (avg) =>

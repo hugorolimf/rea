@@ -29,11 +29,21 @@
       justify-content: space-between;
       min-height: 22px;
       margin-bottom: 8px;
+    }
+  }
+  .blk-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    & .i {
+      width: 13px;
+      height: 13px;
       color: var(--faint);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
     }
   }
   .verdict {
@@ -43,7 +53,6 @@
     color: var(--muted);
     font-size: 10px;
     letter-spacing: 0.03em;
-    text-transform: none;
     &[data-tone="go"] {
       border-color: color-mix(in oklab, var(--go), transparent 55%);
       background: color-mix(in oklab, var(--go), transparent 88%);
@@ -88,47 +97,38 @@
     }
   }
 
-  /* Nível */
+  /* Nível: nós ligados por elos; o elo que sai do nível atual é a barra de XP, e o custo fica sob o próximo. */
   .lv-track {
     display: flex;
-    padding-top: 12px;
+    align-items: center;
+    padding: 14px 2px 17px;
   }
   .lv-node {
     position: relative;
     display: grid;
-    flex: 1;
+    flex: none;
     place-items: center;
-    height: 26px;
-    color: var(--faint);
-    font-size: 11px;
-    &::before {
-      content: "";
-      position: absolute;
-      inset: 50% 0 auto;
-      height: 2px;
-      background: var(--line-soft);
-    }
-    &[data-state="past"]::before {
-      background: var(--go);
-    }
-    &[data-state="now"]::before {
-      background: linear-gradient(90deg, var(--go) 50%, var(--line-soft) 50%);
-    }
+    width: 24px;
+    height: 24px;
     & b {
-      position: relative;
       display: grid;
       place-items: center;
-      width: 22px;
-      height: 22px;
-      border: 1px solid var(--line);
+      width: 100%;
+      height: 100%;
+      border: 1.5px solid var(--line);
       border-radius: 50%;
       background: var(--surface);
+      color: var(--faint);
+      font-size: 11px;
       font-weight: 700;
-      transition: scale var(--spring-ms) var(--spring-ease), background 300ms;
+      transition:
+        scale var(--spring-ms) var(--spring-ease),
+        background 300ms,
+        border-color 300ms;
     }
     & i {
       position: absolute;
-      top: -13px;
+      bottom: calc(100% + 3px);
       display: grid;
       color: var(--gold);
       & .i {
@@ -139,9 +139,26 @@
     &[data-roll="1"] i {
       color: var(--amber);
     }
+    & em {
+      position: absolute;
+      top: calc(100% + 5px);
+      left: 50%;
+      translate: -50% 0;
+      color: var(--amber);
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 800;
+      white-space: nowrap;
+      &:empty {
+        display: none;
+      }
+      &[data-passive="1"] {
+        color: var(--go);
+      }
+    }
     &[data-state="past"] b {
-      border-color: var(--go);
-      background: color-mix(in oklab, var(--go), var(--bg) 78%);
+      border-color: color-mix(in oklab, var(--go), transparent 35%);
+      background: color-mix(in oklab, var(--go), var(--bg) 82%);
       color: var(--go);
     }
     &[data-state="now"] b {
@@ -149,6 +166,7 @@
       background: var(--go);
       color: oklch(0.22 0.04 160);
       scale: 1.2;
+      box-shadow: 0 0 0 4px color-mix(in oklab, var(--go), transparent 84%);
     }
     &[data-next="1"] b {
       border-color: var(--go);
@@ -156,35 +174,44 @@
       animation: ping 1.8s ease-out infinite;
     }
   }
-  .xp {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-    & small {
-      color: var(--muted);
-      font-size: 10px;
-    }
-  }
-  .blk[data-unknown="1"] .xp {
-    opacity: 0.5;
-  }
-  .bar {
-    --p: 0;
+  .lv-link {
+    position: relative;
     flex: 1;
-    height: 6px;
-    overflow: hidden;
-    border-radius: 3px;
+    height: 3px;
+    margin: 0 4px;
+    border-radius: 2px;
     background: var(--line-soft);
-    transition: --p var(--settle-ms) var(--settle-ease);
-    & i {
+    & b {
       display: block;
-      width: 100%;
       height: 100%;
+      border-radius: inherit;
       background: linear-gradient(90deg, var(--go), color-mix(in oklab, var(--go), white 25%));
       transform: scaleX(var(--p));
       transform-origin: left;
+      transition: transform var(--settle-ms) var(--settle-ease);
     }
+    & small {
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      translate: -50% 0;
+      color: var(--muted);
+      font-size: 9.5px;
+      white-space: nowrap;
+      &:empty {
+        display: none;
+      }
+    }
+    &[data-state="current"] {
+      height: 5px;
+      background: color-mix(in oklab, var(--go), var(--bg) 86%);
+      & b {
+        box-shadow: 0 0 8px color-mix(in oklab, var(--go), transparent 50%);
+      }
+    }
+  }
+  .lv-track[data-unknown="1"] .lv-link[data-state="current"] {
+    opacity: 0.5;
   }
 
   /* Roll */
@@ -195,12 +222,16 @@
     margin-bottom: 4px;
     & b {
       color: var(--gold);
-      font-size: 20px;
+      font-size: 22px;
+      font-weight: 750;
       line-height: 1;
     }
     & span {
       color: var(--muted);
       font-size: 11px;
+    }
+    & .knee {
+      color: var(--faint);
     }
     & .floor {
       display: inline-flex;
@@ -208,6 +239,7 @@
       gap: 3px;
       margin-left: auto;
       color: var(--amber);
+      font-weight: 700;
     }
   }
   .curve-box {
@@ -220,10 +252,7 @@
     overflow: visible;
     & .g {
       stroke: var(--line-soft);
-      stroke-dasharray: 2 3;
-    }
-    & .gx {
-      stroke: var(--line);
+      stroke-dasharray: 2 4;
     }
     & .ax {
       fill: var(--faint);
@@ -231,6 +260,9 @@
     }
     & .area {
       fill: url(#curve-fill);
+    }
+    & .lit {
+      fill: url(#curve-lit-fill);
     }
     & .line {
       fill: none;
@@ -250,7 +282,7 @@
     }
     & .plan {
       stroke: var(--go);
-      stroke-dasharray: 3 3;
+      stroke-width: 1.4;
     }
     & .pl {
       fill: var(--go);
@@ -259,13 +291,21 @@
     }
     & .pll {
       fill: var(--go);
-      font-size: 9.5px;
+      font-size: 10px;
       font-weight: 800;
+    }
+    & .cap {
+      stroke: var(--faint);
+      stroke-dasharray: 1 3;
+    }
+    & .capl {
+      fill: var(--faint);
+      font-size: 8px;
     }
   }
   .targets {
     display: grid;
-    gap: 7px;
+    gap: 6px;
   }
   .tg {
     display: flex;
@@ -279,9 +319,18 @@
       font-weight: 600;
       text-overflow: ellipsis;
       white-space: nowrap;
+      & small {
+        margin-left: 4px;
+        color: var(--gold);
+        font-size: 10px;
+      }
     }
     & .chance {
       color: var(--gold);
+    }
+    & .in-roll {
+      color: var(--go);
+      font-weight: 800;
     }
     & .rivals {
       display: inline-flex;
@@ -290,34 +339,250 @@
       color: var(--danger);
       font-size: 11px;
     }
+    &[data-done="1"] .name {
+      color: var(--muted);
+    }
   }
 
-  /* Loja neste nível */
+  /* Ouro: valor agora → depois da ação, renda decomposta e o fluxo das próximas rodadas */
+  .eco-sum {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .eco-now {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    & .arrow {
+      color: var(--faint);
+      font-size: 15px;
+      line-height: 1;
+    }
+    & .after {
+      color: var(--amber);
+      font-size: 16px;
+      font-weight: 750;
+      line-height: 1;
+      & small {
+        font-size: 11px;
+      }
+    }
+  }
+  .eco-sum .now {
+    color: var(--gold);
+    font-size: 24px;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    & small {
+      margin-left: 1px;
+      font-size: 13px;
+      opacity: 0.8;
+    }
+  }
+  .eco[data-unknown="1"] .eco-sum .now {
+    color: var(--faint);
+  }
+  .unread {
+    align-self: center;
+    margin-right: auto;
+    margin-left: 10px;
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .eco-inc {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+  }
+  .inc-total {
+    color: var(--go);
+    line-height: 1;
+    & b {
+      font-size: 15px;
+      font-weight: 800;
+    }
+    & small {
+      margin-left: 2px;
+      color: var(--faint);
+      font-size: 10px;
+    }
+  }
+  /* Composição da renda: base, juros e sequência, na proporção de cada parte. */
+  .inc-bar {
+    display: flex;
+    gap: 2px;
+    width: 78px;
+    height: 5px;
+    & i {
+      flex: var(--w) 1 0;
+      border-radius: 3px;
+      background: color-mix(in oklab, var(--muted), var(--bg) 45%);
+      &[data-kind="interest"] {
+        background: var(--gold);
+      }
+      &[data-kind="win"] {
+        background: var(--go);
+      }
+      &[data-kind="loss"] {
+        background: var(--danger);
+      }
+    }
+  }
+  .gold-box {
+    margin: 0 -2px 2px 0;
+  }
+  .gold-chart {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    & .band {
+      fill: color-mix(in oklab, var(--gold), transparent 96%);
+      &.alt {
+        fill: color-mix(in oklab, var(--gold), transparent 92%);
+      }
+      &.max {
+        fill: color-mix(in oklab, var(--gold), transparent 88%);
+      }
+    }
+    & .cap50 {
+      stroke: color-mix(in oklab, var(--gold), transparent 40%);
+      stroke-dasharray: 3 3;
+    }
+    & .bl {
+      fill: var(--faint);
+      font-size: 8.5px;
+      font-weight: 700;
+      &.on {
+        fill: var(--gold);
+      }
+    }
+    & .area {
+      fill: url(#gold-fill);
+    }
+    & .line {
+      fill: none;
+      stroke: var(--gold);
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    & .drop {
+      stroke: var(--amber);
+      stroke-width: 2;
+      stroke-dasharray: 3 2;
+    }
+    & .drop-head {
+      fill: var(--amber);
+    }
+    & .was {
+      fill: var(--bg);
+      stroke: color-mix(in oklab, var(--gold), transparent 30%);
+      stroke-width: 1.6;
+    }
+    & .dl {
+      fill: var(--amber);
+      font-size: 9px;
+      font-weight: 800;
+    }
+    & .start {
+      fill: var(--gold);
+      stroke: var(--bg);
+      stroke-width: 2;
+    }
+    & .pt {
+      fill: var(--bg);
+      stroke: var(--gold);
+      stroke-width: 1.8;
+      &.capped {
+        fill: color-mix(in oklab, var(--gold), var(--bg) 35%);
+      }
+      &.reach {
+        fill: var(--gold);
+        stroke: var(--bg);
+        stroke-width: 2;
+        filter: drop-shadow(0 0 4px color-mix(in oklab, var(--gold), transparent 30%));
+      }
+    }
+    & .vl {
+      fill: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      &.reach {
+        fill: var(--gold);
+      }
+    }
+    & .xl {
+      fill: var(--faint);
+      font-size: 8.5px;
+      &.now {
+        fill: var(--muted);
+        font-weight: 700;
+      }
+    }
+  }
+  .eco-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    & .i {
+      width: 11px;
+      height: 11px;
+    }
+    & .streak[data-kind="win"] {
+      border-color: color-mix(in oklab, var(--go), transparent 55%);
+      color: var(--go);
+    }
+    & .streak[data-kind="loss"] {
+      border-color: color-mix(in oklab, var(--danger), transparent 55%);
+      color: var(--danger);
+      & .i {
+        rotate: 180deg;
+      }
+    }
+  }
+  .chip[data-passive="1"] {
+    opacity: 0.55;
+    text-decoration: line-through;
+  }
+
+  /* Loja: odds do nível numa barra só; o custo do carry fica aceso */
   .odds-bar {
     display: flex;
-    gap: 3px;
+    gap: 2px;
     height: 24px;
+    padding: 2px;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--surface), var(--bg) 30%);
+    box-shadow: inset 0 0 0 1px var(--line-soft);
   }
-  .seg {
-    flex: var(--w) 1 0;
-    min-width: 4px;
+  .odds-seg {
     display: grid;
+    flex: var(--w) 1 0;
     place-items: center;
+    min-width: 0;
     overflow: hidden;
     border-radius: 6px;
-    background: color-mix(in oklab, var(--c), var(--bg) 62%);
+    background: color-mix(in oklab, var(--c), var(--bg) 52%);
     color: var(--c);
     font-size: 10px;
     font-weight: 800;
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c), transparent 60%);
     transition: flex-grow var(--settle-ms) var(--settle-ease);
-    &[data-carry="1"] {
-      background: color-mix(in oklab, var(--c), var(--bg) 40%);
-      box-shadow: 0 0 0 2px var(--c);
-      color: oklch(0.2 0.02 250);
-    }
     &[data-zero="1"] {
-      opacity: 0.4;
+      display: none;
+    }
+    &[data-small="1"] {
+      background: color-mix(in oklab, var(--c), var(--bg) 20%);
+    }
+    &[data-carry="1"] {
+      background: var(--c);
+      color: oklch(0.2 0.02 250);
+      box-shadow: 0 0 12px color-mix(in oklab, var(--c), transparent 50%);
     }
   }
 
@@ -347,10 +612,16 @@
       box-shadow: 0 0 12px color-mix(in oklab, var(--go), transparent 65%);
     }
   }
-  @media (min-width: 1181px) and (max-height: 760px) {
+  /* Janelas baixas: o painel continua sem rolagem; primeiro o gráfico do ouro sai, abaixo de 800px a curva. */
+  @media (min-width: 1181px) and (max-height: 899px) {
     .blk {
-      padding: 8px 0;
+      padding: 9px 0;
     }
+    .gold-box {
+      display: none;
+    }
+  }
+  @media (min-width: 1181px) and (max-height: 800px) {
     .curve-box {
       display: none;
     }

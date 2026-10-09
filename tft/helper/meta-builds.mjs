@@ -36,6 +36,9 @@ function shape(file) {
     label: file ? "MetaTFT " + (file.patch ?? "patch desconhecido") : "",
     fetchedAt: file?.fetchedAt ?? null,
     set: file?.set ?? null,
+    // Desempenho por item (colocação média, partidas, uso, campeões que mais usam) para o tier de itens.
+    items: file?.items ?? {},
+    games: file?.games ?? null,
   };
 }
 const filePath = (root) => path.join(root, "meta-builds.json");
@@ -65,6 +68,17 @@ export async function refreshMeta(root, set) {
     if (ids.length) units[id] = ids;
   }
   if (!Object.keys(units).length) throw Error("MetaTFT não devolveu builds.");
+  const items = {};
+  for (const [id, s] of Object.entries(raw.itemNames ?? {}))
+    if (Number.isFinite(s?.avg) && s.count > 0)
+      items[id] = {
+        count: s.count,
+        avg: s.avg,
+        pick: Number.isFinite(s.pick) ? s.pick : null,
+        units: (s.units ?? [])
+          .map((u) => u.unit)
+          .filter((u) => typeof u === "string"),
+      };
   const patch = raw.region_patch_adjustment?.selected_patch;
   const file = {
     source: META_SOURCE,
@@ -72,6 +86,8 @@ export async function refreshMeta(root, set) {
     set,
     patch: patch ? patch.patch + (patch.b_patch_version ?? "") : null,
     units,
+    items,
+    games: Number.isFinite(raw.overall?.count) ? raw.overall.count : null,
   };
   await fs.writeFile(filePath(root), JSON.stringify(file, null, 1));
   return shape(file);

@@ -1,17 +1,6 @@
-export const POOL = { 1: 30, 2: 25, 3: 18, 4: 10, 5: 9 };
-export const ODDS = {
-  1: [100, 0, 0, 0, 0],
-  2: [100, 0, 0, 0, 0],
-  3: [75, 25, 0, 0, 0],
-  4: [55, 30, 15, 0, 0],
-  5: [45, 33, 20, 2, 0],
-  6: [30, 40, 25, 5, 0],
-  7: [19, 30, 40, 10, 1],
-  8: [15, 20, 32, 30, 3],
-  9: [10, 17, 25, 33, 15],
-  10: [5, 10, 20, 40, 25],
-  11: [1, 2, 12, 50, 35],
-};
+import { POOL, ODDS } from "./rules.mjs";
+import { rollLevelOf, isContested } from "./economy.mjs";
+export { POOL, ODDS };
 const STICKY_BONUS = 10;
 export function analyze(snapshot, catalog, options) {
   const level = options.level;
@@ -458,6 +447,8 @@ export function analyze(snapshot, catalog, options) {
   }
   const growTo = Math.min(10, Math.max(level, boardLevel));
   const selected = [];
+  // Todas as comps de meta com o encaixe nesta partida, para a tela de seleção (as 3 sugeridas são um recorte).
+  let compRanking = [];
   if (options.metaComps?.length) {
     const ranked = options.metaComps
       .map((m) => {
@@ -520,6 +511,19 @@ export function analyze(snapshot, catalog, options) {
       selected.push(r);
       if (selected.length === 3) break;
     }
+    const round = (n) => Math.round(n * 10) / 10;
+    compRanking = ranked.map((r, index) => ({
+      id: r.meta.id,
+      rank: index + 1,
+      suggested: selected.includes(r),
+      total: round(r.component.total),
+      fit: round(r.component.fit),
+      owned: r.board.filter((c) => own.has(key(c))).length,
+      size: r.board.length,
+      dispute: round(r.component.dispute),
+      carryItems: r.component.buildFit.carryHits,
+      carryWanted: r.component.buildFit.carryWanted,
+    }));
   }
   const focuses = selected.length
     ? []
@@ -590,6 +594,121 @@ export function analyze(snapshot, catalog, options) {
       source: "manual",
       traits: byId.get(u.championName)?.traits ?? [],
     }));
+  // Substituições: a comp de meta é um ponto de partida. Para cada peça (menos o carry), campeões de custo
+  // próximo e mesmo papel (tanque ou dano) que mantêm as sinergias, ordenados pelo que a partida favorece:
+  // peça que já é sua, pouca disputa na pool, chance na loja. A peça é marcada quando está disputada pelos
+  // rivais, esgotada ou fora do alcance da loja no nível alvo — aí a melhor alternativa vira sugestão.
+  const poolByKey = new Map(pool.map((p) => [p.name, p]));
+  const traitTiers = (board) =>
+    traits(board).filter((t) => t.active && !t.solo);
+  const shopOk = (c) => ODDS[boardLevel][c.cost - 1] >= 10;
+  const reachable = (c) => own.has(key(c)) || (free(key(c)) > 0 && shopOk(c));
+  const access = (c) => Math.log(1 + probability(c, boardLevel) * 100);
+  function flexOf(board, carry) {
+    const base = traitTiers(board),
+      baseSum = base.reduce((n, t) => n + t.tier, 0),
+      out = [];
+    for (const u of board) {
+      if (u === carry) continue;
+      const rest = board.filter((c) => c !== u),
+        tank = role(u) === "tank",
+        mineU = own.get(key(u)),
+        p = poolByKey.get(key(u)),
+        contested = !mineU && isContested(p),
+        unreachable = !reachable(u);
+      const options = candidates
+        .filter(
+          (c) =>
+            !board.includes(c) &&
+            Math.abs(c.cost - u.cost) <= 1 &&
+            (role(c) === "tank") === tank &&
+            reachable(c),
+        )
+        .map((c) => {
+          const next = traitTiers([...rest, c]),
+            delta = next.reduce((n, t) => n + t.tier, 0) - baseSum,
+            mine = own.get(key(c)),
+            q = poolByKey.get(key(c));
+          const lost = base
+            .filter(
+              (t) => (next.find((n) => n.name === t.name)?.tier ?? 0) < t.tier,
+            )
+            .map((t) => t.name);
+          const gained = next
+            .filter(
+              (t) => t.tier > (base.find((b) => b.name === t.name)?.tier ?? 0),
+            )
+            .map((t) => t.name);
+          const score =
+            delta * 6 +
+            (mine ? 5 + mine.stars * 2 : 0) -
+            (mineU ? 6 + mineU.stars * 2 : 0) +
+            ((p?.enemy ?? 0) / POOL[u.cost] - (q?.enemy ?? 0) / POOL[c.cost]) *
+              12 +
+            (access(c) - access(u)) * 1.5 +
+            (c.cost - u.cost) * 1.5 +
+            (role(c) === role(u) ? 2 : 0);
+          return {
+            id: c.apiName,
+            name: c.name,
+            cost: c.cost,
+            owned: !!mine,
+            stars: mine?.stars ?? 0,
+            enemyCopies: q?.enemy ?? 0,
+            total: POOL[c.cost],
+            contested: !mine && isContested(q),
+            traitDelta: delta,
+            lost,
+            gained,
+            score: Math.round(score * 10) / 10,
+          };
+        })
+        // Perder mais de um patamar de sinergia já é outra comp, não uma substituição.
+        .filter((o) => o.traitDelta >= -1 && !o.contested)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+      if (!options.length) continue;
+      out.push({
+        id: u.apiName,
+        name: u.name,
+        cost: u.cost,
+        owned: !!mineU,
+        stars: mineU?.stars ?? 0,
+        enemyCopies: p?.enemy ?? 0,
+        total: POOL[u.cost],
+        remaining: free(key(u)),
+        rivals: [...(rivals.get(key(u)) ?? [])],
+        contested,
+        unreachable,
+        suggest: null,
+        options,
+      });
+    }
+    // Sugerir trocar: a peça está sob pressão (disputada, esgotada, fora da loja) e há alternativa sem perder
+    // mais de um patamar, ou a alternativa já é sua e não perde nenhuma sinergia enquanto a peça da meta
+    // ainda não é sua.
+    // Cada substituto serve a uma peça só; as trocas mais vantajosas escolhem primeiro.
+    const eligible = (f, o) =>
+      o.score > 0 &&
+      (((f.contested || f.unreachable) && o.traitDelta >= -1) ||
+        (!f.owned && o.owned && !o.lost.length));
+    const used = new Set();
+    for (const f of [...out].sort(
+      (a, b) => b.options[0].score - a.options[0].score,
+    )) {
+      const pick = f.options.find((o) => eligible(f, o) && !used.has(o.id));
+      if (pick) {
+        f.suggest = pick.id;
+        used.add(pick.id);
+      }
+    }
+    return out.sort(
+      (a, b) =>
+        (b.suggest ? 1 : 0) - (a.suggest ? 1 : 0) ||
+        (b.contested ? 1 : 0) - (a.contested ? 1 : 0) ||
+        b.cost - a.cost,
+    );
+  }
   const recommendations = selected.map((r, index) => {
     const ts = traits(r.board)
       .filter((t) => t.active)
@@ -607,16 +726,7 @@ export function analyze(snapshot, catalog, options) {
     const carryOwn = own.get(key(r.carry))?.copies ?? 0,
       needed = Math.max(0, 3 - carryOwn),
       p = probability(r.carry);
-    const rollLevel =
-      r.carry.cost <= 1
-        ? 5
-        : r.carry.cost === 2
-          ? 6
-          : r.carry.cost === 3
-            ? 7
-            : r.carry.cost === 4
-              ? 8
-              : 9;
+    const rollLevel = rollLevelOf({ carryCost: r.carry.cost });
     const rollBudget =
       options.gold === null
         ? null
@@ -652,6 +762,7 @@ export function analyze(snapshot, catalog, options) {
       traits: ts,
       carry: r.carry.name,
       carryRole: role(r.carry),
+      flex: flexOf(r.board, r.carry),
       board: r.board.map((c) => ({
         id: c.apiName,
         name: c.name,
@@ -767,8 +878,19 @@ export function analyze(snapshot, catalog, options) {
       goalCore.length >= 5 && goalCore.length < growTo
         ? extend(goalCore, growTo).added
         : [];
+  // Substituições da comp fixada, com o mesmo carry que a tática usa para ela.
+  const goalBoard = [
+      ...goalCore,
+      ...previewGrow.map((g) => byId.get(g.id)).filter(Boolean),
+    ],
+    goalCarry =
+      byId.get(options.goalCarryId) ??
+      goalBoard.find((c) => c.stats.range >= 3) ??
+      goalBoard[0];
   return {
     previewGrow,
+    previewFlex: goalBoard.length >= 5 ? flexOf(goalBoard, goalCarry) : [],
+    compRanking,
     self: {
       id: self.playerId,
       name: self.riotIdGameName ?? self.summonerName,

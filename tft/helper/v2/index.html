@@ -4,12 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>TFT Compass v2</title>
+<title>TFT Compass</title>
 <link rel="stylesheet" href="/v2/css/tokens.css">
 <link rel="stylesheet" href="/v2/css/base.css">
 <link rel="stylesheet" href="/v2/css/hud.css">
 <link rel="stylesheet" href="/v2/css/field.css">
 <link rel="stylesheet" href="/v2/css/panel.css">
+<link rel="stylesheet" href="/v2/css/history.css">
+<link rel="stylesheet" href="/v2/css/comps.css">
+<link rel="stylesheet" href="/v2/css/subs.css">
+<link rel="stylesheet" href="/v2/css/augs.css">
+<link rel="stylesheet" href="/v2/css/items.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -33,18 +38,18 @@
     <symbol id="i-plan" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 5 8-5M12 12.5V21"/></symbol>
     <symbol id="i-comps" viewBox="0 0 24 24"><path d="M5 4v16M5 8h7l6-4M5 15h7l6 5"/><circle cx="18" cy="4" r="2"/><circle cx="18" cy="20" r="2"/></symbol>
     <symbol id="i-items" viewBox="0 0 24 24"><path d="m12 3 7 7-7 11-7-11 7-7ZM5 10h14M9 10l3 11 3-11"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/><path d="M12 8v4l3 2"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
   </defs>
 </svg>
 
 <div class="app" id="app" data-state="loading">
   <nav class="rail" aria-label="Navegação principal">
-    <a class="brand" href="/v2/" aria-label="TFT Compass v2"><svg class="i"><use href="#i-plan"/></svg><span>v2</span></a>
-    <a class="nav" href="/v2/" aria-current="page" title="Ao vivo"><svg class="i"><use href="#i-live"/></svg><span>Ao vivo</span></a>
-    <a class="nav" href="/#planner" title="Planejador"><svg class="i"><use href="#i-plan"/></svg><span>Planejar</span></a>
-    <a class="nav" href="/#paths" title="Composições"><svg class="i"><use href="#i-comps"/></svg><span>Comps</span></a>
-    <a class="nav" href="/#owneditems" title="Itens e receitas"><svg class="i"><use href="#i-items"/></svg><span>Itens</span></a>
-    <a class="nav" href="/#scouting" title="Scouting"><svg class="i"><use href="#i-eye"/></svg><span>Lobby</span></a>
+    <a class="brand" href="#" aria-label="TFT Compass"><svg class="i"><use href="#i-plan"/></svg><span>TFT</span></a>
+    <a class="nav" href="#" data-view="live" aria-current="page" title="Ao vivo"><svg class="i"><use href="#i-live"/></svg><span>Ao vivo</span></a>
+    <a class="nav" href="#comps" data-view="comps" title="Escolher comp"><svg class="i"><use href="#i-comps"/></svg><span>Comps</span></a>
+    <a class="nav" href="#itens" data-view="items" title="Tier de itens e atributos"><svg class="i"><use href="#i-items"/></svg><span>Itens</span></a>
+    <a class="nav" href="#historico" data-view="history" title="Histórico de partidas"><svg class="i"><use href="#i-history"/></svg><span>Histórico</span></a>
   </nav>
 
   <main class="stage" id="stage" tabindex="-1">
@@ -56,6 +61,15 @@
           <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span></div>
           <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
           <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
+        </section>
+        <section class="augs-sec" id="augs-sec" aria-labelledby="augs-title" hidden>
+          <div class="section-head"><h2 id="augs-title">Aprimoramentos</h2></div>
+          <ol class="aug-path" id="augs-path" aria-label="Aprimoramentos escolhidos em 2-1, 3-2 e 4-2"></ol>
+          <div class="aug-offers" id="augs-offers" hidden></div>
+        </section>
+        <section class="subs-sec" id="subs-sec" aria-labelledby="subs-title" hidden>
+          <div class="section-head"><h2 id="subs-title">Substituições</h2></div>
+          <ul class="subs" id="subs"></ul>
         </section>
         <section class="items-sec" aria-labelledby="items-title">
           <div class="section-head"><h2 id="items-title">Itens</h2></div>
@@ -69,6 +83,30 @@
       </section>
     </div>
     <div class="skeleton" aria-hidden="true"></div>
+    <section class="waiting" id="waiting" aria-labelledby="waiting-title">
+      <span class="waiting-pulse" aria-hidden="true"></span>
+      <h2 id="waiting-title">Nova partida em andamento</h2>
+      <p>Os dados da partida anterior foram descartados. Aguardando o jogo publicar o primeiro tabuleiro, o que costuma levar de 1 a 4 minutos.</p>
+      <p class="waiting-last" id="waiting-last"></p>
+    </section>
+    <section class="comps" id="comps" aria-labelledby="comps-title" hidden>
+      <div class="section-head"><h2 id="comps-title">Escolher comp</h2><span class="chips" id="comps-source"></span></div>
+      <div class="comps-goal" id="comps-goal"></div>
+      <div class="comps-filters" role="search">
+        <input type="search" id="comps-q" placeholder="Campeão, sinergia ou nome" aria-label="Buscar comp por campeão, sinergia ou nome" autocomplete="off">
+        <div class="seg" id="comps-style" role="group" aria-label="Estilo de nível"></div>
+        <div class="seg seg-tier" id="comps-tier" role="group" aria-label="Tier"></div>
+        <label class="comps-sort">Ordenar <select id="comps-sort"></select></label>
+      </div>
+      <p class="comps-count" id="comps-count" aria-live="polite"></p>
+      <ol class="comps-grid" id="comps-grid"></ol>
+    </section>
+    <section class="items" id="items" aria-labelledby="itemtier-title" hidden></section>
+    <section class="history" id="history" aria-labelledby="history-title" hidden>
+      <div class="section-head"><h2 id="history-title">Histórico de partidas</h2></div>
+      <div class="history-summary" id="history-summary"></div>
+      <ol class="history-list" id="history-list"></ol>
+    </section>
   </main>
 
   <aside class="panel" id="panel" aria-label="Decisão da rodada"></aside>

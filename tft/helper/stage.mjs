@@ -3,7 +3,8 @@
 // Entram no cálculo: nível (odds de loja), pool (cópias livres e disputa), ouro (o que cabe comprar),
 // o que você já tem em campo e, quando lida da tela, a loja atual (que carta comprar agora).
 // Heurística; não simula combate.
-import { ODDS } from "./engine.mjs";
+import { ODDS } from "./rules.mjs";
+import { lobbyStrength, pressureOf, tierFloor } from "./economy.mjs";
 const MIN_ODDS = 10; // % por slot de loja a partir do qual um custo é tratado como comprável no nível
 const unlockLevel = (cost) => {
   for (let level = 1; level <= 11; level++)
@@ -139,9 +140,14 @@ export function stagePlan(plan, analysis, catalog, options) {
   // Loja lida da tela: cada carta vira uma ação. Peça da meta > cópia de algo que você já tem (upgrade) > ponte.
   // Prioridade: carta que fecha upgrade > carry > peça da meta > cópia de unidade sua > ponte. Cartas secundárias
   // (cópia fora da meta, ponte) não são compradas se derrubarem o patamar de juros atual, salvo com a vida em risco.
+  // Com a vida em risco (mesma faixa de strategy.mjs) cartas secundárias podem derrubar o patamar de juros.
   const bridgeIds = new Set(bridges.map((b) => b.id)),
-    hp = analysis.self.health,
-    interestTier = gold === null ? 0 : Math.min(50, Math.floor(gold / 10) * 10);
+    pressure = pressureOf({
+      hp: analysis.self.health,
+      stage: options.stage ?? null,
+      weak: lobbyStrength(analysis).weak,
+    }),
+    interestTier = gold === null ? 0 : tierFloor(gold);
   const cards = (options.shop ?? [])
     .map((id, slot) => {
       if (!id) return null;
@@ -205,7 +211,7 @@ export function stagePlan(plan, analysis, catalog, options) {
       card.action = "sem ouro";
       continue;
     }
-    if (!card.core && hp > 40 && budget - card.cost < interestTier) {
+    if (!card.core && !pressure.danger && budget - card.cost < interestTier) {
       card.action = "segurar";
       card.reason += " · compraria abaixo de " + interestTier + "g de juros";
       continue;

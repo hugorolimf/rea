@@ -13,7 +13,9 @@ const items = catalog.items.filter(
     i.icon &&
     (i.apiName.startsWith("DA_Component_") ||
       i.composition?.length === 2 ||
-      /Radiant|ThiefsGloves|Consumable_|Reforger/.test(i.apiName)),
+      /Radiant|ThiefsGloves|Consumable_|Reforger|Artifact|Emblem|Potion/.test(
+        i.apiName,
+      )),
 );
 const queue = [
   ...catalog.champions.map((c) => ({
@@ -21,6 +23,8 @@ const queue = [
     icon: c.squareIcon ?? c.icon,
   })),
   ...items.map((i) => ({ id: i.apiName, icon: i.icon })),
+  // Sinergias: prefixo próprio no manifesto para nunca colidir com o id de um campeão ou item.
+  ...catalog.traits.map((t) => ({ id: "trait:" + t.apiName, icon: t.icon })),
 ];
 let ok = 0,
   failed = 0;

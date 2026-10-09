@@ -22,6 +22,14 @@ export function augmentAdvice(
       (analysis.currentPlan?.traits ?? []).map((t) => [t.name, t]),
     );
   const tips = new Map((plan.synergyTips ?? []).map((t) => [t.trait, t]));
+  // Caminho já escolhido nesta partida: sinergias dos aprimoramentos anteriores, para seguir a mesma linha.
+  const picked = options.chosenAugments ?? [],
+    pathTraits = new Map();
+  for (const a of picked)
+    for (const api of a.traits ?? []) {
+      const name = traitByApi.get(api);
+      if (name && !pathTraits.has(name)) pathTraits.set(name, a.name);
+    }
   const hp = analysis.self.health,
     gold = options.gold,
     stage = options.stage?.stage ?? null,
@@ -49,6 +57,11 @@ export function augmentAdvice(
           reasons.push(
             `Exige ${name}, que não está na sua comp alvo: só vale se você mudar de comp.`,
           );
+        }
+        const from = pathTraits.get(name);
+        if (from) {
+          score += 4;
+          reasons.push(`Segue o seu caminho: ${from} já puxa ${name}.`);
         }
         const tip = tips.get(name);
         if (tip && /emblema|emblem/.test(text)) {
@@ -101,10 +114,8 @@ export function augmentAdvice(
         reasons.push("Acelera nível numa comp que quer chegar ao 9.");
       }
       if (/atualizac(ao|oes) da loja|rolagens?|rerolls?|refresh/.test(text)) {
-        const at = Number(/nivel (d+)/.exec(text)?.[1] ?? 0),
-          rollAt = Number(
-            /(d+)/.exec(plan.strategy?.panels?.rolling?.value ?? "")?.[1] ?? 0,
-          );
+        const at = Number(/nivel (\d+)/.exec(text)?.[1] ?? 0),
+          rollAt = Number(plan.strategy?.rollAt ?? 0);
         if (at && at === rollAt) {
           score += 7;
           reasons.push(

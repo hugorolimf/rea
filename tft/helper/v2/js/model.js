@@ -1,4 +1,6 @@
 import { clamp, cumulativeCurve, shopsFor } from "./math.js";
+// Mesmas contas de renda do servidor (módulo puro, servido em /economy.mjs).
+import { incomeOf, interestOf, projectGold } from "../../economy.mjs";
 
 /**
  * Modelo de visão: função pura que converte o estado lido (/api/state) e a análise
@@ -19,10 +21,19 @@ export const INTEREST_STEP = 10;
 export const INTEREST_CAP = 50;
 
 export function buildModel({ state, rec }) {
-  const plan = rec?.recommendations?.[0] ?? null,
+  // Comp fixada na tela de seleção (preview) tem prioridade sobre a primeira sugestão.
+  const plan = rec?.preview ?? rec?.recommendations?.[0] ?? null,
     screen = state?.screen ?? {},
     hp = num(rec?.self?.health),
-    live = rec?.metadata?.actionable === true && (hp ?? 0) > 0;
+    // Partida acompanhada pelo servidor. Em andamento, vida ≤ 0 não encerra: o primeiro tabuleiro de cada
+    // partida traz -1 em todos. Sem partida acompanhada, a vida do Hero decide.
+    match = state?.match ?? null,
+    waiting = match?.status === "live" && match.boardReady === false,
+    ended =
+      match?.status === "ended" ||
+      (match?.status !== "live" && hp !== null && hp <= 0),
+    live =
+      !waiting && !ended && rec?.metadata?.actionable === true && (hp ?? 0) > 0;
   const hero = {
     hp,
     level:
@@ -35,7 +46,21 @@ export function buildModel({ state, rec }) {
   };
   const status = {
     live,
-    ended: hp !== null && hp <= 0,
+    ended,
+    waiting,
+    // Servidor aberto depois da partida: a colocação vem do registro dela no histórico.
+    placement:
+      num(match?.placement) ??
+      (match?.last &&
+      String(match.last.gameId) === String(rec?.metadata?.gameId)
+        ? num(match.last.placement)
+        : null),
+    awaitingFinal: match?.status === "ended" && match.placement == null,
+    // Comp fixada pela tela de seleção e aceita pelo servidor (o plano exibido é ela).
+    pinned: rec?.goal?.found === true && !!rec?.preview,
+    // Substituições aceitas pelo servidor sobre a comp fixada.
+    swaps: rec?.goal?.found ? (rec.goal.swaps ?? []) : [],
+    lastMatch: match?.last ?? null,
     ageSeconds: num(rec?.metadata?.ageSeconds),
     sameGame: rec?.metadata?.sameGame ?? null,
     gameId: rec?.metadata?.gameId ?? null,
@@ -248,7 +273,12 @@ export function buildModel({ state, rec }) {
       carry: plan.carry,
       steps: sx.steps ?? [],
       reasons: sx.reasons ?? [],
-      level: lv && { ...lv, nodes, go: live && lv.go },
+      level: lv && {
+        ...lv,
+        nodes,
+        go: live && lv.go,
+        passive: live && !!lv.passive,
+      },
       roll: ro && {
         go: live && ro.go,
         spend: ro.spend,
@@ -256,19 +286,16 @@ export function buildModel({ state, rec }) {
         keep: ro.keep,
         at: ro.at,
         level: ro.level,
+        // Teto permitido pelo piso e ponto onde a curva de ganho manda parar (quando antes do teto).
+        max: live && ro.go ? (ro.max ?? null) : null,
+        stop: live && ro.go ? (ro.stop ?? null) : null,
         targets,
         curve: buildCurve(
-          targets.find((t) => !t.done && t.chancePerShop > 0),
-          live && ro.go ? ro.shops : null,
+          targets.find((t) => !t.done && (t.curve || t.chancePerShop > 0)),
+          live && ro.go ? ro.spend : null,
         ),
       },
-      economy: eco && {
-        gold: eco.gold,
-        interest: eco.interest,
-        next: eco.next,
-        keep: eco.keep,
-        saving: live && sx.action === "ECONOMIZAR",
-      },
+      economy: eco && buildEconomy(eco, live, sx.action, hero.stage),
       odds: rec.odds ?? [],
       carryCost: carryUnit?.cost ?? null,
     };
@@ -280,6 +307,7 @@ export function buildModel({ state, rec }) {
     status,
     plan: {
       title: plan.title,
+      compId: plan.meta?.id ?? null,
       carry: plan.carry,
       carryId: carryUnit?.id ?? null,
       tier: plan.meta?.tier ?? null,
@@ -293,6 +321,13 @@ export function buildModel({ state, rec }) {
         active: !!t.active,
       })),
       progress: { have: progress.onBoard, total: progress.goal },
+      // Peças da comp que valem trocar (ou que estão sob pressão sem substituto bom), com a sugestão escolhida.
+      subs: (plan.flex ?? [])
+        .filter((f) => f.suggest || f.contested || f.unreachable)
+        .map((f) => ({
+          ...f,
+          pick: f.options.find((o) => o.id === f.suggest) ?? null,
+        })),
       steps,
       counts: {
         ready: dock.filter((d) => d.kind === "ready").length,
@@ -303,25 +338,117 @@ export function buildModel({ state, rec }) {
   };
 }
 
-/** Curva acumulada P(≥k cópias) por número de lojas, com quantis e marcador do plano. */
-export function buildCurve(target, plannedShops) {
+/**
+ * Fluxo do ouro: agora → depois da ação → próximas rodadas, com a renda decomposta e a sequência.
+ * Ao vivo usa o "depois" e a projeção do servidor; fora do ao vivo não há ação, então projeta a partir
+ * do ouro atual com as mesmas contas (economy.mjs). `top` é o teto do gráfico, em degraus de 10g.
+ */
+export function buildEconomy(eco, live, action, stage = null) {
+  const gold = eco.gold,
+    after = live ? (eco.after ?? gold) : gold,
+    streak = eco.streak ?? null;
+  const source = live
+    ? (eco.projection ?? [])
+    : projectGold(gold, { stage, streak, rounds: 4 });
+  const reach =
+    after == null || after >= INTEREST_CAP
+      ? null
+      : (source.find((r) => r.gold >= INTEREST_CAP)?.label ?? null);
+  const projection = source.map((r) => ({
+    label: r.label,
+    gold: r.gold,
+    income: r.income,
+    capped: r.gold >= INTEREST_CAP,
+    reach: r.label === reach,
+  }));
+  const income =
+    after == null
+      ? null
+      : live
+        ? (eco.income ?? incomeOf(after, streak))
+        : incomeOf(after, streak);
+  const peak = Math.max(
+    INTEREST_CAP + INTEREST_STEP,
+    gold ?? 0,
+    ...projection.map((r) => r.gold),
+  );
+  return {
+    gold,
+    after,
+    spend: gold != null && after != null ? Math.max(0, gold - after) : 0,
+    shopSpend: live ? (eco.shopSpend ?? 0) : 0,
+    interest: eco.interest,
+    afterInterest: interestOf(after),
+    next: eco.next,
+    keep: eco.keep,
+    income,
+    // Partes da renda da próxima rodada, na ordem em que aparecem na barra.
+    incomeParts: income
+      ? [
+          { kind: "base", label: "base", value: income.base },
+          { kind: "interest", label: "juros", value: income.interest },
+          {
+            kind: streak?.kind === "win" ? "win" : "loss",
+            label: "sequência",
+            value: income.streak,
+          },
+        ].filter((p) => p.value > 0)
+      : [],
+    projection,
+    reach50: reach,
+    top: Math.ceil(peak / INTEREST_STEP) * INTEREST_STEP,
+    streak: streak?.length >= 2 ? streak : null,
+    sellable: eco.sellable?.gold ? eco.sellable : null,
+    saving: live && action === "ECONOMIZAR",
+  };
+}
+
+/**
+ * Curva acumulada de fechar o upgrade em função do ouro gasto: P(≥k cópias) com lojas e cópias pagas.
+ * Usa a curva exata do servidor (Markov com a pool encolhendo); sem ela, cai para a binomial por loja,
+ * que não desconta o preço das cópias. `points` é [{ g: ouro, v: chance }].
+ */
+export function buildCurve(target, plannedGold) {
   if (!target) return null;
   const k = Math.max(1, target.need - target.own),
-    p = clamp(target.chancePerShop);
-  const n95 = shopsFor(k, p, 0.95),
-    maxN = Math.round(clamp(Number.isFinite(n95) ? n95 + 2 : 40, 8, 40));
-  const points = cumulativeCurve(k, p, maxN);
-  const planned = plannedShops != null ? Math.min(maxN, plannedShops) : null;
+    server = target.curve?.p?.length ? target.curve : null,
+    p = clamp(target.chancePerShop ?? 0);
+  let points, q50, q80;
+  if (server) {
+    points = server.p.map((v, i) => ({ g: i * server.step, v }));
+    q50 = server.q50;
+    q80 = server.q80;
+  } else {
+    const n95 = shopsFor(k, p, 0.95),
+      maxN = Math.round(clamp(Number.isFinite(n95) ? n95 + 2 : 40, 8, 40));
+    points = cumulativeCurve(k, p, maxN).map(({ n, v }) => ({
+      g: n * GOLD_PER_SHOP,
+      v,
+    }));
+    const gold = (n) => (Number.isFinite(n) ? n * GOLD_PER_SHOP : null);
+    q50 = gold(shopsFor(k, p, 0.5));
+    q80 = gold(shopsFor(k, p, 0.8));
+  }
+  const maxG = points.at(-1).g,
+    step = points[1]?.g ?? GOLD_PER_SHOP;
+  const planned = plannedGold != null ? Math.min(maxG, plannedGold) : null;
   return {
     name: target.name,
     stars: target.goalStars,
     k,
     p,
-    maxN,
+    level: server?.level ?? null,
+    exact: !!server,
+    maxG,
     points,
-    q50: shopsFor(k, p, 0.5),
-    q80: shopsFor(k, p, 0.8),
+    q50,
+    q80,
     planned,
-    plannedValue: planned != null ? (points[planned]?.v ?? null) : null,
+    plannedValue:
+      planned == null
+        ? null
+        : (target.chanceInRoll ??
+          points[Math.floor(planned / step)]?.v ??
+          null),
   };
 }

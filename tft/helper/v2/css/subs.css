@@ -1,0 +1,82 @@
+@layer components {
+  /* Substituições: peças da comp que valem trocar nesta partida. */
+  .subs {
+    display: grid;
+    gap: 8px;
+  }
+  .sub {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--surface), var(--bg) 30%);
+    & p {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      margin-left: 4px;
+    }
+    & b {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    & small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    &.is-stuck {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    &.is-applied {
+      border-style: dashed;
+      & small {
+        color: var(--faint);
+      }
+    }
+  }
+  .sub-pt .pt {
+    box-shadow: 0 0 0 2px var(--ring-c, var(--line));
+  }
+  .sub-arrow {
+    color: var(--faint);
+  }
+  .sub-why {
+    &[data-tone="warn"] {
+      color: var(--amber) !important;
+    }
+  }
+  .sub-others {
+    color: var(--faint) !important;
+  }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--blue);
+    font: inherit;
+    cursor: pointer;
+    &:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+    &:disabled {
+      color: var(--faint);
+      cursor: default;
+    }
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  @container stage (max-width: 520px) {
+    .sub {
+      grid-template-columns: auto auto auto minmax(0, 1fr);
+      & > .btn {
+        grid-column: 1 / -1;
+        justify-self: start;
+      }
+    }
+  }
+}

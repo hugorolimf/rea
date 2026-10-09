@@ -15,7 +15,7 @@ Identidade: Hero/playerId 47445859 é fixo no backend e na interface. A área Sc
 
 ## Itens, ícones e planejamento interativo
 
-181 imagens foram baixadas do CommunityDragon para assets/ e mapeadas por ID em assets-manifest.json (74 campeões, 107 itens/componentes). A interface serve os PNGs localmente, com fallback de texto se um ícone falhar. Regenerar: node .\tft\helper\download-assets.mjs.
+181 imagens foram baixadas do CommunityDragon para assets/ e mapeadas por ID em assets-manifest.json (74 campeões, 107 itens/componentes; em outubro de 2026 somaram-se os 36 ícones de sinergia, com chave `trait:<apiName>`, expostos em `/api/catalog` como `traits[].icon` e desenhados na faixa de sinergias da Formação, tingidos pelo estado). A interface serve os PNGs localmente, com fallback de texto se um ícone falhar. Regenerar: node .\tft\helper\download-assets.mjs.
 
 Cada campeão do plano recebe build heurística, receitas, justificativas contra cura, dano físico/mágico e resistências observados. O adversário selecionado em Scouting orienta os counters; sem seleção, usa o lobby vivo. Itens equipados são preservados, slots livres respeitados, Luvas do Ladrão bloqueiam adições comuns. Duplicação de feridas e shred na equipe é penalizada. Componentes livres não foram capturados; as receitas são objetivos, não autorização de craft possível agora. Build de referência em campeão com três slots não implica substituir seus itens.
 
@@ -85,7 +85,27 @@ O leitor de tela também lê o nome das cinco cartas da loja (OCR) e `screen-rea
 
 `meta-comps.mjs` baixa as comps da MetaTFT (unidades, estilo de nível, alvos de 3★, build por campeão dentro da comp e distribuição de colocações) e guarda em `meta-comps.json`. O tier (S ≤ 4,25; A ≤ 4,40; B ≤ 4,60; C acima) é uma faixa própria deste helper sobre a colocação média, não o tier da MetaTFT; comps com menos de 5000 partidas ficam de fora. Com essas comps disponíveis, o motor deixa de montar comps próprias: escolhe entre as de meta somando a força da meta ao encaixe na partida (unidades que você já tem, itens, disputa na pool, acesso na loja, lobby). Sem a cópia local, volta à busca heurística antiga.
 
-`strategy.mjs` devolve a ação de agora — comprar, economizar, subir de nível ou rolar, com quanto gastar e o piso de ouro — a partir de estágio, nível, XP e ouro lidos da tela, HP, pool, loja e o estilo da comp (reroll no nível N, Fast 8, Fast 9). Também mede a força da sua board contra a de cada rival vivo com a mesma régua (custo × estrelas + itens). São regras usuais de economia; não simulam combate nem streak.
+`strategy.mjs` devolve a ação de agora — comprar, economizar, subir de nível ou rolar, com quanto gastar e o piso de ouro — a partir de estágio, nível, XP e ouro lidos da tela, HP, pool, loja e o estilo da comp (reroll no nível N, Fast 8, Fast 9). Também mede a força da sua board contra a de cada rival vivo com a mesma régua (custo × estrelas + itens). Não simula combate.
+
+A matemática fica em `economy.mjs` (puro, também carregado pelo mock no navegador) e as regras do jogo em `rules.mjs` (pool, odds, renda, XP, sequência); os limiares desta ferramenta ficam em `POLICY`:
+
+- **Chance de fechar um upgrade**: cadeia de Markov exata em (cópias × ouro) — cada loja custa 2g, cada cópia achada é paga e a pool encolhe a cada compra. É a curva "chance × ouro" do painel Roll e a chance "desta rolagem".
+- **Quanto rolar**: o ganho esperado de força por ouro é simulado (Monte Carlo com números aleatórios comuns, semente fixa) com todos os upgrades disputando o mesmo ouro; o gasto para onde a próxima loja rende menos que a média do plano, descontada pela urgência da faixa de vida e pelos juros perdidos. Compras da loja saem do ouro antes da rolagem.
+- **Faixa de vida** (crítica, perigo, ferido, saudável) única para estratégia e loja: define piso, urgência e horizonte de juros. Vida crítica faz all-in, vendendo do banco fora da comp; comps de reroll fazem reroll rápido (piso 20g) com vida até 50.
+- **XP**: faltando até 2 XP, o XP passivo da próxima rodada sobe o nível de graça (fora de perigo não compra XP); nível máximo não sugere XP.
+- **Renda e projeção**: base + juros + sequência para as próximas 4 rodadas, com a rodada em que chega a 50g. A sequência de vitórias/derrotas é inferida pelo HP entre rodadas (`streak.mjs`).
+
+Testes: `node --test "tft/helper/tests/*.test.mjs"` (economia, estratégia, loja e sequência, com estado sintético em `tests/fixtures.mjs`).
+
+### Itens: tier e atributos
+
+A tela **Itens** (`#itens`) tem três abas: **Tier** (faixas S–D por categoria, com o detalhe do item à direita), **Receitas** (grade componente × componente colorida pelo tier) e **Atributos** (matriz item × atributo, ordenável por coluna). Busca sem acento por nome em pt-BR/inglês, componente ou sinergia; os filtros de atributo destacam os itens que têm todos os marcados.
+
+- `build-items.mjs` gera `items.json` a partir do CommunityDragon (pt_br + en_us): nome, tipo, receita, atributos normalizados (frações viram pontos percentuais) e descrição com os valores preenchidos. Os itens `DA_` do set vêm sem números; eles saem do item genérico equivalente (`TFT_Item_*`, `TFT5_Item_*Radiant`, `TFT_Item_Artifact_*`). Valores calculados em combate aparecem como "X".
+- O desempenho vem da mesma resposta da MetaTFT que alimenta as builds (`meta-builds.json` guarda colocação média, usos, taxa de uso e campeões por item). `GET /api/items` junta os dois.
+- **Tier** (`item-tiers.mjs`), por categoria: a média de cada item é encolhida para a média da categoria (Bayes empírico; a variância entre itens vem do estimador de DerSimonian–Laird, que pesa cada item pela amostra), e o tier sai de z = (referência − média encolhida) / τ, com cortes em ±0,4 e ±1. A referência é a média de efeitos aleatórios (o item típico), não a média por partida dominada pelos itens populares. Componentes e consumíveis mostram média e posição, mas não tier.
+
+Atualizar os dados de itens: `node tft/helper/build-items.mjs` e, para ícones novos, `node tft/helper/download-assets.mjs`.
 
 Uma troca só aparece como pronta quando a unidade que entra vale pelo menos 90% do corpo (custo × estrelas) da que sai; caso contrário o helper manda segurar a atual e informa quantas cópias faltam. A loja segue a prioridade: carta que fecha upgrade, carry, peça da meta, cópia de unidade sua, ponte; cartas secundárias não são compradas se derrubarem o patamar de juros, salvo com a vida em risco.
 
@@ -108,3 +128,45 @@ Dados antigos/eliminado usam modo planejamento e não têm chamadas de gasto ao 
 O cliente evita repetir análise com entradas iguais, pausa atualizações de fundo quando a página não está visível e usa SSE para invalidar dados novos. Snapshot é reutilizado somente enquanto mtime/tamanho permanecem iguais; busca de comps e análise final usam caches separados. Scouting, itens, aprimoramentos, estágio, XP, ouro e mudança de validade invalidam suas etapas correspondentes. Resultados do motor são clonados antes de atualizar táticas.
 
 Verificação efetuada: sintaxe JavaScript, contratos de IDs/rotas e diagnóstico de APIs com snapshot real. Três sugestões de alvo nível 9 retornaram nove campeões e códigos TFT. Nenhuma suíte de testes executada. Revisão visual por computer-use interrompida conforme instrução do usuário; aparência e gestos em navegador ainda precisam de avaliação do usuário. O planejador ainda identifica cópias repetidas pelo campeão, sem identidade individual para cada peça.
+
+## Interface única, início/fim de partida e histórico
+
+A interface v2 passou a ser a principal em `http://127.0.0.1:3218/` (`/v2/` redireciona) e a v1 foi removida (`index.html`, `app.js`, `planner.js`, `live-view.*`, `strategy-view.js`, `style.css`, `app-shell.css`). Os trechos acima sobre planejador, abas, scouting manual e itens livres descrevem essa interface antiga; o motor e a API continuam os mesmos.
+
+`match.mjs` acompanha a partida a cada 2 s, mesmo sem a interface aberta. Início: o cliente (LCU) entra em `InProgress`/`Reconnect` com um `gameId` novo, ou, sem cliente, o tabuleiro passa a ser de outra partida com o Hero. Fim: Hero com vida ≤ 0 (colocação = `ffaStanding`), Hero único vivo (1º) ou o cliente sai da partida. O primeiro arquivo de cada partida traz vida e colocação -1 em todos e não conta como eliminação. Se o cliente sai antes do tabuleiro final, o registro espera até 3 min pela colocação e, sem ela, grava "colocação não observada".
+
+No início de cada partida o servidor descarta caches de análise, a comp fixada da partida anterior e as leituras do leitor de tela; a interface descarta a última análise e, enquanto o jogo não publica o primeiro tabuleiro da partida nova (1–4 min), mostra "Nova partida em andamento" em vez do tabuleiro antigo. Início, fim e registro chegam às telas pelo SSE (`type: "match"`); `/api/state` traz `match` (`status`, `placement`, `boardReady`, `last`).
+
+Histórico: uma linha JSON por partida em `tft/data/match-history.jsonl` (ignorado pelo git), só para registro visual: `gameId`, fila, set, término, duração, colocação e o tabuleiro final do Hero (campeão, estrelas, itens). `GET /api/history` devolve da mais recente para a mais antiga; a visão Histórico mostra partidas, colocação média, top 4, vitórias e, por partida, colocação, fila, duração, sinergias ativas (sem emblemas) e unidades. Partidas sem o Hero (tutorial, desafios PVE) não entram. Ao abrir o servidor depois de uma partida, o tabuleiro final ainda presente é registrado uma única vez.
+
+Verificado: testes de `match.test.mjs` (início pelo cliente com tabuleiro antigo, primeiro arquivo com -1, eliminação, vitória, saída antes do tabuleiro final, reinício sem duplicar, sem cliente, partida sem o Hero), replay dos snapshots reais de `tft/data/events.jsonl` (8º e 6º, desafio PVE ignorado), servidor real registrando a última partida (2º, Ranqueada) e capturas do Edge headless das telas Histórico, Resultado e Nova partida (mock). Não verificado: uma transição ao vivo com o cliente do jogo aberto (LCU) e Dupla/Hiper Rolagem.
+
+## Tela de seleção de comp (v2)
+
+A visão **Comps** (`/#comps`, também pelo atalho "Escolher comp" no HUD) lista todas as comps de meta da cópia local (`GET /api/comps`) com tier, estilo de nível (reroll no nível N, Fast 8, Fast 9), colocação média, top 4, vitória e número de partidas. Cada cartão mostra as unidades (carry com coroa, as que você já tem em campo marcadas), builds por campeão e alvos de 3★. O encaixe nesta partida vem do motor: `analyze` passou a devolver `compRanking` com todas as comps avaliadas (posição, unidades já suas, itens do carry, disputa na pool) além das 3 sugeridas. Filtros por texto (campeão, sinergia ou nome, sem acento), estilo e tier; ordenação por encaixe, colocação média ou top 4. Filtros ficam no navegador.
+
+Atualização: `meta-comps.mjs` renova a cópia local quando ela passa de 2 h (antes 6 h); o servidor confere a cada 15 min e, ao renovar, descarta as análises em cache e avisa as telas pelo SSE (`type: "meta"`), que relêem a lista e pedem uma análise nova. Sem rede, segue com a cópia anterior e tenta de novo na checagem seguinte. A quantidade de comps é a da MetaTFT: em 09/10/2026 ela publicava 60 comps para o Set 18 (Platina+, últimos 3 dias); o filtro de 5000 partidas deixou 59. O estilo "Standard" publicado pela fonte aparece como "Nível padrão".
+
+"Seguir esta comp" fixa a escolha: a interface envia `goalCompId` e o servidor resolve unidades, carry e builds da comp, devolvendo-a como `preview` com título e `meta` próprios; o Ao vivo, as trocas, os itens e a economia passam a usar esse plano (HUD mostra "fixada"). A escolha fica no navegador por partida: feita fora de partida vale para a próxima que começar; feita durante uma partida some quando ela termina. Se a lista de meta for atualizada e a comp sair dela (`goal.found = false`), a interface volta às sugestões e avisa. "Liberar" retorna ao automático.
+
+Verificado: testes de `v2/js/comps.test.mjs` sobre as 58 comps reais; `/api/recommend` real com e sem `goalCompId` (58 comps no ranking, comp fixada com builds e estratégia "lvl 7", id inexistente com `found: false`); fluxo completo no Edge pelo DevTools Protocol (listar, filtrar Fast 9, fixar, Ao vivo seguindo a comp, liberar). Não verificado: troca de comp durante uma partida ao vivo.
+
+## Substituições: a comp de meta como ponto de partida
+
+A comp de meta não precisa ser seguida à risca. Para cada peça da comp seguida (sugerida ou fixada), exceto o carry, o motor (`flexOf` em `engine.mjs`) procura campeões de custo próximo (±1) e mesmo papel (tanque ou dano) que você consegue obter (já seus, ou com cópias livres e chance de loja ≥ 10% no nível alvo). Cada alternativa é avaliada pelo efeito nas sinergias da comp (patamares mantidos, perdidos e ganhos), por já ser sua (e com quantas estrelas), pela disputa na pool (cópias com rivais, mesma régua de `isContested`) e pela chance na loja. Alternativas que perdem mais de um patamar ou que estão disputadas ficam de fora: aí já é outra comp.
+
+A troca vira sugestão quando a peça está sob pressão (disputada pelos rivais, sem cópias livres ou fora da loja no nível alvo) e há alternativa sem perder mais de um patamar, ou quando a alternativa já é sua, não perde nenhuma sinergia e a peça da comp ainda não é. Cada substituto serve a uma peça só; as trocas mais vantajosas escolhem primeiro. As recomendações trazem `flex` e a comp fixada traz `preview.flex`.
+
+No Ao vivo, a seção **Substituições** mostra a sugestão (por que trocar, o que a alternativa traz) e outras opções; "Usar" fixa a comp seguida, se ainda era automática, com a troca aplicada, e o servidor recebe `goalSwaps` ([{out, in}]) junto de `goalCompId`. Trocar de novo uma peça que já entrou por substituição refaz a troca a partir da peça original; "Desfazer" remove a troca. As trocas ficam guardadas com a comp fixada e seguem a mesma regra por partida.
+
+Correção junto: com cópias repetidas de um campeão em campo, a tática usava a última lida (um Sentinel 2★ aparecia como 1★ na comp fixada); agora vale a de mais estrelas e itens, como já acontecia na reserva.
+
+Verificado: `engine-flex.test.mjs` (peça disputada por dois rivais recebe substituto não disputado, carry nunca substituído, substitutos únicos, peça sua sem pressão não é trocada), o motor sobre o tabuleiro real e o fluxo no Edge (sugestão Warwick → Varus 2★, usar, desfazer). Não verificado: uma partida ao vivo com rivais disputando peças da comp.
+
+## Aprimoramentos: caminho e escolha (v2)
+
+No Ao vivo, a seção **Aprimoramentos** mostra a trilha 2-1 → 3-2 → 4-2 com o que você escolheu (nome e sinergias com ícone) e, quando o leitor de tela reconhece as cartas na tela, as três opções na ordem sugerida para a comp seguida (recomendada, motivos, "troque este card"). "Escolhi este" marca a escolha com o estágio lido; o × desmarca. O jogo não grava no arquivo do tabuleiro qual carta você pegou (`players[].augments` vem vazio), por isso a escolha é marcada na interface; ela fica no navegador só para a partida em andamento.
+
+As escolhas vão para `/api/recommend` em `augments`: as sinergias delas já favoreciam as comps que as usam (`augmentTraits`) e agora também ordenam as próximas ofertas — uma carta que segue a sinergia de um aprimoramento já escolhido ganha pontos ("Segue o seu caminho"). Corrigido em `augment-advice.mjs`: as expressões do nível das rolagens grátis tinham perdido a barra (`/nivel (d+)/`), então a regra "rolagens grátis no nível de roll da comp" nunca valia; o nível de roll agora vem de `strategy.rollAt`.
+
+Verificado: `augment-advice.test.mjs` (rolagens no nível de roll, caminho), `v2/js/augs.test.mjs` (trilha e registro por partida) e o cenário de mock `caminho-aprimoramentos` no Edge (escolher, desmarcar). Não verificado: o reconhecimento das cartas pela tela numa partida real deste set; a ordem continua sem taxa de vitória por aprimoramento, porque a fonte de meta não publica esse dado por comp (`top_augments` vazio).

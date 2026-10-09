@@ -212,7 +212,20 @@
       & b {
         color: var(--violet);
       }
+      & .trait-icon {
+        background: var(--violet);
+      }
     }
+  }
+  /* Silhueta da sinergia (PNG cinza do jogo) usada como máscara e tingida pelo estado. */
+  .trait-icon {
+    width: 15px;
+    height: 15px;
+    margin-left: -3px;
+    flex: none;
+    background: var(--faint);
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
   }
 
   /* ---------- Trilha "Agora" ---------- */

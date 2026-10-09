@@ -1,8 +1,20 @@
+import { isContested } from "./economy.mjs";
 export function tactics(analysis, catalog, options = {}) {
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c]));
   const items = new Map(catalog.items.map((i) => [i.apiName, i]));
   const clean = (id) => id.replace(/Radiant/g, "");
-  const current = new Map(analysis.self.units.map((u) => [u.championName, u]));
+  // Cópias repetidas em campo: vale a de mais estrelas (e mais itens), como na reserva.
+  const current = new Map();
+  for (const u of analysis.self.units) {
+    const prev = current.get(u.championName);
+    if (
+      !prev ||
+      u.starLevel > prev.starLevel ||
+      (u.starLevel === prev.starLevel &&
+        (u.itemNames?.length ?? 0) > (prev.itemNames?.length ?? 0))
+    )
+      current.set(u.championName, u);
+  }
   const reserve = new Map();
   for (const u of analysis.self.reserve ?? []) {
     if (
@@ -395,7 +407,7 @@ export function tactics(analysis, catalog, options = {}) {
           u.name === carry &&
           u.cost <= 2 &&
           (pool?.remainingUpper ?? 0) >= Math.max(0, 9 - (pool?.own ?? 0)) &&
-          (pool?.enemy ?? 0) / (pool?.total ?? 1) < 0.35;
+          !isContested(pool);
       const targetStars = Math.max(u.owned ? u.stars : 1, reroll ? 3 : 2);
       return {
         ...u,
@@ -877,10 +889,12 @@ export function tactics(analysis, catalog, options = {}) {
         items: u?.itemNames ?? [],
       };
     });
+    // Comp de meta fixada: usa as builds dela, como nas sugestões.
     analysis.preview = plan(
       board,
       board.find((u) => u.id === options.goalCarryId)?.name ??
         board.find((u) => byId.get(u.id).stats.range >= 3)?.name,
+      options.goalComp?.builds ?? null,
     );
   }
   const observedBoard = analysis.self.units

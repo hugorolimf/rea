@@ -339,120 +339,202 @@
     },
   ];
 
-  // ---- Estratégia (mesmo formato de strategy.mjs) ----
-  const interestOf = (g) => Math.min(5, Math.floor(g / 10));
+  // ---- Estratégia (mesmo formato de strategy.mjs; contas reais de /economy.mjs) ----
+  let ECO = null; // carregado em buildCtx antes de montar o cenário
+  const parseStage = (s) => {
+    const m = /^(\d)-(\d)$/.exec(s ?? "");
+    return m ? { stage: Number(m[1]), round: Number(m[2]) } : null;
+  };
   function strategyFor(action, o) {
-    const gold = o.gold,
-      shops = action === "ROLAR" ? Math.floor(o.spend / 2) : 0,
-      next =
-        gold == null || gold >= 50 ? null : (Math.floor(gold / 10) + 1) * 10;
-    const target = (id, name, cost, own, goal, enemy) => ({
-      id,
-      name,
-      cost,
-      goalStars: 2,
-      own,
-      goal,
-      left: 12 - own,
-      enemy,
-      chancePerShop: 0.1218,
-      chanceInRoll: shops ? 1 - (1 - 0.1218) ** shops : null,
-      done: own >= goal,
-    });
-    const lvl = action === "SUBIR NÍVEL";
+    const E = ECO,
+      gold = o.gold,
+      level = o.level,
+      stage = parseStage(o.stage),
+      streak =
+        o.streak === undefined
+          ? { kind: "loss", length: 3, inferred: true }
+          : o.streak;
+    const rolling = action === "ROLAR" && o.spend >= 2,
+      lvl = action === "SUBIR NÍVEL",
+      shopSpend = gold != null && o.screen !== false ? 1 : 0, // a loja do mock compra Varus (1g)
+      cash = gold == null ? null : gold - shopSpend,
+      spend = rolling ? o.spend : lvl ? 4 : 0,
+      // All-in: o que passa do ouro em mãos vem da venda do banco.
+      sold = cash != null && o.sellable && spend > cash ? o.sellable.gold : 0,
+      keep = cash == null ? null : cash + sold - spend,
+      shops = rolling ? Math.floor(spend / 2) : 0,
+      rollAt = o.rollAt ?? 8,
+      curveAt = rolling ? level : Math.max(level, rollAt);
+    // Pool do mock: 12 campeões de custo 4 (~96 cópias livres) e 13 de custo 1 (~360).
+    const target = (ref, cost, own, goal, enemy, free, denom) => {
+      const exact = E.closeCurve({
+        level: curveAt,
+        cost,
+        own,
+        goal,
+        free,
+        denom,
+      });
+      return {
+        id: ref.id,
+        name: ref.name,
+        cost,
+        goalStars: goal === 9 ? 3 : 2,
+        own,
+        goal,
+        left: free,
+        enemy,
+        chancePerSlot: E.slotChance(curveAt, cost, free, denom),
+        chancePerShop: 1 - (1 - E.slotChance(curveAt, cost, free, denom)) ** 5,
+        chanceInRoll: rolling ? exact[Math.min(spend, exact.length - 1)] : null,
+        curve:
+          own >= goal
+            ? null
+            : E.curveSummary(exact, curveAt, rolling ? spend : null),
+        done: own >= goal,
+      };
+    };
+    const projection = E.projectGold(keep, { stage, streak, rounds: 4 });
+    const max = rolling ? (o.max ?? spend) : null;
     const text = {
       ECONOMIZAR: {
-        head: `Economize até ${next ?? 50}g e suba no tempo certo`,
+        head: `Economize até ${E.nextTier(cash) ?? 50}g e suba no tempo certo`,
         steps: [
           "Economize: o carry Aphelios (custo 4) só aparece bem a partir do nível 8. Não role agora.",
           "Ajuste itens e posições com o ouro parado.",
         ],
       },
       ROLAR: {
-        head: `Role ${o.spend}g por Aphelios 2★`,
+        head: `Role ${spend}g por Aphelios 2★`,
         steps: [
-          `Role ${o.spend}g (${shops} lojas) no nível ${o.level} buscando Aphelios 2★ e a frontline 2★; pare em ${o.keep}g.`,
+          `Role ${spend}g (até ${shops} lojas) no nível ${level} buscando Aphelios 2★ e a frontline 2★; pare em ${keep}g.`,
         ],
       },
       "SUBIR NÍVEL": {
-        head: `Suba para o nível ${o.level + 1}`,
+        head: `Suba para o nível ${level + 1}`,
         steps: [
-          `Núcleo pronto: suba para o nível ${o.level + 1} (4g) para encaixar mais uma unidade forte.`,
+          `Núcleo pronto: suba para o nível ${level + 1} (4g) para encaixar mais uma unidade forte.`,
         ],
       },
     }[action] ?? { head: "Partida encerrada para o Hero", steps: [] };
+    const ev = {
+      roll: {
+        gold: spend,
+        gain: rolling ? 3.4 : 0,
+        perGold: rolling ? 3.4 / spend : 0,
+        max,
+        gainMax: rolling ? 3.6 : 0,
+      },
+      level: { cost: 4, gain: 3.3, perGold: 0.82 },
+    };
     return {
       action,
       headline: text.head,
-      steps: text.steps,
-      reasons: [
-        "Aphelios: 1/3 cópias para 2★, 9 livres na pool, 2 com rivais.",
-        "Você é o 3º de 8 em força: o lobby ainda permite economizar.",
+      steps: [
+        ...(shopSpend
+          ? ["Compre na loja: Varus (1g, peça da meta · cópia de unidade sua)."]
+          : []),
+        ...(sold
+          ? [
+              `Venda ${o.sellable.units.map((u) => `${u.name} ${u.stars}★`).join(", ")} do banco (+${sold}g) antes de rolar.`,
+            ]
+          : []),
+        ...text.steps,
       ],
-      ev: null,
+      reasons: [
+        "Aphelios: 1/3 cópias para 2★, 7 livres na pool, 2 com rivais.",
+        "Força da sua board: 3º de 8 no lobby (41 contra mediana 38).",
+        ...(streak
+          ? [
+              `Sequência de ${streak.length} derrotas (inferida pelo HP): +1g por rodada.`,
+            ]
+          : []),
+      ],
+      ev,
       lobby: null,
+      pressure: "hurt",
       style: "Fast 8",
       rerollLevel: null,
       finalLevel: 9,
+      rollAt,
       levelCost: lvl ? 4 : 28,
-      interestAt: 50,
+      passiveLevel: false,
+      shopSpend,
+      cash,
+      spend,
+      keep,
+      sellable: { gold: 0, units: [] },
+      interestAt: gold == null ? null : (E.nextTier(gold) ?? 50),
       panels: {
         economy: {
           gold,
-          interest: gold == null ? 0 : interestOf(gold),
-          next,
-          keep: o.keep ?? null,
+          cash,
+          shopSpend,
+          interest: E.interestOf(gold),
+          next: E.nextTier(gold),
+          keep,
+          after: keep,
+          afterInterest: E.interestOf(keep),
+          income: keep == null ? null : E.incomeOf(keep, streak),
+          projection,
+          reach50:
+            keep == null || keep >= 50
+              ? null
+              : (projection.find((r) => r.gold >= 50)?.label ?? null),
+          streak: streak
+            ? { ...streak, gold: E.streakGold(streak.length) }
+            : null,
+          sellable: o.sellable ?? { gold: 0, units: [] },
+          pressure: "hurt",
           value: gold == null ? "–" : gold + "g",
           verdict:
             action === "ECONOMIZAR"
               ? "ECONOMIZAR AGORA"
-              : o.keep != null
-                ? "piso desta decisão: " + o.keep + "g"
+              : keep != null
+                ? "piso desta decisão: " + keep + "g"
                 : "",
           text:
             gold == null
               ? "Ouro não lido da tela."
-              : `Juros atuais: +${interestOf(gold)}g por rodada.` +
-                (next
-                  ? ` Próximo patamar em ${next}g (faltam ${next - gold}g).`
-                  : " Juros no máximo (50g)."),
+              : `Juros atuais: +${E.interestOf(gold)}g por rodada.`,
         },
         leveling: {
-          level: o.level,
+          level,
           xp:
             typeof o.xp === "string" && o.xp.includes("/")
               ? {
                   have: Number(o.xp.split("/")[0]),
                   total: Number(o.xp.split("/")[1]),
+                  max: o.xp === "0/0",
                 }
               : null,
-          cost: lvl ? 4 : 28,
+          cost: lvl || o.passive ? 4 : o.xp === "0/0" ? null : 28,
+          passive: !!o.passive,
           go: lvl,
-          curve: o.level,
+          curve: level,
           finalLevel: o.final ?? 9,
-          value: "Nível " + o.level,
+          value: "Nível " + level,
           verdict: lvl ? "SUBIR AGORA · 4g" : "não subir agora",
-          text:
-            "Faltam 12 XP (28g) para o nível " +
-            (o.level + 1) +
-            ". Curva padrão no estágio 4-2: nível 8. Nível final desta comp: 9.",
+          text: `Faltam 12 XP (28g) para o nível ${level + 1}. Curva padrão no estágio 4-2: nível 8. Nível final desta comp: 9.`,
         },
         rolling: {
-          level: o.level,
-          at: o.rollAt ?? 8,
-          go: action === "ROLAR",
-          spend: action === "ROLAR" ? o.spend : 0,
+          level,
+          at: rollAt,
+          go: rolling,
+          spend: rolling ? spend : 0,
           shops,
-          keep: o.keep ?? null,
-          value: "Nível de roll 8",
-          verdict:
-            action === "ROLAR"
-              ? `ROLAR ${o.spend}g · ${shops} lojas · parar em ${o.keep}g`
-              : "não rolar agora",
+          keep,
+          max,
+          stop: rolling && max > spend ? spend : null,
+          ev,
+          value: "Nível de roll " + rollAt,
+          verdict: rolling
+            ? `ROLAR ${spend}g · até ${shops} lojas · parar em ${keep}g`
+            : "não rolar agora",
           text: "Este é o nível de rolagem da comp.",
           targets: [
-            target(APH.id, "Aphelios", 4, 1, 3, 2),
-            target(VAR.id, "Varus", 1, 3, 3, 0),
+            target(APH, 4, 1, 3, 2, 7, 96),
+            target(VAR, 1, 3, 3, 0, 24, 360),
           ],
         },
       },
@@ -707,6 +789,125 @@
     "Hero eliminado (dados reais): ação ENCERRADA.",
     () => {},
   );
+  const lastMatch = {
+    gameId: 1,
+    queue: "RANKED_TFT",
+    placement: 3,
+    durationSeconds: 2100,
+    endedAt: "2026-10-09T05:45:24.000Z",
+    units: [],
+  };
+  add(
+    G.read,
+    "resultado",
+    "Resultado da partida",
+    "Partida acompanhada encerrada em 3º: aviso de resultado e HUD 'encerrada · 3º'.",
+    (c) => {
+      live(c, { hp: 0 });
+      patchMeta(c, { actionable: false });
+      c.state.match = {
+        id: c.state.gameId,
+        status: "ended",
+        placement: 3,
+        boardReady: true,
+        last: { ...lastMatch, gameId: c.state.gameId },
+      };
+    },
+  );
+  add(
+    G.alert,
+    "caminho-aprimoramentos",
+    "Caminho de aprimoramentos",
+    "Partida em andamento: 2-1 escolhido (Vanguarda), cartas de 3-2 na tela com a ordem para a comp.",
+    (c) => {
+      live(c, { stage: "3-2" });
+      c.state.match = { id: 77, status: "live", boardReady: true };
+      c.rec.chosenAugments = [
+        {
+          id: "mock-aug-vanguard",
+          name: "Coração de Vanguarda",
+          desc: "Recebe um Emblema de Vanguarda e 1 Vanguarda a mais conta para a sinergia.",
+          traits: ["Vanguard"],
+        },
+      ];
+      c.rec.augmentAdvice = {
+        key: "mock-aug-2",
+        comp: c.plan.title,
+        pick: "mock-aug-b",
+        note: "Ordem pelo encaixe na sua comp e no momento da partida, sem taxa de vitória.",
+        choices: [
+          {
+            id: "mock-aug-b",
+            name: "Coroa de Vanguarda",
+            desc: "Recebe um Emblema de Vanguarda.",
+            reasons: [
+              "Vanguard está na sua comp alvo (4 unidades, ativa).",
+              "Segue o seu caminho: Coração de Vanguarda já puxa Vanguard.",
+            ],
+            reroll: false,
+          },
+          {
+            id: "mock-aug-a",
+            name: "Rolagens de Nível",
+            desc: "Ganha 4 atualizações da loja ao chegar ao nível 8.",
+            reasons: [
+              "Rolagens grátis no nível 8, que é exatamente o nível de roll desta comp.",
+            ],
+            reroll: false,
+          },
+          {
+            id: "mock-aug-c",
+            name: "Pacto Arcano",
+            desc: "Magos ganham 20 de Poder de Habilidade.",
+            reasons: [
+              "Exige Mago, que não está na sua comp alvo: só vale se você mudar de comp.",
+            ],
+            reroll: true,
+          },
+        ],
+      };
+    },
+    {
+      after: () => {
+        try {
+          const key = "tft-compass-augments";
+          if (!localStorage.getItem(key)) {
+            localStorage.setItem(
+              key,
+              JSON.stringify({
+                match: "77",
+                picks: [
+                  {
+                    id: "mock-aug-vanguard",
+                    stage: "2-1",
+                    name: "Coração de Vanguarda",
+                  },
+                ],
+              }),
+            );
+            document.dispatchEvent(new Event("visibilitychange"));
+          }
+        } catch {}
+      },
+    },
+  );
+  add(
+    G.read,
+    "nova-partida",
+    "Nova partida",
+    "Cliente já em outra partida, tabuleiro ainda da anterior: estado zerado e espera.",
+    (c) => {
+      live(c);
+      patchMeta(c, { actionable: false, sameGame: false });
+      c.state.match = {
+        id: 2,
+        status: "live",
+        placement: null,
+        boardReady: false,
+        last: lastMatch,
+      };
+    },
+  );
 
   add(
     G.action,
@@ -719,8 +920,45 @@
     G.action,
     "rolar",
     "Rolar",
-    "ROLAR: lojas, piso, chance por rolagem e alvos com rivais.",
-    (c) => live(c, { action: "ROLAR", gold: 62, spend: 30, keep: 32 }),
+    "ROLAR: lojas, piso, chance de fechar com o gasto e alvos com rivais. A curva manda parar em 22g, antes do piso (31g).",
+    (c) => live(c, { action: "ROLAR", gold: 62, spend: 22, max: 31 }),
+  );
+  add(
+    G.action,
+    "all-in",
+    "All-in (vida crítica)",
+    "HP 14: rola tudo, vendendo o banco fora da comp; sequência de 5 derrotas.",
+    (c) =>
+      live(c, {
+        action: "ROLAR",
+        hp: 14,
+        gold: 19,
+        spend: 30,
+        stage: "5-2",
+        streak: { kind: "loss", length: 5, inferred: true },
+        sellable: {
+          gold: 12,
+          units: [
+            { id: "DA_18_Ezreal", name: "Ezreal", stars: 2, value: 11 },
+            { id: "DA_18_Taric", name: "Taric", stars: 1, value: 1 },
+          ],
+        },
+      }),
+  );
+  add(
+    G.action,
+    "xp-gratis",
+    "XP grátis",
+    "Faltam 2 XP: o XP passivo da próxima rodada sobe o nível; o custo aparece riscado.",
+    (c) =>
+      live(c, {
+        action: "ECONOMIZAR",
+        level: 7,
+        xp: "66/68",
+        gold: 47,
+        passive: true,
+        streak: { kind: "win", length: 4, inferred: true },
+      }),
   );
   add(
     G.action,
@@ -1035,6 +1273,7 @@
   // ---- Interceptação de rede ----
   const realFetch = window.fetch.bind(window);
   const base = realFetch("/live-mock-base.json").then((r) => r.json());
+  const ecoReady = import("/economy.mjs"); // mesmas contas de economia do servidor
   const calls = { state: 0, rec: 0 };
   const json = (status, body) =>
     new Response(JSON.stringify(body), {
@@ -1042,6 +1281,7 @@
       headers: { "Content-Type": "application/json" },
     });
   const buildCtx = async (n) => {
+    ECO ??= await ecoReady;
     const { state, rec } = clone(await base),
       c = { state, rec, plan: rec.recommendations[0], n };
     current?.build(c);
@@ -1088,7 +1328,7 @@
   const go = (id, open = params.open) => {
     const next = new URLSearchParams({ mock: id });
     if (open || S.find((s) => s.id === id)?.open) next.set("open", "1");
-    location.assign(`${location.pathname}?${next}${location.hash || "#live"}`);
+    location.assign(`${location.pathname}?${next}${location.hash}`);
   };
   addEventListener("keydown", (e) => {
     if (
@@ -1132,7 +1372,7 @@ body{padding-bottom:var(--mockbar-h,48px)}`;
       )
       .join(
         "",
-      )}<div><h5>Ferramentas</h5><button type="button" data-open>${params.open ? "Fechar" : "Abrir"} “Mais sobre a partida”</button><a class="mock-link" href="/live-mock.html">Galeria de todos os cenários ↗</a><a class="mock-link" href="/#live">Sair do mock ↗</a></div></div>`;
+      )}<div><h5>Ferramentas</h5><button type="button" data-open>${params.open ? "Fechar" : "Abrir"} “Mais sobre a partida”</button><a class="mock-link" href="/live-mock.html">Galeria de todos os cenários ↗</a><a class="mock-link" href="/">Sair do mock ↗</a></div></div>`;
     if (!framed) document.body.append(bar);
     const fit = () =>
       document.body.style.setProperty(

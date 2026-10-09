@@ -13,6 +13,16 @@ export function captureBoards(file, history) {
     records = new Map(),
     sequence = 0,
     lastError = null;
+  function send(event) {
+    const line = "data: " + JSON.stringify(event) + "\n\n";
+    for (const res of subscribers) {
+      if (res.destroyed) {
+        subscribers.delete(res);
+        continue;
+      }
+      res.write(line);
+    }
+  }
   async function scan() {
     if (busy) {
       queued = true;
@@ -82,13 +92,7 @@ export function captureBoards(file, history) {
         viewedPlayerId: null,
       };
       lastError = null;
-      for (const res of subscribers) {
-        if (res.destroyed) {
-          subscribers.delete(res);
-          continue;
-        }
-        res.write("data: " + JSON.stringify(current) + "\n\n");
-      }
+      send(current);
     } catch (e) {
       lastError = e.message;
     } finally {
@@ -131,6 +135,10 @@ export function captureBoards(file, history) {
         intervalMs: 500,
         viewedPlayerKnown: false,
       };
+    },
+    /** Envia um evento próprio (com `type`) aos mesmos assinantes do SSE dos tabuleiros. */
+    broadcast(event) {
+      send(event);
     },
     close() {
       watcher.close();

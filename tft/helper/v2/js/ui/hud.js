@@ -93,6 +93,7 @@ export function mountHud(root) {
   const goalRing = ring("ring-goal"),
     goalText = el("strong", { class: "ring-center" }, "—"),
     goalSub = el("small", { class: "sub" }),
+    goalLink = el("a", { class: "goal-link", href: "#comps" }, "Escolher comp"),
     goalWrap = el("div", { class: "ring-wrap" }, goalRing, goalText);
 
   root.append(
@@ -139,7 +140,7 @@ export function mountHud(root) {
         "div",
         { class: "pair" },
         goalWrap,
-        el("div", { class: "stack" }, goalSub),
+        el("div", { class: "stack" }, goalSub, goalLink),
       ),
     ),
   );
@@ -163,9 +164,13 @@ export function mountHud(root) {
       stageNode.dataset.live = status.live ? "1" : "0";
       liveText.textContent = status.live
         ? "ao vivo"
-        : status.ended
-          ? "encerrada"
-          : "snapshot";
+        : status.waiting
+          ? "nova partida"
+          : status.ended
+            ? status.placement
+              ? `encerrada · ${status.placement}º`
+              : "encerrada"
+            : "snapshot";
       /* Vida */
       setNum(hpNum, hero.hp);
       setVars(hpBar, { "--p": hero.hp == null ? 0 : clamp(hero.hp / 100) });
@@ -206,7 +211,13 @@ export function mountHud(root) {
       const g = plan?.progress;
       setVars(goalRing, { "--p": g?.total ? clamp(g.have / g.total) : 0 });
       goalText.textContent = g ? `${g.have}/${g.total}` : "—";
-      goalSub.textContent = plan?.carry ? `carry ${plan.carry}` : "";
+      goalSub.textContent = [
+        status.pinned ? "fixada" : plan ? "sugerida" : "",
+        plan?.carry ? `carry ${plan.carry}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      goalLink.textContent = status.pinned ? "Trocar comp" : "Escolher comp";
       goalWrap.title = plan?.title ?? "";
     },
   };

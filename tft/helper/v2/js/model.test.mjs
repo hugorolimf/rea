@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildCurve, buildModel } from "./model.js";
+import { buildCurve, buildEconomy, buildModel } from "./model.js";
 import { binomialTail } from "./math.js";
 
 const { state, rec } = JSON.parse(
@@ -40,6 +40,29 @@ test("partida encerrada nunca é considerada ao vivo", () => {
   const m = buildModel(input);
   assert.equal(m.status.live, false);
   assert.equal(m.status.ended, true);
+});
+
+test("partida acompanhada: -1 de vida no primeiro tabuleiro não encerra; resultado e espera vêm do servidor", () => {
+  const input = live();
+  input.rec.self.health = -1;
+  input.state.match = { id: 2, status: "live", boardReady: true };
+  let m = buildModel(input);
+  assert.equal(m.status.ended, false);
+  assert.equal(m.status.live, false);
+  input.state.match = {
+    id: 2,
+    status: "ended",
+    placement: 3,
+    boardReady: true,
+  };
+  m = buildModel(input);
+  assert.equal(m.status.ended, true);
+  assert.equal(m.status.placement, 3);
+  input.state.match = { id: 3, status: "live", boardReady: false };
+  input.rec.self.health = 58;
+  m = buildModel(input);
+  assert.equal(m.status.waiting, true);
+  assert.equal(m.status.live, false);
 });
 
 test("formação: cada posição vira uma célula única com status e custo", () => {
@@ -141,7 +164,7 @@ test("trilho de nível marca nível atual, próximo (quando sobe) e níveis de r
   assert.equal(panel.tone, "subirnvel");
 });
 
-test("curva de chance: monótona, consistente com a cauda binomial e quantil 80%", () => {
+test("curva de chance sem dados do servidor: binomial por loja, eixo em ouro, quantil 80%", () => {
   const target = {
     id: "a",
     name: "Aphelios",
@@ -151,16 +174,121 @@ test("curva de chance: monótona, consistente com a cauda binomial e quantil 80%
     need: 3,
     chancePerShop: 0.12,
   };
-  const c = buildCurve(target, 15);
+  const c = buildCurve(target, 30);
   assert.equal(c.k, 2);
-  for (let i = 1; i < c.points.length; i++)
+  assert.equal(c.exact, false);
+  for (let i = 1; i < c.points.length; i++) {
     assert.ok(c.points[i].v >= c.points[i - 1].v);
+    assert.equal(c.points[i].g - c.points[i - 1].g, 2);
+  }
   assert.ok(Math.abs(c.plannedValue - binomialTail(2, 15, 0.12)) < 1e-12);
+  const shops = c.q80 / 2;
   assert.ok(
-    binomialTail(2, c.q80, 0.12) >= 0.8 &&
-      binomialTail(2, c.q80 - 1, 0.12) < 0.8,
+    binomialTail(2, shops, 0.12) >= 0.8 &&
+      binomialTail(2, shops - 1, 0.12) < 0.8,
   );
   assert.equal(buildCurve(null, 3), null);
+});
+
+test("curva de chance do servidor: usa a curva exata e a chance desta rolagem", () => {
+  const c = buildCurve(
+    {
+      name: "Aphelios",
+      goalStars: 2,
+      own: 1,
+      need: 3,
+      chancePerShop: 0.12,
+      chanceInRoll: 0.4321,
+      curve: {
+        level: 8,
+        step: 2,
+        p: [0, 0, 0.05, 0.12, 0.25, 0.4, 0.55],
+        q50: 12,
+        q80: 30,
+        q95: 44,
+      },
+    },
+    9,
+  );
+  assert.equal(c.exact, true);
+  assert.equal(c.level, 8);
+  assert.equal(c.maxG, 12);
+  assert.deepEqual(c.points[3], { g: 6, v: 0.12 });
+  assert.equal(c.q80, 30);
+  assert.equal(c.planned, 9);
+  assert.equal(c.plannedValue, 0.4321);
+});
+
+test("economia: fluxo agora → depois → rodadas, renda decomposta e sequência", () => {
+  const e = buildEconomy(
+    {
+      gold: 54,
+      after: 24,
+      interest: 5,
+      next: null,
+      keep: 24,
+      shopSpend: 4,
+      income: { base: 5, interest: 2, streak: 1, total: 8 },
+      projection: [
+        { label: "4-3", gold: 32, income: 8 },
+        { label: "4-4", gold: 41, income: 9 },
+        { label: "4-5", gold: 51, income: 10 },
+      ],
+      streak: { kind: "loss", length: 3, gold: 1 },
+      sellable: { gold: 0, units: [] },
+    },
+    true,
+    "ROLAR",
+  );
+  assert.equal(e.spend, 30);
+  assert.equal(e.afterInterest, 2);
+  assert.deepEqual(
+    e.incomeParts.map((p) => [p.kind, p.value]),
+    [
+      ["base", 5],
+      ["interest", 2],
+      ["loss", 1],
+    ],
+  );
+  assert.deepEqual(
+    e.projection.map((r) => [r.label, r.capped, r.reach]),
+    [
+      ["4-3", false, false],
+      ["4-4", false, false],
+      ["4-5", true, true],
+    ],
+  );
+  assert.equal(e.reach50, "4-5");
+  assert.equal(e.top, 60, "teto em degraus de 10g, sempre acima de 50g");
+  assert.equal(e.streak.length, 3);
+  assert.equal(e.sellable, null, "banco sem valor não aparece");
+});
+
+test("economia fora do ao vivo: sem ação, projeta do ouro atual com as contas do servidor", () => {
+  const e = buildEconomy(
+    { gold: 44, after: 14, projection: [{ label: "x", gold: 1 }] },
+    false,
+    "ROLAR",
+    { stage: 4, round: 2 },
+  );
+  assert.equal(e.spend, 0);
+  assert.equal(e.after, 44);
+  assert.equal(e.shopSpend, 0);
+  assert.deepEqual(
+    e.projection.map((r) => [r.label, r.gold]),
+    [
+      ["4-3", 53],
+      ["4-4", 63],
+      ["4-5", 73],
+      ["4-6", 83],
+    ],
+  );
+  assert.equal(e.reach50, "4-3");
+  assert.equal(e.top, 90);
+  assert.equal(e.income.total, 9);
+  const unread = buildEconomy({ gold: null }, false, "ROLAR");
+  assert.equal(unread.income, null);
+  assert.deepEqual(unread.projection, []);
 });
 
 test("sem recomendação o modelo ainda devolve HUD e status", () => {

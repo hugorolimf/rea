@@ -1,0 +1,185 @@
+@layer components {
+  /* Trilha dos aprimoramentos: 2-1 → 3-2 → 4-2. */
+  .aug-path {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    counter-reset: none;
+  }
+  .aug-slot {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 74px;
+    padding: 10px 12px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    color: var(--faint);
+    & b {
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.25;
+      padding-right: 18px;
+    }
+    & small {
+      font-size: 11px;
+    }
+    &[data-state="done"] {
+      border-style: solid;
+      border-color: var(--line-soft);
+      background: color-mix(in oklab, var(--surface), var(--bg) 30%);
+    }
+    &[data-state="now"] {
+      border-style: solid;
+      border-color: color-mix(in oklab, var(--go), transparent 50%);
+      color: var(--go);
+    }
+    /* Conector entre as posições */
+    & + .aug-slot::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: -9px;
+      width: 8px;
+      height: 1px;
+      background: var(--line);
+    }
+  }
+  .aug-stage {
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .aug-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .aug-trait {
+    gap: 4px;
+    padding: 1px 8px;
+    font-size: 10px;
+    & .trait-icon {
+      width: 12px;
+      height: 12px;
+      margin-left: -2px;
+      background: currentColor;
+    }
+  }
+  .aug-drop {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    &:hover {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    & .i {
+      width: 13px;
+      height: 13px;
+    }
+  }
+
+  /* Cartas na tela */
+  .aug-offers {
+    margin-top: 14px;
+  }
+  .aug-head {
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    & b {
+      color: var(--text);
+    }
+  }
+  .aug-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+    gap: 10px;
+  }
+  .aug-card {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--surface), var(--bg) 30%);
+    & h3 {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    & > .btn {
+      justify-self: start;
+      margin-top: 2px;
+    }
+    &[data-pick] {
+      border-color: color-mix(in oklab, var(--go), transparent 45%);
+      background: color-mix(in oklab, var(--go), var(--surface) 93%);
+    }
+    &[data-reroll] {
+      opacity: 0.85;
+    }
+  }
+  .aug-rank {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    [data-pick] > & {
+      color: var(--go);
+    }
+  }
+  .aug-desc {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .aug-why {
+    display: grid;
+    gap: 3px;
+    padding-left: 14px;
+    color: var(--muted);
+    font-size: 11px;
+    list-style: disc;
+    & li::marker {
+      color: var(--faint);
+    }
+  }
+  .aug-reroll {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--amber);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .aug-note {
+    margin-top: 8px;
+    color: var(--faint);
+    font-size: 11px;
+  }
+  @container stage (max-width: 520px) {
+    .aug-path {
+      grid-template-columns: minmax(0, 1fr);
+      & .aug-slot + .aug-slot::before {
+        display: none;
+      }
+    }
+  }
+}

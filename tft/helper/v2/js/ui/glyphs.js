@@ -11,10 +11,17 @@ export const glyphNode = (name, cls = "") =>
   );
 
 /** Referência a champions/itens do catálogo para montar retratos. */
-let catalog = { champions: new Map(), items: new Map() };
+let catalog = {
+  champions: new Map(),
+  items: new Map(),
+  traits: new Map(),
+  traitIcons: new Map(),
+};
 export const setCatalog = (c) => (catalog = c);
+export const getCatalog = () => catalog;
 export const champIcon = (id) => catalog.champions.get(id)?.icon ?? null;
 export const itemIcon = (id) => catalog.items.get(id)?.icon ?? null;
+export const traitIcon = (name) => catalog.traitIcons?.get(name) ?? null;
 export const itemName = (id) =>
   catalog.items.get(id)?.name ?? String(id ?? "").replace(/^DA_/, "");
 

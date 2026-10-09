@@ -1,3 +1,4 @@
+import { isContested, rollLevelOf } from "./economy.mjs";
 export function playbook(plan, analysis, options, metadata) {
   const carry =
     plan.board.find((u) => u.name === plan.carry) ||
@@ -9,16 +10,7 @@ export function playbook(plan, analysis, options, metadata) {
     gold = options.gold,
     hp = analysis.self.health;
   const targetLevel = plan.board.length,
-    rollLevel =
-      carry.cost === 1
-        ? 5
-        : carry.cost === 2
-          ? 6
-          : carry.cost === 3
-            ? 7
-            : carry.cost === 4
-              ? 8
-              : 9;
+    rollLevel = rollLevelOf({ carryCost: carry.cost });
   const owned = pool?.own ?? 0,
     enemy = pool?.enemy ?? 0,
     needed = Math.max(0, 9 - owned),
@@ -64,7 +56,7 @@ export function playbook(plan, analysis, options, metadata) {
       actions.push(
         "Com economia confortável, invista em experiência gradualmente sem desmontar a frontline.",
       );
-  } else if (reroll && (!possible || enemy / (pool?.total ?? 1) > 0.35)) {
+  } else if (reroll && (!possible || isContested(pool))) {
     headline = "Evite forçar 3★ nesta disputa";
     actions.push(
       `${enemy} cópias nominais de ${carry.name} estão com rivais; faltam ${needed} para 3★ e o teto livre é ${pool?.remainingUpper ?? 0}. Considere 2★ e um carry alternativo dentro da meta.`,

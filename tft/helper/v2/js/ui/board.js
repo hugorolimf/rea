@@ -1,6 +1,6 @@
 import { el, svg, setVars, reconcile } from "../dom.js";
 import { boardSize, hexCenter, hexPoints } from "../math.js";
-import { champIcon } from "./glyphs.js";
+import { champIcon, traitIcon } from "./glyphs.js";
 
 const SIZE = 36,
   COLS = 7,
@@ -167,10 +167,22 @@ export function mountBoard(root, traitsRoot) {
   };
 
   /* Sinergias: contagem e progresso até o próximo patamar. */
+  // Ícone da sinergia como máscara: a silhueta do jogo é tingida pela cor do estado (ativa ou não).
   const traitNode = () =>
-    el("li", { class: "trait" }, el("b"), el("span"), el("i"));
+    el(
+      "li",
+      { class: "trait" },
+      el("em", { class: "trait-icon", "aria-hidden": "true" }),
+      el("b"),
+      el("span"),
+      el("i"),
+    );
   const updateTrait = (li, t) => {
     li.dataset.active = t.active ? "1" : "0";
+    const icon = traitIcon(t.name),
+      mark = li.querySelector(".trait-icon");
+    mark.hidden = !icon;
+    if (icon) mark.style.setProperty("--icon", `url("${icon}")`);
     li.querySelector("b").textContent = t.count;
     li.querySelector("span").textContent = t.name;
     setVars(li.querySelector("i"), {

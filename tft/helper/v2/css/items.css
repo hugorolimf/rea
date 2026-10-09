@@ -1,0 +1,640 @@
+@layer components {
+  /* Visão "Itens": tier por categoria, grade de receitas e matriz de atributos. */
+  .app[data-view="items"] {
+    & .hud,
+    & .notice,
+    & .deck,
+    & .skeleton,
+    & .waiting {
+      display: none !important;
+    }
+  }
+  .items {
+    --t-S: var(--gold);
+    --t-A: var(--go);
+    --t-B: var(--blue);
+    --t-C: oklch(0.72 0.03 250);
+    --t-D: var(--danger);
+    & .tier-C {
+      background: var(--t-C);
+      color: oklch(0.22 0.02 250);
+    }
+    & .tier-D {
+      background: var(--t-D);
+      color: oklch(0.98 0 0);
+    }
+  }
+  .items [data-tier="S"] {
+    --tc: var(--t-S);
+  }
+  .items [data-tier="A"] {
+    --tc: var(--t-A);
+  }
+  .items [data-tier="B"] {
+    --tc: var(--t-B);
+  }
+  .items [data-tier="C"] {
+    --tc: var(--t-C);
+  }
+  .items [data-tier="D"] {
+    --tc: var(--t-D);
+  }
+
+  /* Barra: abas e busca; filtros: categoria e atributos */
+  .items-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-bottom: 10px;
+    & input[type="search"] {
+      flex: 1 1 240px;
+      max-width: 380px;
+      margin-left: auto;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      &::placeholder {
+        color: var(--faint);
+      }
+    }
+  }
+  .items-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 16px;
+    & .seg small {
+      margin-left: 3px;
+      color: var(--faint);
+      font-weight: 700;
+    }
+  }
+  .attr-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    & button {
+      --c: oklch(0.8 0.13 var(--h));
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition:
+        border-color 0.2s,
+        background 0.2s,
+        color 0.2s;
+      & i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--c);
+      }
+      &:hover {
+        border-color: var(--line);
+      }
+      &[aria-pressed="true"] {
+        border-color: color-mix(in oklab, var(--c), transparent 40%);
+        background: color-mix(in oklab, var(--c), transparent 86%);
+        color: var(--c);
+      }
+    }
+  }
+
+  .items-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 20px;
+    align-items: start;
+  }
+  .items-main {
+    min-width: 0;
+  }
+  .items:has(.items-main[data-tab="attrs"]) .items-body {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .items-note,
+  .items-empty {
+    margin-top: 10px;
+    color: var(--faint);
+    font-size: 11.5px;
+  }
+
+  /* Ícone quadrado de item; sem imagem, as iniciais */
+  .it-icon {
+    --s: 44px;
+    position: relative;
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: var(--s);
+    height: var(--s);
+    overflow: hidden;
+    border-radius: calc(var(--s) * 0.24);
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: calc(var(--s) * 0.32);
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px var(--line);
+    &::before {
+      content: attr(data-i);
+    }
+    & img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  .it-dots {
+    display: flex;
+    gap: 2px;
+    min-height: 5px;
+    & i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: oklch(0.8 0.13 var(--h));
+    }
+  }
+
+  /* Tier: faixas S–D */
+  .tier-board {
+    display: grid;
+    gap: 8px;
+  }
+  .tier-row {
+    --tc: var(--line);
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr);
+    min-height: 78px;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--tc), transparent 72%);
+    border-radius: 14px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--tc), transparent 86%),
+      color-mix(in oklab, var(--tc), transparent 97%) 45%,
+      transparent
+    );
+  }
+  .tier-label {
+    display: grid;
+    place-items: center;
+    background: color-mix(in oklab, var(--tc), transparent 15%);
+    color: oklch(0.2 0.02 250);
+    font-size: 22px;
+    font-weight: 900;
+  }
+  .tier-row[data-tier="none"] .tier-label {
+    color: var(--muted);
+  }
+  .tier-items {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 12px;
+  }
+  .tier-empty {
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .it-tile {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 4px;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    cursor: pointer;
+    transition:
+      translate 0.2s var(--spring-ease),
+      opacity 0.25s;
+    & b {
+      color: var(--text);
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+    &:hover {
+      translate: 0 -2px;
+    }
+    &[aria-current="true"] .it-icon {
+      box-shadow:
+        0 0 0 2px var(--bg),
+        0 0 0 4px var(--tc, var(--go));
+    }
+    &[data-dim] {
+      opacity: 0.2;
+    }
+  }
+
+  /* Receitas: grade componente × componente */
+  .recipe-wrap {
+    overflow-x: auto;
+  }
+  .recipe {
+    margin: 0 auto;
+    border-collapse: separate;
+    border-spacing: 4px;
+    & th,
+    & td {
+      padding: 0;
+      text-align: center;
+    }
+    & tbody tr:hover > th .it-icon,
+    & thead th:hover .it-icon {
+      box-shadow: 0 0 0 2px var(--go);
+    }
+  }
+  .rc-comp {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+  .rc-cell {
+    --tc: var(--line);
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--tc), var(--bg) 82%);
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--tc), transparent 35%);
+    cursor: pointer;
+    transition:
+      transform 0.15s,
+      opacity 0.25s;
+    & .it-icon {
+      box-shadow: none;
+    }
+    & em {
+      position: absolute;
+      right: -4px;
+      bottom: -4px;
+      display: grid;
+      place-items: center;
+      min-width: 15px;
+      height: 15px;
+      border-radius: 5px;
+      background: var(--tc);
+      color: oklch(0.2 0.02 250);
+      font-size: 9px;
+      font-style: normal;
+      font-weight: 900;
+    }
+    &:hover {
+      z-index: 1;
+      transform: scale(1.1);
+    }
+    &[aria-current="true"] {
+      box-shadow:
+        0 0 0 2px var(--bg),
+        0 0 0 4px var(--tc);
+    }
+    &[data-dim] {
+      opacity: 0.16;
+    }
+  }
+  .recipe td.diag .rc-cell {
+    border-radius: 50%;
+  }
+
+  /* Atributos: matriz item × atributo, barras proporcionais ao maior valor da coluna */
+  .attr-wrap {
+    overflow-x: auto;
+  }
+  .attr-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    & thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 6px 4px;
+      background: var(--bg);
+      text-align: left;
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    & thead button {
+      --c: oklch(0.8 0.13 var(--h));
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 4px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: none;
+      cursor: pointer;
+      & i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--c);
+      }
+      &[aria-pressed="true"] {
+        border-color: color-mix(in oklab, var(--c), transparent 50%);
+        color: var(--c);
+      }
+    }
+    & tbody tr {
+      border-top: 1px solid var(--line-soft);
+      cursor: pointer;
+      &:hover {
+        background: color-mix(in oklab, var(--surface), transparent 40%);
+      }
+      &[aria-current="true"] {
+        background: color-mix(in oklab, var(--go), transparent 92%);
+      }
+    }
+    & tbody th {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px 5px 0;
+      font-weight: 600;
+      text-align: left;
+      white-space: nowrap;
+      & span {
+        max-width: 132px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      & .tier {
+        flex: none;
+        min-width: 18px;
+        height: 18px;
+        font-size: 10px;
+      }
+    }
+    & td {
+      --c: oklch(0.8 0.13 var(--h));
+      position: relative;
+      min-width: 40px;
+      padding: 0 3px;
+      & .bar {
+        position: absolute;
+        top: 50%;
+        left: 3px;
+        width: calc((100% - 6px) * var(--w));
+        height: 18px;
+        translate: 0 -50%;
+        border-radius: 5px;
+        background: color-mix(in oklab, var(--c), transparent 74%);
+      }
+      & b {
+        position: relative;
+        padding-left: 6px;
+        color: var(--c);
+        font-size: 11.5px;
+      }
+    }
+  }
+
+  /* Detalhe do item */
+  .item-detail {
+    position: sticky;
+    top: 8px;
+    display: grid;
+    gap: 14px;
+    max-height: calc(100dvh - 40px);
+    overflow: hidden auto;
+    padding: 16px;
+    border: 1px solid var(--line-soft);
+    border-radius: 16px;
+    background: color-mix(in oklab, var(--surface), var(--bg) 40%);
+    /* Filhos da grade não crescem até a largura mínima do conteúdo: o texto quebra dentro do cartão. */
+    & > * {
+      min-width: 0;
+    }
+    & h4 {
+      margin-bottom: 7px;
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+  }
+  .dt-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    & > div {
+      flex: 1;
+      min-width: 0;
+    }
+    & h3 {
+      font-size: 16px;
+      font-weight: 750;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    & p {
+      color: var(--faint);
+      font-size: 11px;
+    }
+    & .tier.big {
+      min-width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      font-size: 18px;
+    }
+  }
+  .dt-avg {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    & b {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    & span {
+      color: var(--faint);
+      font-size: 11px;
+    }
+  }
+  /* Régua de colocação 3º–6º: marcador do item e traço da média da categoria */
+  .dt-scale {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    margin: 12px 0 6px;
+    padding-top: 15px;
+    color: var(--faint);
+    font-size: 9.5px;
+    &::before {
+      content: "";
+      position: absolute;
+      top: 4px;
+      right: 0;
+      left: 0;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--go), var(--gold) 45%, var(--danger));
+      opacity: 0.55;
+    }
+    & .mean {
+      position: absolute;
+      top: 0;
+      left: calc(var(--m) * 100%);
+      width: 2px;
+      height: 14px;
+      translate: -1px 0;
+      border-radius: 1px;
+      background: var(--muted);
+    }
+    & .mark {
+      position: absolute;
+      top: 0;
+      left: calc(var(--x) * 100%);
+      width: 14px;
+      height: 14px;
+      translate: -7px 0;
+      border-radius: 50%;
+      background: var(--text);
+      box-shadow: 0 0 0 3px var(--bg);
+      transition: left var(--settle-ms) var(--settle-ease);
+    }
+  }
+  .dt-delta {
+    font-size: 12px;
+    font-weight: 600;
+    &[data-good="1"] {
+      color: var(--go);
+    }
+    &[data-good="0"] {
+      color: var(--danger);
+    }
+  }
+  .dt-sample {
+    margin-top: 3px;
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .dt-stats ul {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    & li {
+      --c: oklch(0.8 0.13 var(--h));
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 9px;
+      background: color-mix(in oklab, var(--c), transparent 90%);
+      & i {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--c);
+      }
+      & b {
+        color: var(--c);
+        font-size: 13px;
+      }
+      & span {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 10.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+  .dt-recipe p,
+  .dt-makes p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    & button {
+      position: relative;
+      padding: 0;
+      border: 0;
+      background: none;
+      cursor: pointer;
+    }
+    & .op {
+      color: var(--faint);
+      font-weight: 700;
+    }
+    & .tier.mini {
+      position: absolute;
+      right: -4px;
+      bottom: -4px;
+      min-width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      font-size: 8.5px;
+    }
+  }
+  .dt-desc p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    & + p {
+      margin-top: 4px;
+    }
+  }
+  .dt-users p {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    & span {
+      display: grid;
+      justify-items: center;
+      gap: 3px;
+      width: 46px;
+    }
+    & small {
+      max-width: 46px;
+      overflow: hidden;
+      color: var(--faint);
+      font-size: 9.5px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .items-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .item-detail {
+      position: static;
+      max-height: none;
+    }
+  }
+}
