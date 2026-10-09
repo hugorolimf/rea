@@ -1,0 +1,3 @@
+server.stdout.log
+server.stderr.log
+catalog.raw.json
