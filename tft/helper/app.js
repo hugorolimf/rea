@@ -39,7 +39,8 @@ let inventory = [],
   suggestionRevision = 0,
   lastRecHTML = "";
 let lastAnalysisKey = "",
-  activeScreen = "live";
+  activeScreen = "live",
+  latestScreen = null;
 const fetchJSON = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
@@ -128,13 +129,13 @@ function renderBench() {
 function render() {
   const d = data,
     m = d.metadata;
-  $("connection").textContent = m.actionable
-    ? "Partida ao vivo"
-    : "Última leitura · fora do modo ao vivo";
+  $("connection").textContent = m.actionable ? "Ao vivo" : "Planejamento";
   document.body.classList.toggle("snapshot-only", !m.actionable);
   $("sideconnection").textContent = m.actionable
     ? "Partida ao vivo"
-    : "Última leitura";
+    : "Planejamento";
+  $("connection").hidden = !m.actionable;
+  $("freshness").hidden = !m.actionable;
   $("connection").className = "status " + (m.actionable ? "live" : "");
   $("freshness").className = "notice " + (m.actionable ? "live" : "");
   $("freshness").textContent = m.actionable
@@ -154,9 +155,34 @@ function render() {
   ]
     .map(
       ([label, value, note]) =>
-        `<div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="label">${note}</div></div>`,
+        `<div class="metric"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="label">${esc(note)}</div></div>`,
     )
     .join("");
+  $("sidebar-health").textContent = `${d.self.health ?? "—"} HP`;
+  $("sidebar-level").textContent = $("level").value || "—";
+  $("sidebar-level-source").textContent = !$("autolevel").checked
+    ? "informado manualmente"
+    : latestScreen?.level != null
+      ? "lido da tela"
+      : "estimado pelo tabuleiro";
+  $("sidebar-xp").textContent =
+    latestScreen?.xp != null ? `${latestScreen.xp} XP` : "—";
+  $("sidebar-xp-source").textContent =
+    latestScreen?.xp != null ? "lido da tela" : "não lido";
+  $("sidebar-gold").textContent =
+    $("gold").value !== "" ? `${$("gold").value}g` : "—";
+  $("sidebar-gold-source").textContent = goldManual
+    ? "informado manualmente"
+    : latestScreen?.gold != null
+      ? "lido da tela"
+      : "não lido";
+  $("sidebar-phase").textContent = m.actionable
+    ? latestScreen?.stage
+      ? `Fase ${latestScreen.stage}`
+      : m.phase
+        ? `Fase ${m.phase}`
+        : "Ao vivo"
+    : "Sem partida ativa";
   $("board").innerHTML = d.self.units.map(unit).join("");
   $("viewtitle").textContent = d.viewedBoard
     ? "Tabuleiro observado · " + d.viewedBoard.name
@@ -167,12 +193,19 @@ function render() {
   const recHTML = d.recommendations
     .map(
       (r) =>
-        `<article class="path"><div class="rank"><span>${r.rank === 1 ? "PRIMEIRO CAMINHO" : "ALTERNATIVA " + r.rank}</span><span class="score">${r.score}</span></div><h3>${r.meta ? `<span class="tier tier-${r.meta.tier}">${r.meta.tier}</span> ` : ""}${esc(r.title)} <small class="muted">${r.board.length} campeões${r.meta ? ` · média ${r.meta.avg} · top 4 ${r.meta.top4}% · ${esc(r.meta.levelling || "")}` : ""}</small></h3><button data-pick="${r.rank - 1}">Escolher comp e copiar código</button><p>Carry sugerido: <strong class="good">${esc(r.carry)}</strong></p><div>${r.board.map(champTag).join("")}</div><ul>${r.reasons.map((t) => `<li>${esc(t)}</li>`).join("")}</ul><h4>Comprar se aparecer</h4>${r.targets.map((t) => `<div class="target"><span>${esc(t.name)} <span class="muted">${t.cost}g</span></span><span class="${t.enemyCopies ? "bad" : "good"}">${t.enemyCopies ? "Rivais: " + t.enemyCopies : "Sem disputa visível"}</span></div>`).join("") || "<p>Priorize evoluir as unidades que já tem.</p>"}<h4>Builds de itens</h4>${itemPlansHTML(r.itemPlans)}<h4>Transição</h4><p>Manter: ${esc(r.keep.join(", ")) || "Nenhuma unidade do núcleo atual."}</p>${r.benchInstead.length ? `<p>Reservar, sem vender ainda: ${esc(r.benchInstead.join(", "))}.</p>` : ""}<div class="plan"><strong>Roll orientativo: nível ${r.roll.level}</strong><br>${r.roll.budget === null ? "Informe ouro para estimar um orçamento de reroll." : `Orçamento conservador: ${r.roll.budget} rolls (${r.roll.budget * 2}g), antes do custo de comprar unidades.`}<br>${r.roll.neededForTwoStar ? `Faltam ${r.roll.neededForTwoStar} cópias nominais para o carry 2★; teto disponível: ${r.roll.availableUpper}.` : "Carry já reúne cópias nominais para 2★; priorize o próximo upgrade."}<br><span class="muted">Se seu nível ainda não é o nível de roll, estabilize e prepare o avanço. Não gaste só para seguir a comp.</span></div></article>`,
+        `<article class="path"><div class="rank"><span>${r.rank === 1 ? "PRIMEIRO CAMINHO" : "ALTERNATIVA " + r.rank}</span><span class="score">${r.score}</span></div><h3>${r.meta ? `<span class="tier tier-${r.meta.tier}">${r.meta.tier}</span> ` : ""}${esc(r.title)} <small class="muted">${r.board.length} campeões${r.meta ? ` · média ${r.meta.avg} · top 4 ${r.meta.top4}% · ${esc(r.meta.levelling || "")}` : ""}</small></h3><button data-pick="${r.rank - 1}">Escolher comp e copiar código</button><p>Carry sugerido: <strong class="good">${esc(r.carry)}</strong></p><div class="comp-roster">${r.board.map(champTag).join("")}</div><details class="comp-details" data-comp-details="${esc(r.meta?.id ?? r.title)}"><summary>Plano, itens e transição</summary><ul>${r.reasons.map((t) => `<li>${esc(t)}</li>`).join("")}</ul><h4>Comprar se aparecer</h4>${r.targets.map((t) => `<div class="target"><span>${esc(t.name)} <span class="muted">${t.cost}g</span></span><span class="${t.enemyCopies ? "bad" : "good"}">${t.enemyCopies ? "Rivais: " + t.enemyCopies : "Sem disputa visível"}</span></div>`).join("") || "<p>Priorize evoluir as unidades que já tem.</p>"}<h4>Builds de itens</h4>${itemPlansHTML(r.itemPlans)}<h4>Transição</h4><p>Manter: ${esc(r.keep.join(", ")) || "Nenhuma unidade do núcleo atual."}</p>${r.benchInstead.length ? `<p>Reservar, sem vender ainda: ${esc(r.benchInstead.join(", "))}.</p>` : ""}<div class="plan"><strong>Roll orientativo: nível ${r.roll.level}</strong><br>${r.roll.budget === null ? "Informe ouro para estimar um orçamento de reroll." : `Orçamento conservador: ${r.roll.budget} rolls (${r.roll.budget * 2}g), antes do custo de comprar unidades.`}<br>${r.roll.neededForTwoStar ? `Faltam ${r.roll.neededForTwoStar} cópias nominais para o carry 2★; teto disponível: ${r.roll.availableUpper}.` : "Carry já reúne cópias nominais para 2★; priorize o próximo upgrade."}<br><span class="muted">Se seu nível ainda não é o nível de roll, estabilize e prepare o avanço. Não gaste só para seguir a comp.</span></div></details></article>`,
     )
     .join("");
   if (recHTML !== lastRecHTML) {
     lastRecHTML = recHTML;
+    const expanded = new Set(
+      [...$("recommendations").querySelectorAll("details[open]")].map(
+        (element) => element.dataset.compDetails,
+      ),
+    );
     $("recommendations").innerHTML = recHTML;
+    for (const element of $("recommendations").querySelectorAll("details"))
+      element.open = expanded.has(element.dataset.compDetails);
   }
   $("counters").innerHTML = d.counters
     .map(
@@ -223,6 +256,7 @@ async function update() {
   $("refresh").disabled = true;
   document.body.classList.add("is-loading");
   try {
+    if (!catalogReady) await initializeCatalog();
     const m = await fetchJSON("/api/state");
     if (lastGame !== null && lastGame !== m.gameId) {
       chosenAugments = [];
@@ -238,6 +272,7 @@ async function update() {
     if ($("autolevel").checked && m.estimatedLevel)
       $("level").value = m.estimatedLevel;
     const sc = m.screen;
+    latestScreen = sc ?? null;
     if (!goldManual) $("gold").value = sc?.gold ?? "";
     $("goldsource").textContent = goldManual
       ? "informado por você"
@@ -508,64 +543,18 @@ menuButton.onclick = () => {
 };
 syncMenu();
 const navLinks = [...document.querySelectorAll("#sidebar .nav")];
-const strategyPanel = $("strategy-sidebar"),
-  strategyToggle = $("strategy-toggle"),
-  strategyBackdrop = $("strategy-backdrop"),
-  compactStrategy = matchMedia("(max-width: 1180px)");
-let strategyReturnFocus = null;
-function closeStrategy(restoreFocus = true) {
-  const wasOpen = document.body.classList.contains("strategy-open");
-  document.body.classList.remove("strategy-open");
-  strategyToggle.setAttribute("aria-expanded", "false");
-  strategyBackdrop.hidden = true;
-  strategyPanel.removeAttribute("aria-modal");
-  strategyPanel.removeAttribute("role");
-  if (wasOpen && restoreFocus)
-    strategyReturnFocus?.focus({ preventScroll: true });
-}
-function openStrategy() {
-  if (!compactStrategy.matches) return;
-  strategyReturnFocus = document.activeElement;
-  document.body.classList.add("strategy-open");
-  strategyToggle.setAttribute("aria-expanded", "true");
-  strategyBackdrop.hidden = false;
-  strategyPanel.setAttribute("role", "dialog");
-  strategyPanel.setAttribute("aria-modal", "true");
-  $("strategy-close").focus();
-}
-strategyToggle.addEventListener("click", openStrategy);
-$("strategy-close").addEventListener("click", () => closeStrategy());
-strategyBackdrop.addEventListener("click", () => closeStrategy());
-compactStrategy.addEventListener("change", () => closeStrategy(false));
-document.addEventListener("keydown", (event) => {
-  if (!document.body.classList.contains("strategy-open")) return;
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeStrategy();
-  }
-  if (event.key !== "Tab") return;
-  const focusable = [
-    ...strategyPanel.querySelectorAll(
-      "button, a[href], input, select, summary, [tabindex='0']",
-    ),
-  ].filter((element) => element.getClientRects().length && !element.disabled);
-  const first = focusable[0],
-    last = focusable.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last?.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first?.focus();
-  }
-});
 document.addEventListener("compass:inspect", (event) => {
   location.hash = "planner";
   showScreen("planner");
   if (inspectPlannerChampion(event.detail.championId, event.detail.source)) {
     $("inspector").tabIndex = -1;
     $("inspector").focus({ preventScroll: true });
-    $("inspector").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    $("inspector").scrollIntoView({
+      block: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   }
 });
 function highlightNav(id) {
@@ -593,7 +582,7 @@ const SCREEN_OF = {
 for (const el of document.querySelector("main").children) {
   if (
     el.matches(
-      "header,.controls,.summary,#error,#freshness,#decision,#actionnow,#compchanged",
+      "header,footer,.controls,.summary,#error,#freshness,#decision,#actionnow,#compchanged",
     )
   )
     continue;
@@ -605,7 +594,6 @@ function showScreen(screen, target) {
     el.classList.toggle("on", el.dataset.screen === screen);
   highlightNav(screen);
   document.body.dataset.screen = screen;
-  closeStrategy(false);
   if (data) {
     if (screen === "pool") renderPool();
     if (screen === "owneditems") renderOwnedItems(data.ownedItemAdvice);
@@ -628,9 +616,9 @@ function route() {
 }
 addEventListener("hashchange", route);
 route();
-try {
-  const r = await fetch("/api/catalog");
-  const d = await r.json();
+let catalogReady = false;
+async function initializeCatalog() {
+  const d = await fetchJSON("/api/catalog");
   catalog = d.champions;
   initPlanner(d, update);
   $("freeitem").innerHTML = d.items
@@ -651,7 +639,12 @@ try {
         `<option value="${esc(c.id)}">${esc(c.name)} · ${c.cost}g</option>`,
     )
     .join("");
+
+  catalogReady = true;
+}
+try {
   await update();
+} finally {
   connectCapture();
   setInterval(() => {
     if (!document.hidden) void update();
@@ -659,9 +652,6 @@ try {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) void update();
   });
-} catch (e) {
-  $("error").hidden = false;
-  $("error").textContent = e.message;
 }
 
 function connectCapture() {

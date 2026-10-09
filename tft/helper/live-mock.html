@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TFT · Galeria de cenários</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b141d; --card: #101c27; --line: #2a4052; --text: #d8e6f2; --muted: #9db6c9; --gold: #c8963d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 12px 20px; background: #0b141dee; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  select, input[type="search"] { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  main { padding: 16px 20px 40px; }
+  h2 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); margin: 22px 0 10px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; max-width: var(--w); }
+  figcaption a { color: var(--text); font-weight: 700; text-decoration: none; }
+  figcaption a:hover { color: #75bcac; }
+  figcaption small { color: var(--muted); flex: 1; min-width: 0; }
+  .frame { width: calc(var(--w) * var(--z)); height: calc(var(--h) * var(--z)); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #000; }
+  iframe { width: var(--w); height: var(--h); border: 0; transform: scale(var(--z)); transform-origin: 0 0; background: #0b141d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Galeria · tela Ao vivo</h1>
+  <label>Largura <select id="width"><option value="1440">1440 · desktop</option><option value="1180">1180 · notebook</option><option value="1024">1024 · tablet largo</option><option value="768">768 · tablet</option><option value="390">390 · celular</option></select></label>
+  <label>Altura <select id="height"><option value="900">900</option><option value="1400">1400</option><option value="2000" selected>2000 · rolagem longa</option></select></label>
+  <label>Zoom <select id="zoom"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5" selected>50%</option><option value="0.33">33%</option></select></label>
+  <label><input id="more" type="checkbox"> Abrir “Mais sobre a partida”</label>
+  <input id="filter" type="search" placeholder="Filtrar cenário…" aria-label="Filtrar cenário">
+</header>
+<main id="gallery"></main>
+<script src="/live-mock.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const scenarios = window.LIVE_MOCK_SCENARIOS ?? [];
+  function draw() {
+    const q = $("filter").value.trim().toLowerCase();
+    document.documentElement.style.setProperty("--w", $("width").value + "px");
+    document.documentElement.style.setProperty("--h", $("height").value + "px");
+    document.documentElement.style.setProperty("--z", $("zoom").value);
+    const groups = [...new Set(scenarios.map((s) => s.group))];
+    $("gallery").innerHTML = groups.map((g) => {
+      const list = scenarios.filter((s) => s.group === g && (s.label + s.id + s.hint).toLowerCase().includes(q));
+      if (!list.length) return "";
+      return `<h2>${g}</h2><div class="grid">${list.map((s) => {
+        const url = `/?mock=${s.id}${$("more").checked ? "&open=1" : ""}#live`;
+        return `<figure><figcaption><a href="${url}" target="_blank" rel="noopener">${s.label} ↗</a><small>${s.hint}</small></figcaption><div class="frame"><iframe src="${url}" title="${s.label}" loading="lazy"></iframe></div></figure>`;
+      }).join("")}</div>`;
+    }).join("") || "<p>Nenhum cenário encontrado.</p>";
+  }
+  for (const id of ["width", "height", "zoom", "more"]) $(id).onchange = draw;
+  let timer;
+  $("filter").oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 200); };
+  draw();
+</script>
+</body>
+</html>

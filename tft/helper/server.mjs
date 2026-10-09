@@ -72,6 +72,33 @@ const captures = captureBoards(
 );
 // A análise custa ~1 s de CPU; o snapshot só muda quando o jogo regrava o arquivo.
 const analysisCache = new Map();
+const baseAnalysisCache = new Map();
+let boardSnapshotCache = null;
+async function readBoardSnapshot() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const stat = await fs.stat(boardPath);
+    const key = `${stat.mtimeMs}:${stat.size}`;
+    if (boardSnapshotCache?.key === key)
+      return { snapshot: structuredClone(boardSnapshotCache.snapshot), stat };
+    const raw = await fs.readFile(boardPath, "utf8");
+    const after = await fs.stat(boardPath);
+    if (after.mtimeMs !== stat.mtimeMs || after.size !== stat.size) continue;
+    let snapshot;
+    try {
+      snapshot = JSON.parse(raw);
+    } catch (error) {
+      if (attempt === 0 && error instanceof SyntaxError) continue;
+      throw error;
+    }
+    if (!Array.isArray(snapshot.statsBlock?.players))
+      throw Error("Snapshot sem jogadores.");
+    boardSnapshotCache = { key, snapshot };
+    return { snapshot: structuredClone(snapshot), stat };
+  }
+  throw Error(
+    "O jogo está atualizando o tabuleiro. Tente atualizar novamente.",
+  );
+}
 let sticky = { game: null, id: null }; // comp de meta sugerida por último nesta partida
 let localNames = {};
 try {
@@ -247,14 +274,10 @@ function validate(input) {
   };
 }
 async function current() {
-  const [raw, stat, session] = await Promise.all([
-    fs.readFile(boardPath, "utf8"),
-    fs.stat(boardPath),
+  const [{ snapshot, stat }, session] = await Promise.all([
+    readBoardSnapshot(),
     lcu(),
   ]);
-  const snapshot = JSON.parse(raw);
-  if (!Array.isArray(snapshot.statsBlock?.players))
-    throw Error("Snapshot sem jogadores.");
   const age = Math.max(0, (Date.now() - stat.mtimeMs) / 1000);
   const sameGame = session?.gameId === snapshot.gameId;
   const local = snapshot.statsBlock.players.find(
@@ -431,7 +454,28 @@ const server = http.createServer(async (req, res) => {
         );
         options.targetLevel = targetAuto.level;
       }
-      const base = analyze(snapshot, catalog, options);
+      // Scouting, shop, XP and item removers affect tactics/strategy, not composition search.
+      const baseKey = JSON.stringify({
+        source: metadata.modifiedAt,
+        builds: meta.fetchedAt,
+        comps: metaComps.fetchedAt,
+        level: options.level,
+        targetLevel: options.targetLevel,
+        gold: options.gold,
+        playerId: options.playerId,
+        bench: options.bench,
+        inventory: options.inventory,
+        previewIds: options.previewIds,
+        augmentTraits: options.augmentTraits,
+        stickyCompId: options.stickyCompId,
+      });
+      let base = baseAnalysisCache.get(baseKey);
+      if (!base) {
+        base = analyze(snapshot, catalog, options);
+        if (baseAnalysisCache.size >= 12)
+          baseAnalysisCache.delete(baseAnalysisCache.keys().next().value);
+        baseAnalysisCache.set(baseKey, structuredClone(base));
+      } else base = structuredClone(base);
       if (base.previewGrow.length)
         options.previewIds = [
           ...options.previewIds,
@@ -446,7 +490,7 @@ const server = http.createServer(async (req, res) => {
         plan.playbook = playbook(plan, analysis, options, metadata);
         plan.stage = stagePlan(plan, analysis, catalog, options);
         plan.strategy = strategy(plan, analysis, options);
-        if (plan.playbook)
+        if (plan.playbook && metadata.actionable && analysis.self.health > 0)
           Object.assign(plan.playbook, {
             headline: plan.strategy.headline,
             style: plan.strategy.style || plan.playbook.style,
@@ -539,6 +583,10 @@ const server = http.createServer(async (req, res) => {
       "/app-shell.css": "app-shell.css",
       "/live-view.css": "live-view.css",
       "/live-view.js": "live-view.js",
+      "/strategy-view.js": "strategy-view.js",
+      "/live-mock.js": "live-mock.js",
+      "/live-mock.html": "live-mock.html",
+      "/live-mock-base.json": "live-mock-base.json",
     };
     if (req.method === "GET" && files[url.pathname]) {
       res.writeHead(200, {
@@ -546,7 +594,9 @@ const server = http.createServer(async (req, res) => {
           ? "text/javascript"
           : url.pathname.endsWith(".css")
             ? "text/css"
-            : "text/html; charset=utf-8",
+            : url.pathname.endsWith(".json")
+              ? "application/json"
+              : "text/html; charset=utf-8",
       });
       return res.end(await fs.readFile(path.join(root, files[url.pathname])));
     }

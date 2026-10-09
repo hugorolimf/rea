@@ -96,3 +96,15 @@ O bloco central do Planejador reúne a decisão inteira: ação de agora, quadro
 O leitor de tela reconhece o Removedor de Itens no banco, mas não lê a quantidade no selo do ícone (o OCR não pegou o número na captura de teste); o helper só sabe se há ou não removedor. A estratégia também compara o ganho esperado de força de rolar contra subir de nível, com as chances reais da pool, e usa nível médio e unidades 2★+ dos rivais. Tudo heurístico; não simula combate.
 
 Estratégia em painel lateral direito persistente no desktop, compartilhado entre telas: nível/XP, roll, upgrades de campeões e economia acompanham a comp ativa/selecionada. Menu esquerdo inicia compacto. Em telas estreitas a estratégia entra no fluxo para não encobrir tabuleiro/controles. A estratégia saiu do bloco central stageplan; IDs são únicos e cálculo permanece o mesmo.
+
+## Aplicativo de acompanhamento — outubro de 2026
+
+A rota inicial `#live` reúne o campo observado, os itens equipados, trocas e compras sugeridas. A página `#planner` mantém o planejamento e posicionamento separado da leitura do campo. Cards de campeão abrem a inspeção; filtros e grupos recolhíveis preservam foco e preferências durante as atualizações. As alternativas de comps continuam dinâmicas; a meta que você escolheu continua prioritária.
+
+No desktop, economia e estratégia permanecem à direita. Em telas menores, abra **Economia e estratégia**; Escape ou o botão Fechar devolvem o foco ao controle de origem. Mobile tem cinco destinos e acesso a adversários/pool pelo Lobby. **Corrigir dados e calibrar leitura** permite informar nível, ouro e nível alvo quando a captura não reconhece esses valores.
+
+Dados antigos/eliminado usam modo planejamento e não têm chamadas de gasto ao vivo. Campo observado e peças da reserva não são tratados como a mesma coisa; posições continuam sugestões inferidas. Os controles só alteram o helper, nunca compram/vendem/movem peças no jogo.
+
+O cliente evita repetir análise com entradas iguais, pausa atualizações de fundo quando a página não está visível e usa SSE para invalidar dados novos. Snapshot é reutilizado somente enquanto mtime/tamanho permanecem iguais; busca de comps e análise final usam caches separados. Scouting, itens, aprimoramentos, estágio, XP, ouro e mudança de validade invalidam suas etapas correspondentes. Resultados do motor são clonados antes de atualizar táticas.
+
+Verificação efetuada: sintaxe JavaScript, contratos de IDs/rotas e diagnóstico de APIs com snapshot real. Três sugestões de alvo nível 9 retornaram nove campeões e códigos TFT. Nenhuma suíte de testes executada. Revisão visual por computer-use interrompida conforme instrução do usuário; aparência e gestos em navegador ainda precisam de avaliação do usuário. O planejador ainda identifica cópias repetidas pelo campeão, sem identidade individual para cada peça.

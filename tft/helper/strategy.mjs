@@ -420,6 +420,10 @@ export function strategy(plan, analysis, options) {
     next =
       gold === null || gold >= 50 ? null : (Math.floor(gold / 10) + 1) * 10;
   const economy = {
+    gold,
+    interest,
+    next,
+    keep: d.keep ?? null,
     value: gold === null ? "–" : gold + "g",
     verdict:
       d.action === "ECONOMIZAR"
@@ -456,6 +460,12 @@ export function strategy(plan, analysis, options) {
       )
     : null;
   const leveling = {
+    level,
+    xp: xp ? { have: Number(xp[1]), total: Number(xp[2]) } : null,
+    cost: d.levelCost ?? null,
+    go: d.action === "SUBIR NÍVEL",
+    curve,
+    finalLevel: d.finalLevel,
     value: "Nível " + level,
     verdict:
       d.action === "SUBIR NÍVEL"
@@ -514,6 +524,12 @@ export function strategy(plan, analysis, options) {
     };
   });
   const rolling = {
+    level,
+    at: rollAt,
+    go: d.action === "ROLAR",
+    spend: d.action === "ROLAR" ? (d.spend ?? 0) : 0,
+    shops,
+    keep: d.keep ?? null,
     value: "Nível de roll " + rollAt,
     verdict:
       d.action === "ROLAR"

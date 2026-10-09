@@ -1,4 +1,5 @@
 import { updateLiveView } from "./live-view.js";
+import { strategyHTML } from "./strategy-view.js";
 const $ = (id) => document.getElementById(id);
 const esc = (v) =>
   String(v ?? "").replace(
@@ -72,10 +73,9 @@ export function champTag(u) {
   return `<span class="pill ${u.owned ? "owned" : ""}">${icon(id, u.name)}${u.owned ? "✓ " : ""}${esc(u.name)} ${u.stars ? u.stars + "★" : u.cost ? u.cost + "g" : ""}</span>`;
 }
 // Atualizações periódicas regravavam innerHTML idêntico, recriando nós (perdia hover, foco e menus abertos).
-// O setter abaixo ignora HTML igual e faz um fade curto quando o conteúdo muda de fato.
+// O setter abaixo ignora HTML igual; não há animação de opacidade (o movimento fica a cargo da tela ao vivo).
 export function smooth(ids) {
-  const base = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML"),
-    calm = matchMedia("(prefers-reduced-motion: reduce)");
+  const base = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
   for (const id of ids) {
     const el = $(id);
     if (!el) continue;
@@ -88,14 +88,8 @@ export function smooth(ids) {
       set(v) {
         v = String(v);
         if (v === last) return;
-        const first = last === null;
         last = v;
         base.set.call(el, v);
-        if (!first && !calm.matches && el.tagName !== "SELECT")
-          el.animate([{ opacity: 0.4 }, { opacity: 1 }], {
-            duration: 220,
-            easing: "ease-out",
-          });
       },
     });
   }
@@ -351,11 +345,16 @@ export function renderPlanner(d) {
       )
       .join("") ||
     '<p class="muted">O plano preserva todas as unidades atuais. Priorize seus upgrades.</p>';
+  const actionable =
+    d.metadata?.actionable === true && (d.self?.health ?? 0) > 0;
   const sg = p.strategy;
-  $("actionnow").hidden = !sg;
+  $("actionnow").hidden = !sg || !actionable;
   if (sg) {
     $("actionnow").className =
-      "actionnow act-" + sg.action.toLowerCase().replace(/[^a-z]/g, "");
+      "actionnow act-" +
+      (actionable
+        ? sg.action.toLowerCase().replace(/[^a-z]/g, "")
+        : "planning");
     $("actionnow").innerHTML =
       '<div class="action-head"><span class="action-tag">' +
       esc(sg.action) +
@@ -368,105 +367,19 @@ export function renderPlanner(d) {
       "</span></div>";
   }
   $("synergytips").innerHTML = synergyTipsHTML(p.synergyTips);
-  const pct = (v) => (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
-  const sx = p.strategy,
-    panel = (title, q) =>
-      '<div class="core-card"><span>' +
-      title +
-      "</span><strong>" +
-      esc(q.value) +
-      '</strong><b class="' +
-      (/AGORA|ROLAR \d/.test(q.verdict) ? "go" : "") +
-      '">' +
-      esc(q.verdict) +
-      "</b><small>" +
-      esc(q.text) +
-      "</small>" +
-      (q.targets?.length
-        ? '<div class="core-targets">' +
-          q.targets
-            .map(
-              (t) =>
-                "<span>" +
-                icon(t.id, t.name) +
-                esc(t.name) +
-                " " +
-                t.goalStars +
-                "★: " +
-                t.own +
-                "/" +
-                t.goal +
-                " · " +
-                pct(t.chancePerShop) +
-                "/loja" +
-                (t.chanceInRoll != null
-                  ? " · " + pct(t.chanceInRoll) + " nesta rolagem"
-                  : "") +
-                (t.enemy ? " · " + t.enemy + " com rivais" : "") +
-                "</span>",
-            )
-            .join("") +
-          "</div>"
-        : "") +
-      "</div>";
-  const core = sx
-    ? '<div class="core-action act-' +
-      sx.action.toLowerCase().replace(/[^a-z]/g, "") +
-      '"><div class="action-head"><span class="action-tag">' +
-      esc(sx.action) +
-      "</span><strong>" +
-      esc(sx.headline) +
-      '</strong><span class="muted">' +
-      (p.meta ? "Tier " + p.meta.tier + " · " : "") +
-      esc(p.title) +
-      (sx.style ? " · " + esc(sx.style) : "") +
-      "</span></div>" +
-      (sx.steps.length
-        ? "<ol>" +
-          sx.steps.map((t) => "<li>" + esc(t) + "</li>").join("") +
-          "</ol>"
-        : "") +
-      (sx.panels
-        ? '<div class="core-grid">' +
-          panel("Nível", sx.panels.leveling) +
-          panel("Roll", { ...sx.panels.rolling, targets: [] }) +
-          (sx.panels.rolling.targets?.length
-            ? '<div class="core-card carry-progress"><span>Upgrades prioritários</span><div class="core-targets">' +
-              sx.panels.rolling.targets
-                .map(
-                  (t) =>
-                    "<span>" +
-                    icon(t.id, t.name) +
-                    "<span>" +
-                    esc(t.name) +
-                    " " +
-                    t.goalStars +
-                    "★<small>" +
-                    t.own +
-                    "/" +
-                    t.goal +
-                    " cópias · " +
-                    pct(t.chancePerShop) +
-                    "/loja" +
-                    (t.enemy ? " · " + t.enemy + " com rivais" : "") +
-                    "</small></span></span>",
-                )
-                .join("") +
-              "</div></div>"
-            : "") +
-          panel("Economia", sx.panels.economy) +
-          "</div>"
-        : "") +
-      "<details><summary>Por que esta decisão</summary><ul>" +
-      sx.reasons.map((t) => "<li>" + esc(t) + "</li>").join("") +
-      "</ul></details></div>"
-    : "";
-  $("strategy-comp").textContent =
-    (goalLocked ? "Meta escolhida · " : "Sugestão atual · ") +
-    (p.title ?? p.carry ?? "Composição");
+  const core = p.strategy ? strategyHTML(p, { icon, actionable }) : "";
   $("strategy-content").innerHTML =
     core || '<p class="empty-state">Estratégia indisponível nesta leitura.</p>';
-  updateLiveView($("stageplan"), p, { icon, itemTag });
+  updateLiveView(
+    $("stageplan"),
+    p,
+    { icon, itemTag },
+    {
+      currentPlan: d.currentPlan,
+      metadata: d.metadata,
+      health: d.self?.health,
+    },
+  );
   $("swapstrip").innerHTML = p.transitions.length
     ? '<span class="swap-title">Trocas</span>' +
       p.transitions

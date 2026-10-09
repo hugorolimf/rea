@@ -7,241 +7,225 @@ const esc = (v) =>
       ],
   );
 const pct = (v) =>
-  typeof v === "number"
-    ? `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`
-    : "não estimada";
-/** Render observed field and actionable recommendations without mutating game state. */
-export function createLiveHTML(plan, { icon, itemTag }) {
+  typeof v === "number" ? `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%` : "—";
+const COST = {
+  1: "#8995a6",
+  2: "#68cba4",
+  3: "#73a7ed",
+  4: "#ba8cfa",
+  5: "#f1c67d",
+};
+/** Flow arrow: `go` animates toward the target, `hold` is dashed and static. */
+const arrow = (tone = "") =>
+  `<svg class="flow ${tone}" viewBox="0 0 30 10" aria-hidden="true"><path class="l" d="M1 5h22"/><path class="h" d="M21 1.5 27 5l-6 3.5"/></svg>`;
+/** Progress dots: filled count out of a total. */
+const pips = (have, total, tone = "") =>
+  `<span class="pips ${tone}" role="img" aria-label="${have} de ${total}">${Array.from({ length: total }, (_, i) => `<i${i < have ? ' class="on"' : ""}></i>`).join("")}</span>`;
+/** The reference screen: icons, arrows and dots straight on the page; long explanations live in tooltips. */
+export function createLiveHTML(plan, { icon }, context = {}) {
   const st = plan?.stage;
   if (!st)
-    return '<div class="live-empty"><strong>Aguardando seu campo</strong><p>As peças e próximas ações aparecem quando a leitura da partida chegar.</p></div>';
-  const champ = (u, source = "current") => {
-    const inspectable =
-      source === "current" ||
-      (plan.board ?? []).some((unit) => unit.id === u.id);
-    const tag = inspectable ? "button" : "div";
-    const action = inspectable
-      ? ` data-live-inspect="${esc(u.id)}" data-live-source="${source}" aria-label="Inspecionar ${esc(u.name)} no ${source === "current" ? "campo atual" : "plano alvo"}"`
-      : "";
-    return `<${tag} class="live-champion"${action}>${icon(u.id, u.name)}<span><strong>${esc(u.name)}</strong><small>${u.stars ? `${esc(u.stars)}★ · ` : ""}${u.status === "meta" ? "faz parte da meta" : source === "goal" ? "alvo recomendado" : "peça em campo"}</small></span></${tag}>`;
+    return '<p class="reference-empty">Aguardando a leitura do seu campo.</p>';
+  const observed = context.currentPlan?.board ?? [],
+    goal = new Set((plan.board ?? []).map((u) => u.id)),
+    own = new Set(observed.map((u) => u.id));
+  const canAct = context.metadata?.actionable === true && context.health > 0;
+  const copies = new Map(),
+    fieldKey = (id) => {
+      const n = copies.get(id) ?? 0;
+      copies.set(id, n + 1);
+      return `field:${id}:${n}`;
+    };
+  const flip = (key) => (key ? ` data-flip="${esc(key)}"` : "");
+  /** Champion as a vertical tile (`tile`) or an inline pill. `key` lets the card glide between reads. */
+  const champion = (u, source = "current", o = {}) => {
+    const {
+      key = "",
+      tile = false,
+      badges = "",
+      foot = "",
+      title = "",
+      tone = "",
+      noStars = false,
+    } = o;
+    const clickable = (source === "current" ? own : goal).has(u.id),
+      tag = clickable ? "button" : "span",
+      ring =
+        source === "current" ? (goal.has(u.id) ? "is-meta" : "is-temp") : "";
+    const stars = noStars ? 0 : (u.stars ?? u.currentStars ?? 1),
+      starText = stars ? "★".repeat(Math.min(stars, 4)) : "";
+    const label = `${u.name}${stars ? ` ${stars}★` : ""}`;
+    const attrs = `class="unit ${tile ? "unit-tile" : "unit-mini"} reference-champion ${ring} ${tone}"${flip(key)} title="${esc(title || label)}"${clickable ? ` type="button" data-live-inspect="${esc(u.id)}" data-live-source="${source}" aria-label="Ver ${esc(u.name)} no planejador"` : ""}`;
+    return tile
+      ? `<${tag} ${attrs}><span class="u-art">${icon(u.id, "")}${starText ? `<i class="u-stars">${starText}</i>` : ""}${badges}</span><span class="u-name">${esc(u.name)}</span>${foot}</${tag}>`
+      : `<${tag} ${attrs}><span class="u-art">${icon(u.id, "")}</span><span class="u-name">${esc(u.name)}</span>${starText ? `<i class="u-stars">${starText}</i>` : ""}</${tag}>`;
   };
-  const card = (html, action = false) =>
-    `<article class="live-card${action ? " live-card-action" : ""}">${html}</article>`;
-  const empty = (text) => `<p class="live-empty-note">${esc(text)}</p>`;
-  const section = (id, title, hint, html, count) =>
-    `<section class="live-section" data-live-section="${id}"><header><div><h3>${title}${count === undefined ? "" : `<span class="live-count">${count}</span>`}</h3><p>${hint}</p></div><button class="live-collapse" data-live-collapse="${id}" aria-expanded="true" aria-label="Recolher ${title}">−</button></header><div class="live-section-body"><div class="live-grid">${html}</div></div></section>`;
+  const item = (i, { dashed = false, badge = "" } = {}) =>
+    `<span class="it${dashed ? " is-dashed" : ""}" title="${esc(i.name ?? i.id)}">${icon(i.id, i.name, "item")}${badge}</span>`;
+  const chip = (html, tone = "", key = "") =>
+    `<div class="flow-chip ${tone}"${flip(key)}>${html}</div>`;
+  const row = (id, label, list, count = list.length) =>
+    list.length
+      ? `<div class="reference-row" data-live-section="${id}"><h4 data-flip="h:${id}">${label}<b class="n">${count}</b></h4><div class="reference-content">${list.join("")}</div></div>`
+      : "";
+  const ok = (title, glyph = "✓") =>
+    `<i class="ok" title="${esc(title)}">${glyph}</i>`;
+  const wait = (title) => `<i class="wait" title="${esc(title)}">◷</i>`;
   const board = st.board ?? [],
     transitions = plan.transitions ?? [],
-    shop = st.shop ?? [];
-  return (
-    `<div class="live-guidance"><div class="live-overview"><span class="live-eyebrow">ACOMPANHAMENTO</span><h2>Seu campo, próximo passo.</h2><p>Nível ${esc(st.level ?? "não lido")} · ${esc(st.goalProgress?.onBoard ?? 0)} de ${esc(st.goalProgress?.goal ?? "—")} peças da meta em campo.</p><div class="live-filters" role="group" aria-label="Filtrar acompanhamento"><button data-live-filter="all" aria-pressed="true">Visão completa</button><button data-live-filter="actions" aria-pressed="false">Próximas ações</button></div></div>` +
-    section(
-      "field",
-      "Seu campo agora",
-      "Peças observadas. Clique para abrir os detalhes no planejador.",
-      board.map((u) => card(champ(u))).join("") ||
-        empty("Nenhuma peça em campo foi lida ainda."),
-      board.length,
-    ) +
-    section(
-      "equip",
-      "Itens para equipar",
-      "Recomendação com o inventário informado ou observado.",
-      board
-        .filter((u) => u.equipNow?.length)
-        .map((u) =>
-          card(
-            champ(u) +
-              `<div class="live-item-list">${u.equipNow.map((i) => itemTag(i.id)).join("")}</div>`,
-            true,
-          ),
-        )
-        .join("") +
-        (st.bankItems ?? [])
-          .map((i) =>
-            card(
-              itemTag(i.id) +
-                `<p>${i.to ? `Para ${esc(i.to.name)}` : "Guardar por enquanto"}</p><small>${esc(i.reason)}</small>`,
-            ),
-          )
-          .join("") || empty("Nenhum item pronto recomendado nesta leitura."),
-    ) +
-    section(
-      "moves",
-      "Transferir itens",
-      "Confira o método antes de tirar um item do portador.",
-      (plan.itemMoves ?? [])
-        .flatMap((m) =>
-          (m.moves ?? []).map((move) =>
-            card(
-              `<div class="live-transfer"><span>${icon(m.from.id, m.from.name)}${esc(m.from.name)} ${esc(m.from.stars)}★</span><span aria-hidden="true">→</span><span>${itemTag(move.item.id)} em <strong>${esc(move.to.name)}</strong></span></div><p>${m.now ? "Pode fazer agora" : "Planeje a transferência"} · ${esc(m.method)}</p>`,
-            ),
-          ),
-        )
-        .join("") || empty("Nenhuma transferência sugerida."),
-    ) +
-    section(
-      "build",
-      "Próximos itens",
-      "Builds sugeridas; componentes faltantes não são itens disponíveis.",
-      board
-        .filter((u) => !u.equipNow?.length && u.slotsFree > 0 && u.nextItem)
-        .map((u) =>
-          card(
-            champ(u) +
-              itemTag(u.nextItem.id) +
-              `<p>Falta: ${esc(u.nextItem.missing?.join(" + ") || "nenhum componente informado")}</p>`,
-          ),
-        )
-        .join("") || empty("Nenhuma próxima build calculada."),
-    ) +
-    section(
-      "transitions",
-      "Monte sua meta",
-      "Entradas, saídas e upgrades que precisam esperar.",
-      transitions
-        .map((t) =>
-          card(
-            `<span class="live-badge">${!t.exit ? "Vaga livre" : t.ready ? "Troca pronta" : "Segurar"}</span><div class="live-transfer">${t.exit ? champ({ ...t.exit, stars: t.exitStars }) : "<span>Ao abrir espaço</span>"}<span aria-hidden="true">→</span>${champ({ ...t.enter, stars: t.enterStars }, "goal")}</div><p>${esc(t.reason || (t.exit && !t.ready ? `Mantenha ${t.exit.name} até ${t.enter.name} estar pronto.` : !t.exit ? (t.source === "reserve" ? "Já está na reserva: use quando houver espaço." : "Ao subir de nível e abrir uma vaga.") : "A substituição melhora o plano atual."))}</p><small>${t.source === "reserve" ? "Peça na reserva" : "Peça a buscar"}${t.requiredStars ? ` · alvo ${esc(t.requiredStars)}★ (${esc(t.enterCopies ?? 0)}/${3 ** (t.requiredStars - 1)} cópias)` : ""}</small>`,
-            t.ready,
-          ),
-        )
-        .join("") || empty("Nenhuma troca sugerida no momento."),
-    ) +
-    section(
-      "shop",
-      "Loja observada",
-      "Somente peças lidas da loja. Nenhuma compra é executada pelo helper.",
-      shop
-        .map((u) =>
-          card(
-            champ(u, "goal") +
-              `<span class="live-badge">${esc(u.action)}</span><p>${esc(u.cost)}g · ${esc(u.reason)}</p>`,
-            u.action === "comprar",
-          ),
-        )
-        .join("") ||
-        empty(
-          "Loja não disponível. Os alvos abaixo não confirmam uma peça à venda.",
-        ),
-      shop.length,
-    ) +
-    section(
-      "buy",
-      "Compre se aparecer",
-      "Alvos sugeridos; chances são estimativas por loja.",
-      (st.buyNow ?? [])
-        .map((u) =>
-          card(
-            champ(u, "goal") +
-              `<p>${esc(u.cost)}g · chance ${pct(u.chancePerShop)}</p><small>${esc(u.enemyCopies ?? 0)} cópias observadas nos adversários · ${u.replaces ? `entra por ${esc(u.replaces)}` : u.slot === "banco" ? "guardar no banco" : "vaga livre"}${u.affordable === false ? " · ouro insuficiente" : ""}</small>`,
-          ),
-        )
-        .join("") || empty("Nenhum alvo de compra nesta leitura."),
-    ) +
-    section(
-      "carousel",
-      "Prioridade no carrossel",
-      "Componentes para avançar as builds.",
-      (plan.carousel ?? [])
-        .map((i) =>
-          card(
-            `<span class="live-badge">${esc(i.rank)}ª prioridade</span>${itemTag(i.id)}${(
-              i.uses ?? []
-            )
-              .slice(0, 2)
-              .map(
-                (u) =>
-                  `<p><strong>${esc(u.champion)}</strong> · ${esc(u.reason)}</p>`,
-              )
-              .join("")}`,
-          ),
-        )
-        .join("") ||
-        empty("Informe os componentes para receber prioridades de carrossel."),
-    ) +
-    section(
-      "bridges",
-      "Peças de transição",
-      "Alternativas para ativar sinergias enquanto sua meta chega.",
-      (st.bridges ?? [])
-        .map((u) =>
-          card(
-            champ(u, "goal") +
-              `<p>${esc(u.cost)}g · chance ${pct(u.chancePerShop)}</p><small>Ativa ${esc(u.sharedTraits?.join(", "))}${u.affordable === false ? " · ouro insuficiente" : ""}</small>`,
-          ),
-        )
-        .join("") || empty("Nenhuma ponte indicada para esta composição."),
-    ) +
-    section(
-      "later",
-      "Planeje os próximos níveis",
-      "Peças para depois e campeões da meta sem espaço agora.",
-      (st.later ?? [])
-        .map((u) =>
-          card(
-            champ(u, "goal") +
-              `<p>${esc(u.cost)}g · buscar a partir do nível ${esc(u.fromLevel)}</p>`,
-          ),
-        )
-        .join("") +
-        (st.hold ?? [])
-          .map((u) =>
-            card(
-              champ(u, "goal") +
-                "<p>Guardar no banco · da meta, mas sem vaga agora.</p>",
-            ),
-          )
-          .join("") || empty("Nenhuma peça precisa esperar um próximo nível."),
-    ) +
-    `<details class="live-evidence"><summary>Chances de loja e limites da leitura</summary><p>Loja no nível ${esc(st.level)}: ${
-      (st.odds ?? [])
-        .filter((o) => o.value > 0)
-        .map((o) => `custo ${esc(o.cost)}: ${esc(o.value)}%`)
-        .join(" · ") || "probabilidades indisponíveis"
-    }.</p><p>${esc(st.note)}</p></details></div>`
+    side = (u) => (own.has(u.id) ? "current" : "goal");
+
+  const equip = board
+    .filter((u) => u.equipNow?.length)
+    .map((u) =>
+      chip(
+        `${u.equipNow.map((i) => item(i)).join("")}${arrow("go")}${champion(u, side(u))}${own.has(u.id) ? ok("montável com seu banco") : wait("prepare a entrada em campo")}`,
+        "is-ready",
+        `equip:${u.id}`,
+      ),
+    );
+  const bank = (st.bankItems ?? []).map((i, n) =>
+    chip(
+      `${item(i)}${arrow()}${i.to ? champion(i.to, side(i.to), { title: i.reason }) : `<span class="stash" title="${esc(i.reason)}">⤓</span>`}`,
+      "",
+      `bank:${i.id}:${n}`,
+    ),
   );
+  const moves = (plan.itemMoves ?? []).map((m) => {
+    const now = m.now && canAct;
+    return chip(
+      `${champion(m.from)}${arrow(now ? "go" : "")}${(m.moves ?? []).map((x) => `<span class="mv">${item(x.item)}${arrow()}${champion(x.to, "goal")}</span>`).join("")}${now ? '<i class="ready-dot" title="agora"></i>' : wait("planejar")}`,
+      now ? "is-ready" : "",
+      `move:${m.from.id}`,
+    );
+  });
+  const next = board
+    .filter((u) => !u.equipNow?.length && u.slotsFree > 0 && u.nextItem)
+    .map((u) => {
+      const miss = u.nextItem.missing ?? [];
+      return chip(
+        `${champion(u, side(u))}${item(u.nextItem, { dashed: miss.length > 0, badge: miss.length ? `<i class="it-badge" title="falta ${esc(miss.join(" + "))}">−${miss.length}</i>` : "" })}`,
+        "",
+        `next:${u.id}`,
+      );
+    });
+  /** Troca dentro do elenco: quem sai → seta animada → quem entra. Verde = agora, âmbar = segure. */
+  const swapGroup = (t, outgoing, key) => {
+    const need = t.requiredStars ? 3 ** (t.requiredStars - 1) : 0,
+      have = Math.min(t.enterCopies ?? 0, need),
+      kept = t.exit.items?.length ?? 0,
+      tip = t.ready
+        ? "Troca recomendada agora" + (kept ? ": preserve os itens antes" : "")
+        : need
+          ? `Segure até ${t.enter.name} ${t.requiredStars}★ (${t.enterCopies ?? 0} de ${need} cópias)`
+          : "Não troque";
+    const out = champion(outgoing, "current", {
+      key,
+      tile: true,
+      tone: "unit-out",
+      badges: kept
+        ? `<em class="b-act warn" title="preserve os itens antes de trocar">⚠${kept}</em>`
+        : "",
+    });
+    const into = champion({ ...t.enter, stars: t.enterStars }, "goal", {
+      tile: true,
+      noStars: !t.enterStars,
+      tone: "unit-in",
+      badges:
+        !t.ready && !need
+          ? '<em class="b-act no" title="não troque">✕</em>'
+          : "",
+      foot:
+        t.ready || !need
+          ? ""
+          : `${pips(have, need, "amber")}<small>${have}/${need}</small>`,
+    });
+    return `<div class="swap-group ${t.ready ? "is-ready" : "is-hold"}" title="${esc(tip)}" data-flip="swap:${esc(t.enter.id)}:${esc(t.exit.id)}">${out}<span class="swap-link">${arrow(t.ready ? "go" : "hold")}<em>${t.ready ? "trocar" : "segure"}</em></span>${into}</div>`;
+  };
+  /** Vaga livre no elenco: espaço vazio → quem entra nela. */
+  const slotGroup = (t) =>
+    `<div class="swap-group is-free" title="${t.source === "reserve" ? "Já está na reserva" : "Entra ao subir de nível"}" data-flip="swap:${esc(t.enter.id)}:livre"><span class="unit unit-tile"><span class="u-art slot-art">＋</span><span class="u-name">vaga</span></span><span class="swap-link">${arrow("go")}</span>${champion({ ...t.enter, stars: t.enterStars }, "goal", { tile: true, noStars: !t.enterStars, tone: "unit-in", badges: t.source === "reserve" ? '<em class="b-act" title="já está na reserva">↻</em>' : "" })}</div>`;
+  const carousel = (plan.carousel ?? []).map((c) => {
+    const use = c.uses?.[0];
+    return chip(
+      `<b class="rank">${esc(c.rank)}</b>${item(c)}${use?.champion ? `<span class="why" title="${esc(use.reason ?? "")}">${esc(use.champion)}</span>` : ""}`,
+      "",
+      `car:${c.id}`,
+    );
+  });
+  const costBadge = (u) =>
+    `<em class="b-cost" style="--c:${COST[u.cost] ?? COST[1]}">${esc(u.cost)}</em>`;
+  const buys = (st.buyNow ?? []).map((u) => {
+    const glyph = u.replaces ? "⇄" : u.slot === "banco" ? "⤓" : "＋",
+      why = `${u.cost}g · ${pct(u.chancePerShop)} por loja · ${u.replaces ? "entra por " + u.replaces : u.slot === "banco" ? "guardar no banco" : "vaga livre"}${u.affordable === false ? " · sem ouro" : ""}`;
+    return champion(u, "goal", {
+      key: `buy:${u.id}`,
+      tile: true,
+      noStars: true,
+      tone: `unit-buy${u.affordable === false ? " is-broke" : ""}`,
+      title: `${u.name} · ${why}`,
+      badges: `${costBadge(u)}<em class="b-act" title="${esc(why)}">${glyph}</em>`,
+      foot: `<span class="chance" style="--p:${Math.min(1, (u.chancePerShop ?? 0) / 0.2)}"><i></i></span><small>${pct(u.chancePerShop)}</small>`,
+    });
+  });
+  const SHOP = {
+    comprar: ["is-buy", "✓"],
+    segurar: ["is-hold", "⏸"],
+    "sem ouro": ["is-broke", "⊘"],
+    ignorar: ["is-skip", "·"],
+  };
+  const shop = (st.shop ?? []).map((u) => {
+    const [tone, glyph] = SHOP[u.action] ?? ["", "?"];
+    return champion(u, "goal", {
+      key: `shop:${u.slot ?? ""}:${u.id}`,
+      tile: true,
+      noStars: true,
+      tone: `unit-shop ${tone}`,
+      title: `${u.name} · ${u.action} · ${u.cost}g · ${u.reason}`,
+      badges: `${costBadge(u)}<em class="b-act" title="${esc(u.action)}">${glyph}</em>`,
+    });
+  });
+  const onBoard = observed.filter((u) => goal.has(u.id)).length,
+    goalTotal = st.goalProgress?.goal ?? goal.size;
+  const exits = new Map(),
+    joined = new Set();
+  for (const t of transitions)
+    if (t.exit && !exits.has(t.exit.id)) exits.set(t.exit.id, t);
+  const field = observed
+    .map((u) => {
+      const key = fieldKey(u.id),
+        t = exits.get(u.id);
+      if (t && !joined.has(u.id)) {
+        joined.add(u.id);
+        return swapGroup(t, u, key);
+      }
+      return champion(u, "current", { key, tile: true });
+    })
+    .concat(transitions.filter((t) => !t.exit).map(slotGroup));
+  const ready = transitions.filter((t) => t.exit && t.ready).length,
+    holding = transitions.filter((t) => t.exit && !t.ready).length;
+  const items = [
+    row("equip", "Equipar", [...equip, ...bank]),
+    row("moves", "Passar itens", moves),
+    row("build", "Próximo item", next),
+    row("carousel", "Carrossel", carousel),
+  ].join("");
+  const trades = row(
+    "shop",
+    "Loja",
+    shop.length ? [`<div class="tiles">${shop.join("")}</div>`] : [],
+    shop.length,
+  );
+  return `<div class="reference-field"><div class="ref-head"><h2>Rastreio</h2><span class="lv" title="Nível">Nv ${esc(st.level)}</span><span class="goal" title="${onBoard} de ${esc(goalTotal)} peças da meta em campo">${pips(onBoard, goalTotal)}<b>${onBoard}/${esc(goalTotal)}</b></span>${ready ? `<span class="sum is-go" title="${ready} troca(s) para fazer agora">⇄ ${ready}</span>` : ""}${holding ? `<span class="sum is-hold" title="${holding} troca(s) para segurar">⏸ ${holding}</span>` : ""}</div><div class="reference-roster" data-live-section="field">${field.join("") || '<span class="reference-empty">Nenhum campeão lido.</span>'}</div>${row("buy", "Comprar", buys.length ? [`<div class="tiles">${buys.join("")}</div>`] : [], buys.length)}${items || trades ? `<div class="ref-cols">${items ? `<div class="ref-col">${items}</div>` : ""}${trades ? `<div class="ref-col">${trades}</div>` : ""}</div>` : ""}</div>`;
 }
 const states = new WeakMap();
-/** Install delegated controls once and preserve local presentation state. */
+/** Champion links keep the reference compact and open the existing inspector. */
 export function initializeLiveView(element) {
   if (states.has(element)) return;
-  const state = {
-    collapsed: new Set(),
-    filter: "all",
-    html: null,
-    evidenceOpen: false,
-  };
-  states.set(element, state);
-  const apply = () => {
-    element.querySelectorAll("[data-live-section]").forEach((section) => {
-      const id = section.dataset.liveSection,
-        closed = state.collapsed.has(id);
-      section.hidden = state.filter === "actions" && id === "field";
-      section.querySelector(".live-section-body").hidden = closed;
-      const button = section.querySelector("[data-live-collapse]");
-      button.setAttribute("aria-expanded", String(!closed));
-      button.setAttribute(
-        "aria-label",
-        `${closed ? "Expandir" : "Recolher"} ${section.querySelector("h3").textContent}`,
-      );
-      button.textContent = closed ? "+" : "−";
-    });
-    const evidence = element.querySelector(".live-evidence");
-    if (evidence) evidence.open = state.evidenceOpen;
-    element
-      .querySelectorAll("[data-live-filter]")
-      .forEach((button) =>
-        button.setAttribute(
-          "aria-pressed",
-          String(button.dataset.liveFilter === state.filter),
-        ),
-      );
-  };
+  states.set(element, { html: null });
   element.addEventListener("click", (event) => {
-    const button = event.target.closest("button");
-    if (!button || !element.contains(button)) return;
-    if (button.dataset.liveInspect)
+    const button = event.target.closest("[data-live-inspect]");
+    if (button && element.contains(button))
       element.dispatchEvent(
         new CustomEvent("compass:inspect", {
           bubbles: true,
@@ -251,56 +235,67 @@ export function initializeLiveView(element) {
           },
         }),
       );
-    if (button.dataset.liveCollapse) {
-      const id = button.dataset.liveCollapse;
-      state.collapsed.has(id)
-        ? state.collapsed.delete(id)
-        : state.collapsed.add(id);
-      apply();
-    }
-    if (button.dataset.liveFilter) {
-      state.filter = button.dataset.liveFilter;
-      apply();
-    }
   });
-  element.addEventListener(
-    "toggle",
-    (event) => {
-      if (event.target.matches?.(".live-evidence"))
-        state.evidenceOpen = event.target.open;
-    },
-    true,
-  );
-  element.addEventListener("compass:live-render", apply);
 }
-/** Replace changed content only; retain keyboard focus and disclosure state. */
-export function updateLiveView(element, plan, helpers) {
+const MOVE_MS = 340;
+/** Viewport rectangles of every keyed card, including any transform still in flight. */
+function measure(element) {
+  const rects = new Map();
+  for (const el of element.querySelectorAll("[data-flip]"))
+    if (!rects.has(el.dataset.flip))
+      rects.set(el.dataset.flip, el.getBoundingClientRect());
+  return rects;
+}
+/** Slide each card from where it was to where it is now; cards that did not exist stay still. */
+function glide(element, before) {
+  const seen = new Set();
+  for (const el of element.querySelectorAll("[data-flip]")) {
+    const key = el.dataset.flip,
+      from = before.get(key);
+    if (!from || seen.has(key)) continue;
+    seen.add(key);
+    const to = el.getBoundingClientRect(),
+      dx = from.left - to.left,
+      dy = from.top - to.top;
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+    el.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+      { duration: MOVE_MS, easing: "cubic-bezier(0.22, 0.8, 0.24, 1)" },
+    );
+  }
+}
+/** Avoid rewriting identical markup, retain focus on the same champion row and glide cards to their new places. */
+export function updateLiveView(element, plan, helpers, context) {
   if (!element) return;
   initializeLiveView(element);
   const state = states.get(element),
-    html = createLiveHTML(plan, helpers);
+    html = createLiveHTML(plan, helpers, context);
   if (state.html === html) return;
-  const focus = element.contains(document.activeElement)
-    ? {
-        id: document.activeElement.dataset.liveInspect,
-        source: document.activeElement.dataset.liveSource,
-        collapse: document.activeElement.dataset.liveCollapse,
-        filter: document.activeElement.dataset.liveFilter,
-        evidence: document.activeElement.matches(".live-evidence summary"),
-      }
-    : null;
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches,
+    before = state.html !== null && !calm ? measure(element) : null;
+  const focused = document.activeElement,
+    section = focused.closest?.("[data-live-section]");
+  const saved =
+    element.contains(focused) && focused.dataset.liveInspect
+      ? {
+          id: focused.dataset.liveInspect,
+          source: focused.dataset.liveSource,
+          section: section?.dataset.liveSection,
+        }
+      : null;
   state.html = html;
   element.innerHTML = html;
-  element.dispatchEvent(new Event("compass:live-render"));
-  if (focus)
-    Array.from(element.querySelectorAll("button"))
-      .find((b) =>
-        focus.id
-          ? b.dataset.liveInspect === focus.id &&
-            b.dataset.liveSource === focus.source
-          : focus.collapse
-            ? b.dataset.liveCollapse === focus.collapse
-            : b.dataset.liveFilter === focus.filter,
+  if (before) glide(element, before);
+  if (saved) {
+    const scope = [...element.querySelectorAll("[data-live-section]")].find(
+      (e) => e.dataset.liveSection === saved.section,
+    );
+    [...(scope?.querySelectorAll("[data-live-inspect]") ?? [])]
+      .find(
+        (b) =>
+          b.dataset.liveInspect === saved.id &&
+          b.dataset.liveSource === saved.source,
       )
       ?.focus({ preventScroll: true });
+  }
 }

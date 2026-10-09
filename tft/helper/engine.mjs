@@ -456,7 +456,7 @@ export function analyze(snapshot, catalog, options) {
     }
     return { board: out, added };
   }
-  const growTo = Math.min(10, level);
+  const growTo = Math.min(10, Math.max(level, boardLevel));
   const selected = [];
   if (options.metaComps?.length) {
     const ranked = options.metaComps
