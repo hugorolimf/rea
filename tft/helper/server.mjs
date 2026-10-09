@@ -282,9 +282,9 @@ async function current() {
         health: p.health,
       })),
       warnings: [
-        "Banco adversário e loja não disponíveis na leitura automática.",
+        "Banco adversário não capturado. A loja é lida da tela quando o leitor está ativo, não pelo arquivo do tabuleiro.",
         "Pool estimado: bancos ocultos, duplicadores e slots reservados em lojas não observados.",
-        "Motor heurístico: sem simulação de combate, estatísticas de winrate ou garantias de vitória.",
+        "Economia, posições e counters são heurísticos; comps de meta usam a cópia de estatísticas disponível. Sem simulação de combate ou garantia de vitória.",
         "Emblemas, Wisps, invocações e regras especiais de traits não são simulados.",
       ],
       catalogSource: catalog.source,
@@ -403,6 +403,12 @@ const server = http.createServer(async (req, res) => {
       options.stickyCompId = sticky.game === metadata.gameId ? sticky.id : null;
       const cacheKey =
         metadata.modifiedAt +
+        "|" +
+        JSON.stringify([
+          metadata.actionable,
+          metadata.phase,
+          metadata.sameGame,
+        ]) +
         "|" +
         meta.fetchedAt +
         "|" +
@@ -530,6 +536,9 @@ const server = http.createServer(async (req, res) => {
       "/app.js": "app.js",
       "/style.css": "style.css",
       "/planner.js": "planner.js",
+      "/app-shell.css": "app-shell.css",
+      "/live-view.css": "live-view.css",
+      "/live-view.js": "live-view.js",
     };
     if (req.method === "GET" && files[url.pathname]) {
       res.writeHead(200, {

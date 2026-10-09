@@ -1,6 +1,6 @@
 {
   "source": "https://api-hc.metatft.com/tft-comps-api/unit_items_processed",
-  "fetchedAt": "2026-10-09T03:02:37.872Z",
+  "fetchedAt": "2026-10-09T09:30:00.588Z",
   "set": "TFTSet18",
   "patch": "18.4b",
   "units": {
@@ -35,8 +35,8 @@
       "DA_ThiefsGloves",
       "DA_SunfireCape",
       "DA_SteadfastHeart",
-      "DA_DragonsClaw",
       "DA_Evenshroud",
+      "DA_DragonsClaw",
       "DA_ProtectorsVow",
       "DA_Crownguard"
     ],
@@ -117,12 +117,12 @@
       "DA_ThiefsGloves",
       "DA_WarmogsArmor",
       "DA_SunfireCape",
-      "DA_Component_GiantsBelt",
       "DA_SpiritVisage",
+      "DA_Component_GiantsBelt",
       "DA_Component_ChainVest",
       "DA_DragonsClaw",
-      "DA_Component_NegatronCloak",
-      "DA_ProtectorsVow"
+      "DA_ProtectorsVow",
+      "DA_Component_NegatronCloak"
     ],
     "DA_18_Zyra": [
       "DA_ArchangelsStaff",
@@ -142,8 +142,8 @@
       "DA_JeweledGauntlet",
       "DA_ArchangelsStaff",
       "DA_VoidStaff",
-      "DA_NashorsTooth",
       "DA_StrikersFlail",
+      "DA_NashorsTooth",
       "DA_AdaptiveHelm",
       "DA_HextechGunblade",
       "DA_BlueBuff"
@@ -172,18 +172,6 @@
       "DA_BrambleVest",
       "DA_ThiefsGloves"
     ],
-    "DA_Nidalee18_AP": [
-      "DA_InfinityEdge",
-      "DA_SteraksGage",
-      "DA_SpearOfShojin",
-      "DA_GuinsoosRageblade",
-      "DA_EdgeOfNight",
-      "DA_HandOfJustice",
-      "DA_JeweledGauntlet",
-      "DA_Deathblade",
-      "DA_Bloodthirster",
-      "DA_18_EmblemSlayer"
-    ],
     "DA_18_Sett": [
       "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
@@ -192,21 +180,9 @@
       "DA_SteadfastHeart",
       "DA_BrambleVest",
       "DA_Crownguard",
-      "DA_ProtectorsVow",
       "DA_SteraksGage",
+      "DA_ProtectorsVow",
       "DA_SunfireCape"
-    ],
-    "DA_KogMaw18_AD": [
-      "DA_RedBuff",
-      "DA_SpearOfShojin",
-      "DA_GuinsoosRageblade",
-      "DA_Morellonomicon",
-      "DA_InfinityEdge",
-      "DA_Component_RecurveBow",
-      "DA_GiantSlayer",
-      "DA_ThiefsGloves",
-      "DA_JeweledGauntlet",
-      "DA_BlueBuff"
     ],
     "DA_Krug18": [
       "DA_GargoyleStoneplate",
@@ -214,23 +190,11 @@
       "DA_SpiritVisage",
       "DA_SunfireCape",
       "DA_DragonsClaw",
-      "DA_ThiefsGloves",
       "DA_Crownguard",
+      "DA_ThiefsGloves",
       "DA_ProtectorsVow",
       "DA_SteadfastHeart",
       "DA_BrambleVest"
-    ],
-    "DA_18_Azir": [
-      "DA_HextechGunblade",
-      "DA_GuinsoosRageblade",
-      "DA_RabadonsDeathcap",
-      "DA_ArchangelsStaff",
-      "DA_JeweledGauntlet",
-      "DA_VoidStaff",
-      "DA_StrikersFlail",
-      "DA_GiantSlayer",
-      "DA_RedBuff",
-      "DA_ThiefsGloves"
     ],
     "DA_18_GnarSmall": [
       "DA_ThiefsGloves",
@@ -256,29 +220,53 @@
       "DA_GuinsoosRageblade",
       "DA_ThiefsGloves"
     ],
-    "DA_18_Rakan": [
-      "DA_GargoyleStoneplate",
+    "DA_Nidalee18_AP": [
+      "DA_InfinityEdge",
+      "DA_SteraksGage",
+      "DA_SpearOfShojin",
+      "DA_GuinsoosRageblade",
+      "DA_EdgeOfNight",
+      "DA_HandOfJustice",
+      "DA_JeweledGauntlet",
+      "DA_Deathblade",
+      "DA_Bloodthirster",
+      "DA_18_EmblemSlayer"
+    ],
+    "DA_KogMaw18_AD": [
+      "DA_RedBuff",
+      "DA_SpearOfShojin",
+      "DA_GuinsoosRageblade",
+      "DA_Morellonomicon",
+      "DA_InfinityEdge",
+      "DA_Component_RecurveBow",
+      "DA_GiantSlayer",
       "DA_ThiefsGloves",
-      "DA_ProtectorsVow",
-      "DA_SpiritVisage",
+      "DA_JeweledGauntlet",
+      "DA_BlueBuff"
+    ],
+    "DA_18_Hecarim": [
+      "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
+      "DA_SpiritVisage",
+      "DA_ProtectorsVow",
       "DA_SunfireCape",
-      "DA_AdaptiveHelm",
+      "DA_DragonsClaw",
       "DA_Crownguard",
       "DA_Evenshroud",
-      "DA_Component_GiantsBelt"
+      "DA_SteadfastHeart",
+      "DA_BrambleVest"
     ],
-    "DA_18_Sivir": [
-      "DA_InfinityEdge",
-      "DA_LastWhisper",
-      "DA_SpearOfShojin",
-      "DA_RedBuff",
+    "DA_18_Azir": [
+      "DA_HextechGunblade",
       "DA_GuinsoosRageblade",
-      "DA_Deathblade",
-      "DA_GiantSlayer",
+      "DA_RabadonsDeathcap",
+      "DA_ArchangelsStaff",
+      "DA_JeweledGauntlet",
+      "DA_VoidStaff",
       "DA_StrikersFlail",
-      "DA_KrakensFury",
-      "DA_BlueBuff"
+      "DA_GiantSlayer",
+      "DA_RedBuff",
+      "DA_ThiefsGloves"
     ],
     "DA_18_Alistar": [
       "DA_GargoyleStoneplate",
@@ -292,41 +280,29 @@
       "DA_ProtectorsVow",
       "DA_BrambleVest"
     ],
-    "DA_18_Hecarim": [
-      "DA_GargoyleStoneplate",
-      "DA_WarmogsArmor",
-      "DA_SpiritVisage",
-      "DA_ProtectorsVow",
-      "DA_SunfireCape",
-      "DA_DragonsClaw",
-      "DA_Crownguard",
-      "DA_SteadfastHeart",
-      "DA_Evenshroud",
-      "DA_BrambleVest"
-    ],
     "DA_18_Ahri": [
       "DA_JeweledGauntlet",
       "DA_SpearOfShojin",
       "DA_StrikersFlail",
       "DA_18_EmblemInvoker",
       "DA_RabadonsDeathcap",
-      "DA_NashorsTooth",
       "DA_BlueBuff",
+      "DA_NashorsTooth",
       "DA_ArchangelsStaff",
       "DA_GiantSlayer",
       "DA_VoidStaff"
     ],
-    "DA_Scuttlecrab18": [
+    "DA_18_Rakan": [
       "DA_GargoyleStoneplate",
-      "DA_WarmogsArmor",
-      "DA_SpiritVisage",
-      "DA_SunfireCape",
       "DA_ThiefsGloves",
-      "DA_Crownguard",
-      "DA_DragonsClaw",
       "DA_ProtectorsVow",
-      "DA_SteadfastHeart",
-      "DA_Evenshroud"
+      "DA_SpiritVisage",
+      "DA_WarmogsArmor",
+      "DA_SunfireCape",
+      "DA_AdaptiveHelm",
+      "DA_Crownguard",
+      "DA_Evenshroud",
+      "DA_Component_GiantsBelt"
     ],
     "DA_18_Morgana": [
       "DA_VoidStaff",
@@ -340,17 +316,29 @@
       "DA_GiantSlayer",
       "DA_ArchangelsStaff"
     ],
-    "DA_18_Ashe": [
+    "DA_18_Sivir": [
+      "DA_InfinityEdge",
+      "DA_LastWhisper",
       "DA_SpearOfShojin",
       "DA_RedBuff",
-      "DA_LastWhisper",
-      "DA_InfinityEdge",
       "DA_GuinsoosRageblade",
-      "DA_18_EmblemInferno",
       "DA_Deathblade",
       "DA_GiantSlayer",
-      "DA_BlueBuff",
-      "DA_Morellonomicon"
+      "DA_StrikersFlail",
+      "DA_KrakensFury",
+      "DA_BlueBuff"
+    ],
+    "DA_Scuttlecrab18": [
+      "DA_GargoyleStoneplate",
+      "DA_WarmogsArmor",
+      "DA_SpiritVisage",
+      "DA_SunfireCape",
+      "DA_ThiefsGloves",
+      "DA_Crownguard",
+      "DA_DragonsClaw",
+      "DA_ProtectorsVow",
+      "DA_SteadfastHeart",
+      "DA_Evenshroud"
     ],
     "DA_18_Alune": [
       "DA_SpearOfShojin",
@@ -376,41 +364,17 @@
       "DA_EdgeOfNight",
       "DA_SpearOfShojin"
     ],
-    "DA_18_Veigar": [
-      "DA_JeweledGauntlet",
-      "DA_BlueBuff",
-      "DA_HextechGunblade",
-      "DA_Artifact_Dawncore",
-      "DA_Artifact_LudensTempest",
-      "DA_RabadonsDeathcap",
-      "DA_18_EmblemFloraFatalisAugment",
-      "DA_Artifact_Manazane",
+    "DA_18_Ashe": [
       "DA_SpearOfShojin",
-      "DA_Artifact_EternalPact"
-    ],
-    "DA_18_Varus": [
-      "DA_SpearOfShojin",
-      "DA_InfinityEdge",
+      "DA_RedBuff",
       "DA_LastWhisper",
+      "DA_InfinityEdge",
       "DA_GuinsoosRageblade",
+      "DA_18_EmblemInferno",
       "DA_Deathblade",
       "DA_GiantSlayer",
-      "DA_RedBuff",
-      "DA_Component_RecurveBow",
-      "DA_18_EmblemLunar",
-      "DA_BlueBuff"
-    ],
-    "DA_Lux18_Base": [
-      "DA_SpearOfShojin",
-      "DA_JeweledGauntlet",
-      "DA_VoidStaff",
-      "DA_RabadonsDeathcap",
       "DA_BlueBuff",
-      "DA_ArchangelsStaff",
-      "DA_AdaptiveHelm",
-      "DA_Morellonomicon",
-      "DA_RedBuff",
-      "DA_NashorsTooth"
+      "DA_Morellonomicon"
     ],
     "DA_18_Sentry": [
       "DA_JeweledGauntlet",
@@ -423,6 +387,42 @@
       "DA_AdaptiveHelm",
       "DA_SpearOfShojin",
       "DA_Component_NeedlesslyLargeRod"
+    ],
+    "DA_18_Varus": [
+      "DA_SpearOfShojin",
+      "DA_InfinityEdge",
+      "DA_LastWhisper",
+      "DA_GuinsoosRageblade",
+      "DA_Deathblade",
+      "DA_GiantSlayer",
+      "DA_RedBuff",
+      "DA_18_EmblemLunar",
+      "DA_Component_RecurveBow",
+      "DA_BlueBuff"
+    ],
+    "DA_18_Veigar": [
+      "DA_JeweledGauntlet",
+      "DA_BlueBuff",
+      "DA_HextechGunblade",
+      "DA_Artifact_Dawncore",
+      "DA_Artifact_LudensTempest",
+      "DA_RabadonsDeathcap",
+      "DA_18_EmblemFloraFatalisAugment",
+      "DA_Artifact_Manazane",
+      "DA_SpearOfShojin",
+      "DA_Artifact_EternalPact"
+    ],
+    "DA_Lux18_Base": [
+      "DA_SpearOfShojin",
+      "DA_JeweledGauntlet",
+      "DA_VoidStaff",
+      "DA_RabadonsDeathcap",
+      "DA_BlueBuff",
+      "DA_ArchangelsStaff",
+      "DA_AdaptiveHelm",
+      "DA_Morellonomicon",
+      "DA_RedBuff",
+      "DA_NashorsTooth"
     ],
     "DA_Draven18": [
       "DA_GuinsoosRageblade",
@@ -442,9 +442,9 @@
       "DA_SpiritVisage",
       "DA_ProtectorsVow",
       "DA_ThiefsGloves",
+      "DA_Crownguard",
       "DA_SunfireCape",
       "DA_SteadfastHeart",
-      "DA_Crownguard",
       "DA_DragonsClaw",
       "DA_BrambleVest"
     ],
@@ -472,18 +472,6 @@
       "DA_SunfireCape",
       "DA_AdaptiveHelm"
     ],
-    "DA_18_RekSai": [
-      "DA_GargoyleStoneplate",
-      "DA_ThiefsGloves",
-      "DA_WarmogsArmor",
-      "DA_SunfireCape",
-      "DA_SpiritVisage",
-      "DA_IonicSpark",
-      "DA_SteadfastHeart",
-      "DA_DragonsClaw",
-      "DA_ProtectorsVow",
-      "DA_Crownguard"
-    ],
     "DA_18_Rammus": [
       "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
@@ -495,6 +483,18 @@
       "DA_BrambleVest",
       "DA_ProtectorsVow",
       "DA_IonicSpark"
+    ],
+    "DA_18_RekSai": [
+      "DA_GargoyleStoneplate",
+      "DA_ThiefsGloves",
+      "DA_WarmogsArmor",
+      "DA_SunfireCape",
+      "DA_SpiritVisage",
+      "DA_IonicSpark",
+      "DA_SteadfastHeart",
+      "DA_DragonsClaw",
+      "DA_ProtectorsVow",
+      "DA_Crownguard"
     ],
     "DA_18_Cassiopeia": [
       "DA_HextechGunblade",
@@ -508,18 +508,6 @@
       "DA_RabadonsDeathcap",
       "DA_GiantSlayer"
     ],
-    "DA_Karma18": [
-      "DA_JeweledGauntlet",
-      "DA_SpearOfShojin",
-      "DA_VoidStaff",
-      "DA_GiantSlayer",
-      "DA_RabadonsDeathcap",
-      "DA_ArchangelsStaff",
-      "DA_BlueBuff",
-      "DA_Component_RecurveBow",
-      "DA_HextechGunblade",
-      "DA_Morellonomicon"
-    ],
     "DA_Brambleback18": [
       "DA_EdgeOfNight",
       "DA_SteraksGage",
@@ -531,6 +519,18 @@
       "DA_GiantSlayer",
       "DA_ThiefsGloves",
       "DA_TitansResolve"
+    ],
+    "DA_Karma18": [
+      "DA_JeweledGauntlet",
+      "DA_SpearOfShojin",
+      "DA_VoidStaff",
+      "DA_GiantSlayer",
+      "DA_RabadonsDeathcap",
+      "DA_ArchangelsStaff",
+      "DA_BlueBuff",
+      "DA_Component_RecurveBow",
+      "DA_HextechGunblade",
+      "DA_Morellonomicon"
     ],
     "DA_18_Lillia": [
       "DA_GargoyleStoneplate",
@@ -549,12 +549,24 @@
       "DA_InfinityEdge",
       "DA_KrakensFury",
       "DA_Deathblade",
-      "DA_LastWhisper",
       "DA_GiantSlayer",
+      "DA_LastWhisper",
       "DA_RedBuff",
       "DA_HextechGunblade",
       "DA_StrikersFlail",
       "DA_Component_BFSword"
+    ],
+    "DA_18_Leona": [
+      "DA_GargoyleStoneplate",
+      "DA_SpiritVisage",
+      "DA_WarmogsArmor",
+      "DA_ThiefsGloves",
+      "DA_SunfireCape",
+      "DA_ProtectorsVow",
+      "DA_SteadfastHeart",
+      "DA_DragonsClaw",
+      "DA_Evenshroud",
+      "DA_Crownguard"
     ],
     "DA_18_Shen": [
       "DA_GargoyleStoneplate",
@@ -580,17 +592,17 @@
       "DA_RedBuff",
       "DA_GiantSlayer"
     ],
-    "DA_18_Leona": [
-      "DA_GargoyleStoneplate",
-      "DA_SpiritVisage",
-      "DA_WarmogsArmor",
+    "DA_Murkwolf18": [
+      "DA_HandOfJustice",
+      "DA_EdgeOfNight",
+      "DA_InfinityEdge",
       "DA_ThiefsGloves",
-      "DA_SunfireCape",
-      "DA_ProtectorsVow",
-      "DA_SteadfastHeart",
-      "DA_DragonsClaw",
-      "DA_Evenshroud",
-      "DA_Crownguard"
+      "DA_SteraksGage",
+      "DA_Deathblade",
+      "DA_Bloodthirster",
+      "DA_Quicksilver",
+      "DA_LastWhisper",
+      "DA_TitansResolve"
     ],
     "DA_18_KhaZix": [
       "DA_HandOfJustice",
@@ -616,30 +628,6 @@
       "DA_ThiefsGloves",
       "DA_SteadfastHeart"
     ],
-    "DA_Murkwolf18": [
-      "DA_HandOfJustice",
-      "DA_EdgeOfNight",
-      "DA_InfinityEdge",
-      "DA_ThiefsGloves",
-      "DA_SteraksGage",
-      "DA_Deathblade",
-      "DA_Bloodthirster",
-      "DA_Quicksilver",
-      "DA_LastWhisper",
-      "DA_TitansResolve"
-    ],
-    "DA_18_Yunara": [
-      "DA_SpearOfShojin",
-      "DA_LastWhisper",
-      "DA_Deathblade",
-      "DA_InfinityEdge",
-      "DA_18_EmblemBlackthorn",
-      "DA_RedBuff",
-      "DA_StrikersFlail",
-      "DA_GiantSlayer",
-      "DA_GuinsoosRageblade",
-      "DA_ThiefsGloves"
-    ],
     "DA_Cinderling18": [
       "DA_InfinityEdge",
       "DA_LastWhisper",
@@ -652,17 +640,17 @@
       "DA_StrikersFlail",
       "DA_KrakensFury"
     ],
-    "DA_CrimsonRaptor18": [
-      "DA_GuinsoosRageblade",
+    "DA_18_Yunara": [
+      "DA_SpearOfShojin",
       "DA_LastWhisper",
-      "DA_KrakensFury",
-      "DA_InfinityEdge",
       "DA_Deathblade",
+      "DA_18_EmblemBlackthorn",
+      "DA_InfinityEdge",
       "DA_RedBuff",
+      "DA_StrikersFlail",
       "DA_GiantSlayer",
-      "DA_HextechGunblade",
-      "DA_Component_RecurveBow",
-      "DA_Component_BFSword"
+      "DA_GuinsoosRageblade",
+      "DA_ThiefsGloves"
     ],
     "DA_18_Kayle": [
       "DA_GuinsoosRageblade",
@@ -675,6 +663,18 @@
       "DA_18_EmblemLunar",
       "DA_ArchangelsStaff",
       "DA_Artifact_WitsEnd"
+    ],
+    "DA_CrimsonRaptor18": [
+      "DA_GuinsoosRageblade",
+      "DA_LastWhisper",
+      "DA_KrakensFury",
+      "DA_InfinityEdge",
+      "DA_Deathblade",
+      "DA_RedBuff",
+      "DA_GiantSlayer",
+      "DA_HextechGunblade",
+      "DA_Component_RecurveBow",
+      "DA_Component_BFSword"
     ],
     "DA_18_Tristana": [
       "DA_GuinsoosRageblade",
@@ -708,21 +708,9 @@
       "DA_RabadonsDeathcap",
       "DA_Artifact_LichBane",
       "DA_Artifact_RapidFireCannon",
-      "DA_GiantSlayer",
+      "DA_SteraksGage",
       "DA_Bloodthirster",
-      "DA_SteraksGage"
-    ],
-    "DA_18_MasterYi_AD": [
-      "DA_GuinsoosRageblade",
-      "DA_EdgeOfNight",
-      "DA_18_EmblemBrawler",
-      "DA_TitansResolve",
-      "DA_Quicksilver",
-      "DA_KrakensFury",
-      "DA_Artifact_RapidFireCannon",
-      "DA_Artifact_WitsEnd",
-      "DA_HandOfJustice",
-      "DA_Bloodthirster"
+      "DA_GiantSlayer"
     ],
     "DA_18_Camille": [
       "DA_SteraksGage",
@@ -736,6 +724,18 @@
       "DA_Deathblade",
       "DA_ThiefsGloves"
     ],
+    "DA_18_MasterYi_AD": [
+      "DA_GuinsoosRageblade",
+      "DA_EdgeOfNight",
+      "DA_18_EmblemBrawler",
+      "DA_TitansResolve",
+      "DA_Quicksilver",
+      "DA_KrakensFury",
+      "DA_Artifact_RapidFireCannon",
+      "DA_Artifact_WitsEnd",
+      "DA_HandOfJustice",
+      "DA_Bloodthirster"
+    ],
     "DA_18_Kobuko": [
       "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
@@ -748,6 +748,18 @@
       "DA_IonicSpark",
       "DA_BrambleVest"
     ],
+    "DA_Gromp18_AP": [
+      "DA_SpearOfShojin",
+      "DA_JeweledGauntlet",
+      "DA_InfinityEdge",
+      "DA_BlueBuff",
+      "DA_GuinsoosRageblade",
+      "DA_VoidStaff",
+      "DA_GiantSlayer",
+      "DA_ArchangelsStaff",
+      "DA_RabadonsDeathcap",
+      "DA_RedBuff"
+    ],
     "DA_18_Caitlyn": [
       "DA_GuinsoosRageblade",
       "DA_KrakensFury",
@@ -758,18 +770,6 @@
       "DA_GiantSlayer",
       "DA_LastWhisper",
       "DA_Artifact_NavoriFlickerblade",
-      "DA_RedBuff"
-    ],
-    "DA_Gromp18_AP": [
-      "DA_JeweledGauntlet",
-      "DA_SpearOfShojin",
-      "DA_InfinityEdge",
-      "DA_BlueBuff",
-      "DA_GuinsoosRageblade",
-      "DA_VoidStaff",
-      "DA_ArchangelsStaff",
-      "DA_GiantSlayer",
-      "DA_RabadonsDeathcap",
       "DA_RedBuff"
     ],
     "DA_18_Warwick": [
@@ -786,12 +786,13 @@
     ],
     "DA_Gromp18_AD": [
       "DA_RedBuff",
+      "DA_SpearOfShojin",
+      "DA_18_EmblemBlossom",
       "DA_Component_BFSword",
       "DA_Deathblade",
       "DA_GiantSlayer",
       "DA_InfinityEdge",
       "DA_LastWhisper",
-      "DA_SpearOfShojin",
       "DA_StrikersFlail"
     ]
   }

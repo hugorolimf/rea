@@ -9,6 +9,7 @@ import {
   itemTag,
   champTag,
   itemPlansHTML,
+  inspectPlannerChampion,
 } from "/planner.js";
 const $ = (id) => document.getElementById(id);
 const esc = (v) =>
@@ -37,6 +38,18 @@ let inventory = [],
   catalog = [],
   suggestionRevision = 0,
   lastRecHTML = "";
+let lastAnalysisKey = "",
+  activeScreen = "live";
+const fetchJSON = async (url, options = {}) => {
+  const response = await fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(20000),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw Error(result.error ?? "Não foi possível atualizar a leitura.");
+  return result;
+};
 smooth([
   "strategy-content",
   "actionnow",
@@ -116,12 +129,16 @@ function render() {
   const d = data,
     m = d.metadata;
   $("connection").textContent = m.actionable
-    ? "● Partida confirmada"
-    : "○ Snapshot disponível";
+    ? "Partida ao vivo"
+    : "Última leitura · fora do modo ao vivo";
+  document.body.classList.toggle("snapshot-only", !m.actionable);
+  $("sideconnection").textContent = m.actionable
+    ? "Partida ao vivo"
+    : "Última leitura";
   $("connection").className = "status " + (m.actionable ? "live" : "");
   $("freshness").className = "notice " + (m.actionable ? "live" : "");
   $("freshness").textContent = m.actionable
-    ? `Partida ${m.gameId} · ${m.queue} · snapshot há ${m.ageSeconds}s. Banco e loja ainda desconhecidos.`
+    ? `Partida ${m.gameId} · leitura do tabuleiro há ${m.ageSeconds}s. Reserva adversária não capturada; a loja depende da leitura da tela.`
     : `Análise de snapshot: fase ${m.phase ?? "não confirmada"}, idade ${m.ageSeconds}s${m.sameGame === false ? " e ID diferente da sessão atual" : ""}. Não use esta leitura como decisão ao vivo.`;
   $("time").textContent =
     `Fonte: ${new Date(m.modifiedAt).toLocaleTimeString("pt-BR")}`;
@@ -130,9 +147,9 @@ function render() {
     ["Unidades", d.self.units.length, "No tabuleiro observado"],
     ["Rivais vivos", d.opponents.length, "Bancos não incluídos"],
     [
-      "Seu nível",
-      $("level").value,
-      $("autolevel").checked ? "Estimado pelo tabuleiro" : "Informação manual",
+      "Foco",
+      d.preview?.carry ?? d.recommendations[0]?.carry ?? "Aguardando",
+      "Carry da direção ativa",
     ],
   ]
     .map(
@@ -163,11 +180,11 @@ function render() {
         `<div class="counter"><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p></div>`,
     )
     .join("");
-  renderPool();
+  if (activeScreen === "pool") renderPool();
   $("rivals").innerHTML = d.opponents
     .map(
       (p) =>
-        `<div class="rival" data-view="${esc(p.id)}" role="button" tabindex="0"><div class="rival-title"><span>${esc(p.name)}</span><span class="good">${p.health} HP</span></div>${p.units.map(champTag).join("")}<p>Pressão estimada: ${p.pressure} · banco desconhecido</p></div>`,
+        `<button type="button" class="rival" data-view="${esc(p.id)}"><div class="rival-title"><span>${esc(p.name)}</span><span class="good">${p.health} HP</span></div>${p.units.map(champTag).join("")}<p>Pressão estimada: ${p.pressure} · banco desconhecido</p></button>`,
     )
     .join("");
   $("warnings").innerHTML =
@@ -182,7 +199,7 @@ function render() {
         .join(" · ")
     : "O registro atual não informou os aprimoramentos do Hero.";
   renderBench();
-  renderOwnedItems(d.ownedItemAdvice);
+  if (activeScreen === "owneditems") renderOwnedItems(d.ownedItemAdvice);
   renderPlanner(d);
   const ag = d.augmentAdvice,
     pop = $("augmentpop");
@@ -206,9 +223,7 @@ async function update() {
   $("refresh").disabled = true;
   document.body.classList.add("is-loading");
   try {
-    const s = await fetch("/api/state");
-    const m = await s.json();
-    if (!s.ok) throw Error(m.error);
+    const m = await fetchJSON("/api/state");
     if (lastGame !== null && lastGame !== m.gameId) {
       chosenAugments = [];
       bench = [];
@@ -223,7 +238,7 @@ async function update() {
     if ($("autolevel").checked && m.estimatedLevel)
       $("level").value = m.estimatedLevel;
     const sc = m.screen;
-    $("gold").value = sc?.gold ?? "";
+    if (!goldManual) $("gold").value = sc?.gold ?? "";
     $("goldsource").textContent = goldManual
       ? "informado por você"
       : sc?.gold != null
@@ -264,9 +279,11 @@ async function update() {
       sc?.level != null
         ? "lido da tela" + (sc.xp ? " · XP " + sc.xp : "")
         : "estimado pelo tabuleiro";
-    $("goldview").textContent = sc?.gold != null ? sc.gold + "g" : "–";
-    $("goldnote").textContent =
-      sc?.gold != null
+    $("goldview").textContent =
+      $("gold").value !== "" ? $("gold").value + "g" : "–";
+    $("goldnote").textContent = goldManual
+      ? "informado por você"
+      : sc?.gold != null
         ? "lido da tela"
         : sc?.running
           ? sc.window === false
@@ -299,20 +316,43 @@ async function update() {
       gold: $("gold").value === "" ? null : Number($("gold").value),
       bench,
       inventory,
-      levelEstimated: $("autolevel").checked,
+      levelEstimated: $("autolevel").checked && sc?.level == null,
       targetLevel:
         $("targetlevel").value === "auto"
           ? "auto"
           : Number($("targetlevel").value),
       ...getPlannerOptions(),
     };
-    const response = await fetch("/api/recommend", {
+    const analysisKey = JSON.stringify({
+      payload,
+      source: m.modifiedAt,
+      phase: m.phase,
+      actionable: m.actionable,
+      sameGame: m.sameGame,
+      screen: {
+        xp: sc?.xp,
+        stage: sc?.stage,
+        shop: sc?.shop,
+        augments: sc?.augments,
+        removers: sc?.removers,
+      },
+      refreshWindow: Math.floor(Date.now() / 30000),
+    });
+    if (
+      data &&
+      analysisKey === lastAnalysisKey &&
+      !document.body.classList.contains("is-manual")
+    ) {
+      data.metadata = m;
+      render();
+      $("error").hidden = true;
+      return;
+    }
+    const result = await fetchJSON("/api/recommend", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const result = await response.json();
-    if (!response.ok) throw Error(result.error);
     if (
       revision !== suggestionRevision ||
       String($("targetlevel").value) !== String(payload.targetLevel)
@@ -321,6 +361,7 @@ async function update() {
       return;
     }
     data = result;
+    lastAnalysisKey = analysisKey;
     render();
     $("targetview").textContent = "Nível " + result.targetLevel;
     $("targetnote").textContent =
@@ -359,6 +400,8 @@ async function update() {
     $("freshness").className = "notice";
     $("freshness").textContent =
       "Atualização falhou. O conteúdo abaixo, se houver, é da última leitura bem-sucedida.";
+    document.body.classList.remove("is-booting");
+    document.body.classList.add("snapshot-only");
   } finally {
     busy = false;
     $("refresh").disabled = false;
@@ -437,7 +480,12 @@ $("benchlist").onclick = (e) => {
   }
 };
 const menuButton = $("togglemenu");
-document.body.classList.add("sidebar-collapsed");
+try {
+  document.body.classList.toggle(
+    "sidebar-collapsed",
+    localStorage.getItem("tft-helper-menu") !== "expanded",
+  );
+} catch {}
 function syncMenu() {
   const compact = document.body.classList.contains("sidebar-collapsed");
   menuButton.setAttribute("aria-expanded", String(!compact));
@@ -460,6 +508,66 @@ menuButton.onclick = () => {
 };
 syncMenu();
 const navLinks = [...document.querySelectorAll("#sidebar .nav")];
+const strategyPanel = $("strategy-sidebar"),
+  strategyToggle = $("strategy-toggle"),
+  strategyBackdrop = $("strategy-backdrop"),
+  compactStrategy = matchMedia("(max-width: 1180px)");
+let strategyReturnFocus = null;
+function closeStrategy(restoreFocus = true) {
+  const wasOpen = document.body.classList.contains("strategy-open");
+  document.body.classList.remove("strategy-open");
+  strategyToggle.setAttribute("aria-expanded", "false");
+  strategyBackdrop.hidden = true;
+  strategyPanel.removeAttribute("aria-modal");
+  strategyPanel.removeAttribute("role");
+  if (wasOpen && restoreFocus)
+    strategyReturnFocus?.focus({ preventScroll: true });
+}
+function openStrategy() {
+  if (!compactStrategy.matches) return;
+  strategyReturnFocus = document.activeElement;
+  document.body.classList.add("strategy-open");
+  strategyToggle.setAttribute("aria-expanded", "true");
+  strategyBackdrop.hidden = false;
+  strategyPanel.setAttribute("role", "dialog");
+  strategyPanel.setAttribute("aria-modal", "true");
+  $("strategy-close").focus();
+}
+strategyToggle.addEventListener("click", openStrategy);
+$("strategy-close").addEventListener("click", () => closeStrategy());
+strategyBackdrop.addEventListener("click", () => closeStrategy());
+compactStrategy.addEventListener("change", () => closeStrategy(false));
+document.addEventListener("keydown", (event) => {
+  if (!document.body.classList.contains("strategy-open")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeStrategy();
+  }
+  if (event.key !== "Tab") return;
+  const focusable = [
+    ...strategyPanel.querySelectorAll(
+      "button, a[href], input, select, summary, [tabindex='0']",
+    ),
+  ].filter((element) => element.getClientRects().length && !element.disabled);
+  const first = focusable[0],
+    last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+});
+document.addEventListener("compass:inspect", (event) => {
+  location.hash = "planner";
+  showScreen("planner");
+  if (inspectPlannerChampion(event.detail.championId, event.detail.source)) {
+    $("inspector").tabIndex = -1;
+    $("inspector").focus({ preventScroll: true });
+    $("inspector").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+});
 function highlightNav(id) {
   for (const link of navLinks) {
     const active = link.hash === "#" + id;
@@ -470,6 +578,7 @@ function highlightNav(id) {
 }
 // Telas: cada item do menu mostra um grupo de seções centralizado, em vez de uma única página longa.
 const SCREEN_OF = {
+  live: "live",
   planner: "planner",
   paths: "paths",
   gameplan: "paths",
@@ -478,7 +587,7 @@ const SCREEN_OF = {
   ownboard: "scouting",
   scouting: "scouting",
   opponents: "opponents",
-  manualbench: "opponents",
+  manualbench: "scouting",
   pool: "pool",
 };
 for (const el of document.querySelector("main").children) {
@@ -491,9 +600,16 @@ for (const el of document.querySelector("main").children) {
   el.dataset.screen = SCREEN_OF[el.id] ?? "pool";
 }
 function showScreen(screen, target) {
+  activeScreen = screen;
   for (const el of document.querySelectorAll("main>[data-screen]"))
     el.classList.toggle("on", el.dataset.screen === screen);
   highlightNav(screen);
+  document.body.dataset.screen = screen;
+  closeStrategy(false);
+  if (data) {
+    if (screen === "pool") renderPool();
+    if (screen === "owneditems") renderOwnedItems(data.ownedItemAdvice);
+  }
   if (target && target.id !== screen) {
     if (target.tagName === "DETAILS") target.open = true;
     target.scrollIntoView({ block: "start" });
@@ -503,7 +619,12 @@ function route() {
   const id = location.hash.slice(1),
     target = id ? document.getElementById(id) : null,
     owner = target?.closest("main>[data-screen]");
-  showScreen(owner?.dataset.screen ?? "planner", owner ? target : null);
+  showScreen(owner?.dataset.screen ?? "live", owner ? target : null);
+  const heading = (owner ?? $("live"))?.querySelector("h2");
+  if (heading && document.activeElement?.closest("#sidebar")) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
 }
 addEventListener("hashchange", route);
 route();
@@ -532,7 +653,12 @@ try {
     .join("");
   await update();
   connectCapture();
-  setInterval(update, 5000);
+  setInterval(() => {
+    if (!document.hidden) void update();
+  }, 5000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void update();
+  });
 } catch (e) {
   $("error").hidden = false;
   $("error").textContent = e.message;
@@ -550,46 +676,8 @@ function connectCapture() {
         " · " +
         snapshot.players.length +
         " jogadores · espera somente o jogo publicar novos dados";
-      if (lastGame !== snapshot.gameId) {
-        void update();
-        return;
-      }
-      const names = new Map(catalog.map((c) => [c.id, c]));
-      const mapped = snapshot.players.map((p) => ({
-        ...p,
-        units: p.units.map((u) => ({
-          ...u,
-          id: u.championName,
-          name: names.get(u.championName)?.name ?? u.championName,
-          traits: names.get(u.championName)?.traits ?? [],
-          stars: u.starLevel,
-          cost: u.price,
-          items: u.itemNames,
-        })),
-      }));
-      const viewed = mapped.find((p) => p.id === $("viewplayer").value);
-      if (viewed) {
-        $("viewtitle").textContent = "Tabuleiro observado · " + viewed.name;
-        $("viewboard").innerHTML = viewed.units.map(unit).join("");
-      }
-      $("rivals").innerHTML = mapped
-        .filter((p) => p.id !== "47445859" && p.health > 0)
-        .map(
-          (p) =>
-            '<button class="rival captured" data-view="' +
-            esc(p.id) +
-            '"><div class="rival-title"><span>' +
-            esc(p.name) +
-            "</span><span>" +
-            p.health +
-            " HP</span></div>" +
-            p.units.map(champTag).join("") +
-            "<p>Fonte " +
-            new Date(p.sourceAt).toLocaleTimeString("pt-BR") +
-            " · banco desconhecido</p></button>",
-        )
-        .join("");
-      void update();
+      // A single recommendation response feeds every panel; SSE only invalidates it.
+      if (!document.hidden) void update();
     } catch (err) {
       $("capturestatus").textContent = "Captura: " + err.message;
     }
@@ -613,6 +701,7 @@ for (const id of ["recommendations", "decision"])
     if (button) {
       $("planselect").value = button.dataset.pick;
       $("planselect").dispatchEvent(new Event("change"));
+      location.hash = "planner";
       showScreen("planner");
     }
   });
