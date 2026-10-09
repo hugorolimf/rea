@@ -18,6 +18,7 @@ it("does not attribute the first universal slice's UUID and segments to the sele
       "UUID: AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA (x86_64) fixture\nUUID: 01234567-89AB-CDEF-0123-456789ABCDEF (arm64) fixture\n",
   });
   const client = new NativeMacOSProvider(
+    {},
     {
       async run(tool, arguments_) {
         const isSelected =
@@ -28,8 +29,7 @@ it("does not attribute the first universal slice's UUID and segments to the sele
     "darwin",
   ).createClient(nativeMachoTarget("/owned/universal"));
   const result = await client.execute("inspect_macho", {});
-  expect(result.ok).toBe(true);
-  if (!result.ok) return;
+  if (!result.ok) throw result.error;
   expect(result.value.result).toMatchObject({
     uuid: "01234567-89AB-CDEF-0123-456789ABCDEF",
     architectures: { total: 2 },
@@ -72,6 +72,7 @@ it.each([
       dwarfdump: `UUID: 01234567-89AB-CDEF-0123-456789ABCDEF (${dyldArchitecture}) fixture\n`,
     });
     const client = new NativeMacOSProvider(
+      {},
       {
         run(tool, arguments_) {
           calls.push({ tool, arguments_ });
@@ -96,8 +97,7 @@ it.each([
 
     const result = await client.execute("inspect_macho", {});
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) throw result.error;
     expect(result.value.result).toMatchObject({
       uuid: "01234567-89AB-CDEF-0123-456789ABCDEF",
       architectures: {
@@ -114,6 +114,7 @@ it.each([
 
 it("projects universal segment evidence into the selected slice's container offsets", async () => {
   const client = new NativeMacOSProvider(
+    {},
     new NativeFixtureRunner(),
     "darwin",
   ).createClient(nativeMachoTarget("/owned/universal"));
@@ -155,6 +156,7 @@ it.each([
       throw new Error("Expected executable fixture");
     const target = { ...base, availableArchitectures: ["arm64"] as const };
     const result = await new NativeMacOSProvider(
+      {},
       new NativeFixtureRunner({ lipo }),
       "darwin",
     )
@@ -191,6 +193,7 @@ it.each([
     if (base.kind !== "executable")
       throw new Error("Expected executable fixture");
     const result = await new NativeMacOSProvider(
+      {},
       new NativeFixtureRunner({ lipo }),
       "darwin",
     )

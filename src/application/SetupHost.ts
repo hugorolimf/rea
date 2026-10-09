@@ -1,15 +1,19 @@
 import { access } from "node:fs/promises";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
+import { npxRegistrationCommand } from "./ClientRegistrationIdentity.js";
 import {
   SUPPORTED_NODE_VERSION_PROSE,
   supportsNodeVersion,
 } from "../domain/runtimeVersion.js";
 import { runDoctor, systemDoctorHost, type DoctorHost } from "./Doctor.js";
-import { installLinuxHopper, readLinuxDistribution } from "./LinuxHopper.js";
-import { installMacHopper } from "./MacHopper.js";
+import {
+  installLinuxHopper,
+  readLinuxDistribution,
+  systemLinuxHopperInstallHost,
+} from "./LinuxHopper.js";
+import { installMacHopper, systemMacHopperInstallHost } from "./MacHopper.js";
 import { supportedClients, type SetupClient } from "./SupportedClients.js";
 import {
   canonicalSkillNeedsInstall,
@@ -32,10 +36,10 @@ import type { DoctorScope } from "./Doctor.js";
 /** Resolve the executable and arguments used in a managed MCP registration. */
 export const setupRegistrationCommand = (
   platform: NodeJS.Platform,
-  useNpmRunner: boolean = process.env.npm_command === "exec",
+  useNpmRunner: boolean,
 ): readonly string[] =>
   useNpmRunner
-    ? PRODUCT_IDENTITY.mcpCommand.split(" ")
+    ? npxRegistrationCommand(platform)
     : platform === "win32"
       ? [
           process.execPath,
@@ -58,14 +62,6 @@ export const filterClientsNeedingConfigure = async (
   return detectedClients.filter((_, index) => needs[index]);
 };
 
-export const initialProviderEnvironment = async (
-  host: SetupHost,
-  hopperPath: string | undefined,
-): Promise<SetupProviderEnvironment> => ({
-  ...(await host.providerEnvironment?.()),
-  ...(hopperPath === undefined ? {} : { HOPPER_LAUNCHER_PATH: hopperPath }),
-});
-
 export const hostRemediation = async (
   host: SetupHost,
   installHopper: boolean,
@@ -87,15 +83,22 @@ export const hostRemediation = async (
 
 /** Production setup effects for Hopper, agent configuration, and the canonical skill directory. */
 export const systemSetupHost = (
-  doctorHost: DoctorHost = systemDoctorHost(),
+  selectedDoctorHost: DoctorHost | undefined = undefined,
+  environment: Readonly<NodeJS.ProcessEnv> = process.env,
 ): SetupHost => {
+  const doctorHost = selectedDoctorHost ?? systemDoctorHost({ environment });
   const platform = doctorHost.platform;
+  const { homeDirectory } = doctorHost;
   return {
     platform,
+    homeDirectory,
+    registrationCommand: setupRegistrationCommand(
+      platform,
+      environment.npm_command === "exec",
+    ),
     nodeVersion: process.versions.node,
     macosVersion: () => doctorHost.macosVersion(),
     linuxDistribution: readLinuxDistribution,
-    hopperPath: async () => (await runDoctor(undefined, doctorHost)).hopperPath,
     initialSetupState: async (
       scope?: DoctorScope,
     ): Promise<SetupInitialState> => {
@@ -115,36 +118,33 @@ export const systemSetupHost = (
         doctor: diagnosis,
       };
     },
-    providerEnvironment: async () => {
-      const diagnosis = await runDoctor(undefined, doctorHost);
-      return {
-        ...providerRegistrationEnvironment(diagnosis.providerInspections ?? []),
-        ...(diagnosis.hopperPath === undefined
-          ? {}
-          : { HOPPER_LAUNCHER_PATH: diagnosis.hopperPath }),
-      };
-    },
     installHopper: async (replaceExisting) => {
       const result =
         platform === "linux"
-          ? await installLinuxHopper()
-          : await installMacHopper({ replaceExisting });
+          ? await installLinuxHopper(systemLinuxHopperInstallHost(environment))
+          : await installMacHopper(
+              { replaceExisting },
+              systemMacHopperInstallHost(homeDirectory, environment),
+            );
       if (result.status === "installed") return result;
       return setupInstallFailure(result.reason);
     },
-    detectedClients: () => detectClients(homedir()),
-    supportedClients: () => Promise.resolve(supportedClients(homedir())),
+    detectedClients: () => detectClients(homeDirectory, platform, environment),
+    supportedClients: () =>
+      Promise.resolve(supportedClients(homeDirectory, platform, environment)),
     configureClient: (client, providerEnvironment, command) =>
       client.format === "unsupported"
         ? Promise.resolve({ status: "skipped" })
         : configureClientConfiguration(client, providerEnvironment, command),
     clientNeedsConfigure: (client, providerEnvironment, command) =>
-      clientConfigurationAligned(client, providerEnvironment, command).then(
-        (aligned) => !aligned,
-      ),
+      client.format === "unsupported"
+        ? Promise.resolve(false)
+        : clientConfigurationAligned(client, providerEnvironment, command).then(
+            (aligned) => !aligned,
+          ),
     inspectClientConfiguration: inspectClientConfiguration,
-    skillNeedsInstall: () => canonicalSkillNeedsInstall(homedir()),
-    installSkill: () => installCanonicalSkill(homedir()),
+    skillNeedsInstall: () => canonicalSkillNeedsInstall(homeDirectory),
+    installSkill: () => installCanonicalSkill(homeDirectory),
     doctor: (scope) => runDoctor(undefined, doctorHost, scope),
   };
 };
@@ -152,9 +152,11 @@ export const systemSetupHost = (
 /** Detect supported agents from their config files or stable installation markers. */
 export const detectClients = async (
   home: string,
+  platform: NodeJS.Platform = process.platform,
+  environment: Readonly<NodeJS.ProcessEnv> = process.env,
 ): Promise<readonly SetupClient[]> => {
   const detected: SetupClient[] = [];
-  for (const candidate of supportedClients(home)) {
+  for (const candidate of supportedClients(home, platform, environment)) {
     const [hasConfig, hasMarker] = await Promise.all([
       exists(candidate.configPath),
       candidate.markerPath === undefined ? false : exists(candidate.markerPath),

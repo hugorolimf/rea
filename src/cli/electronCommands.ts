@@ -25,15 +25,17 @@ import {
 } from "../cliObservationOptions.js";
 import { runCliJavaScriptApplicationAnalysis } from "./javascriptApplicationAnalysis.js";
 import type { CliResultOutput } from "./streamedJsonOutput.js";
+import { withCommandCancellation } from "./commandCancellation.js";
 
 /** Register CLI equivalents of the Electron MCP tools. */
 export const registerElectronCommands = (
   cli: ReturnType<typeof Cli.create>,
   logger: Logger,
+  environment: Readonly<Record<string, string | undefined>>,
   resultOutput?: CliResultOutput,
 ): void => {
   registerElectronObservationCommands(cli, logger);
-  registerElectronActiveCommand(cli, logger);
+  registerElectronActiveCommand(cli, logger, environment);
   registerJavaScriptApplicationCommand(cli, logger, resultOutput);
   registerJavaScriptRuntimeReconciliationCommand(cli, logger);
 };
@@ -41,9 +43,10 @@ export const registerElectronCommands = (
 const registerElectronActiveCommand = (
   cli: ReturnType<typeof Cli.create>,
   logger: Logger,
+  environment: Readonly<Record<string, string | undefined>>,
 ): void => {
   cli.command(CLI_COMMANDS.captureElectronScenario, {
-    description: "Run one bounded owned Electron scenario",
+    description: "Run one owned Electron scenario with cancellable actions",
     args: z.object({
       inputJson: z
         .string()
@@ -52,33 +55,40 @@ const registerElectronActiveCommand = (
         ),
     }),
     run: ({ args }) =>
-      logCliCommand(logger, CLI_COMMANDS.captureElectronScenario, async () => {
-        const input = await parseCliJsonInput(
-          args.inputJson,
-          "capture_electron_scenario",
-        );
-        if (!input.ok) return input.error;
-        const parsed = electronActiveObservationInputSchema.safeParse(
-          resolveCliJsonPaths(input.value, [
-            ["executable_path"],
-            ["application_path"],
-            ["application_root"],
-          ]),
-        );
-        if (!parsed.success)
-          return inputError(
-            "capture_electron_scenario",
-            parsed.error.issues,
-            input.value,
-          );
-        const { createElectronScenarioProvider } =
-          await import("../composition/electronScenario.js");
-        const result = await captureElectronScenario(
-          createElectronScenarioProvider(),
-          parsed.data,
-        );
-        return result.ok ? result.value : cliError(result.error);
-      }),
+      withCommandCancellation((signal) =>
+        logCliCommand(
+          logger,
+          CLI_COMMANDS.captureElectronScenario,
+          async () => {
+            const input = await parseCliJsonInput(
+              args.inputJson,
+              "capture_electron_scenario",
+            );
+            if (!input.ok) return input.error;
+            const parsed = electronActiveObservationInputSchema.safeParse(
+              resolveCliJsonPaths(input.value, [
+                ["executable_path"],
+                ["application_path"],
+                ["application_root"],
+              ]),
+            );
+            if (!parsed.success)
+              return inputError(
+                "capture_electron_scenario",
+                parsed.error.issues,
+                input.value,
+              );
+            const { createElectronScenarioProvider } =
+              await import("../composition/electronScenario.js");
+            const result = await captureElectronScenario(
+              createElectronScenarioProvider(environment),
+              parsed.data,
+              { signal },
+            );
+            return result.ok ? result.value : cliError(result.error);
+          },
+        ),
+      ),
   });
 };
 
@@ -184,16 +194,19 @@ const registerJavaScriptApplicationCommand = (
     }),
     options: javascriptApplicationOptions,
     run: ({ args, options, format }) =>
-      logCliCommand(logger, CLI_COMMANDS.analyzeJavaScriptApplication, () =>
-        runCliJavaScriptApplicationAnalysis(
-          { input_path: args.path, format: options.artifactFormat },
-          resultOutput === undefined
-            ? undefined
-            : {
-                output: resultOutput,
-                command: CLI_COMMANDS.analyzeJavaScriptApplication,
-                format,
-              },
+      withCommandCancellation((signal) =>
+        logCliCommand(logger, CLI_COMMANDS.analyzeJavaScriptApplication, () =>
+          runCliJavaScriptApplicationAnalysis(
+            { input_path: args.path, format: options.artifactFormat },
+            resultOutput === undefined
+              ? undefined
+              : {
+                  output: resultOutput,
+                  command: CLI_COMMANDS.analyzeJavaScriptApplication,
+                  format,
+                },
+            signal,
+          ),
         ),
       ),
   });

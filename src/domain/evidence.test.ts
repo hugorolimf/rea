@@ -4,7 +4,9 @@ import { describe, expect } from "vitest";
 import { createAnalysisProfile } from "./analysisProfile.js";
 import type { BinaryTarget } from "./binaryTarget.js";
 import { createEvidence, evidenceSchema, parseEvidence } from "./evidence.js";
+import { MAX_JSON_DEPTH, type JsonValue } from "./jsonValue.js";
 import { createEvidenceBundle } from "./evidenceBundle.js";
+import { freezeJsonSnapshot } from "./immutableJson.js";
 
 const TARGET: BinaryTarget = {
   path: "/tmp/fixture",
@@ -16,6 +18,99 @@ const TARGET: BinaryTarget = {
 };
 const PROVIDER = { id: "fixture", name: "Fixture provider", version: "1" };
 const PROFILE = createAnalysisProfile(PROVIDER, { loader: "default" });
+
+it("preserves identity and bytes when reusing an owned immutable result", () => {
+  const value = { nested: { values: ["observed", 1] } };
+  const mutable = createEvidence(TARGET, PROVIDER, {
+    operation: "inspect",
+    parameters: {},
+    result: value,
+  });
+  const frozen = createEvidence(TARGET, PROVIDER, {
+    operation: "inspect",
+    parameters: {},
+    result: freezeJsonSnapshot(value),
+  });
+  expect(JSON.stringify(frozen)).toBe(JSON.stringify(mutable));
+  expect(frozen.normalized_result).toBe(value);
+  expect(Object.isFrozen(frozen)).toBe(true);
+  expect(parseEvidence(frozen)).toEqual(mutable);
+  const wire: unknown = JSON.parse(JSON.stringify(frozen));
+  expect(parseEvidence(wire)).toEqual(mutable);
+  expect(() =>
+    parseEvidence({ ...frozen, normalized_result: { changed: true } }),
+  ).toThrow("semantic identifier");
+});
+
+it("applies the JSON depth boundary to owned immutable results", () => {
+  let result: JsonValue = 1;
+  for (let index = 0; index <= MAX_JSON_DEPTH; index += 1)
+    result = { nested: result };
+  const observe = () =>
+    createEvidence(TARGET, PROVIDER, {
+      operation: "inspect",
+      parameters: {},
+      result,
+    });
+  expect(observe).toThrow("maximum nesting depth");
+  freezeJsonSnapshot(result);
+  expect(observe).toThrow("maximum nesting depth");
+});
+
+it("preserves prototype-named own members when reusing an owned result", () => {
+  const result = { ["__proto__"]: { preserved: 7 }, constructor: "ordinary" };
+  const observation = { operation: "inspect", parameters: {}, result };
+  const ordinary = createEvidence(TARGET, PROVIDER, observation);
+  const owned = createEvidence(TARGET, PROVIDER, {
+    ...observation,
+    result: freezeJsonSnapshot(result),
+  });
+  expect(owned.normalized_result).toBe(result);
+  expect(owned).toEqual(ordinary);
+  expect(parseEvidence(JSON.parse(JSON.stringify(owned)))).toEqual(owned);
+  expect(Object.getPrototypeOf(owned.normalized_result)).toBe(Object.prototype);
+  expect(Reflect.get(Object.prototype, "preserved")).toBeUndefined();
+});
+
+it("preserves producer envelope admission and profile validation", () => {
+  const unprofiled = createEvidence(TARGET, PROVIDER, {
+    operation: "inspect",
+    parameters: {},
+    result: { observed: [1, 2, 3] },
+  });
+  const profiled = createEvidence(TARGET, PROVIDER, {
+    operation: "inspect",
+    parameters: {},
+    result: { observed: [1, 2, 3] },
+    analysisProfile: PROFILE,
+  });
+  const { analysis_profile: _missingProfile, ...missingProfile } = unprofiled;
+  expect(evidenceSchema.safeParse(missingProfile).success).toBe(false);
+  expect(
+    evidenceSchema.safeParse({
+      ...unprofiled,
+      analysis_profile: undefined,
+    }).success,
+  ).toBe(false);
+  const candidates: unknown[] = [
+    missingProfile,
+    unprofiled,
+    profiled,
+    { ...unprofiled, analysis_profile: undefined },
+    { ...unprofiled, analysis_profile: null },
+    {
+      ...profiled,
+      analysis_profile: { ...PROFILE, provider: { ...PROVIDER, id: "other" } },
+    },
+    { ...unprofiled, unexpected: true },
+  ];
+  for (const candidate of candidates) {
+    const canonical = evidenceSchema.safeParse(candidate);
+    if (canonical.success)
+      expect(parseEvidence(candidate)).toEqual(canonical.data);
+    else expect(() => parseEvidence(candidate)).toThrow();
+  }
+});
 
 it("snapshots caller-owned payloads before deriving their identity", () => {
   const result = { nested: { values: ["observed"] } };
@@ -43,13 +138,27 @@ it("snapshots caller-owned payloads before deriving their identity", () => {
 });
 
 describe("analysis evidence identity", () => {
-  it("normalizes prototype-named parameter keys", () => {
+  it("preserves prototype-named parameter keys and their semantic identity", () => {
     const evidence = createEvidence(TARGET, PROVIDER, {
       operation: "health",
       parameters: Object.fromEntries([["__proto__", false]]),
       result: true,
     });
+    expect(evidence.parameters).toEqual({ ["__proto__"]: false });
+    expect(Object.hasOwn(evidence.parameters, "__proto__")).toBe(true);
     expect(parseEvidence(evidence)).toEqual(evidence);
+    const stripped = createEvidence(TARGET, PROVIDER, {
+      operation: "health",
+      parameters: {},
+      result: true,
+    });
+    expect(stripped.evidence_id).not.toBe(evidence.evidence_id);
+    expect(() =>
+      parseEvidence({
+        ...evidence,
+        parameters: { ["__proto__"]: true },
+      }),
+    ).toThrow(/semantic identifier/u);
   });
 
   it.prop([
@@ -117,13 +226,14 @@ describe("analysis evidence identity", () => {
     expect(createEvidence(TARGET, PROVIDER, observation)).toEqual(evidence);
   });
 
-  it("preserves legacy records while binding profiled Evidence to its profile", () => {
-    const legacy = createEvidence(TARGET, PROVIDER, {
+  it("records absent profiles as null and binds reported profiles into identity", () => {
+    const unprofiled = createEvidence(TARGET, PROVIDER, {
       operation: "procedure_info",
       parameters: { procedure: "main" },
       result: { name: "main" },
     });
-    expect(parseEvidence(legacy)).toEqual(legacy);
+    expect(unprofiled.analysis_profile).toBeNull();
+    expect(parseEvidence(unprofiled)).toEqual(unprofiled);
 
     const profiled = createEvidence(TARGET, PROVIDER, {
       operation: "procedure_info",
@@ -132,7 +242,7 @@ describe("analysis evidence identity", () => {
       analysisProfile: PROFILE,
     });
     expect(profiled).toMatchObject({ analysis_profile: PROFILE });
-    expect(profiled.evidence_id).not.toBe(legacy.evidence_id);
+    expect(profiled.evidence_id).not.toBe(unprofiled.evidence_id);
     expect(() =>
       createEvidence(
         TARGET,
@@ -254,4 +364,52 @@ describe("DOS analysis evidence identity", () => {
         .evidence_id,
     );
   });
+});
+
+describe("evidence parameter depth bound", () => {
+  it("rejects evidence whose parameters nest past the JSON depth limit", () => {
+    const evidence = createEvidence(TARGET, PROVIDER, {
+      operation: "health",
+      parameters: {},
+      result: true,
+    });
+    let value: unknown = 1;
+    for (let index = 0; index <= MAX_JSON_DEPTH; index += 1)
+      value = { nested: value };
+    const result = evidenceSchema.safeParse({
+      ...evidence,
+      parameters: { attack: value },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(
+      result.error.issues.some((issue) =>
+        issue.message.includes("maximum nesting depth"),
+      ),
+    ).toBe(true);
+  });
+});
+
+it("preserves prototype-named raw and normalized results with aligned identity", () => {
+  const result = { ["__proto__"]: { preserved: 7 }, constructor: "ordinary" };
+  const evidence = createEvidence(TARGET, PROVIDER, {
+    operation: "health",
+    parameters: {},
+    result,
+    rawResult: result,
+  });
+  const parsed = parseEvidence(evidence);
+  expect(parsed.normalized_result).toEqual(result);
+  expect(parsed.raw_result).toEqual(result);
+  expect(Object.getPrototypeOf(parsed.normalized_result)).toBe(
+    Object.prototype,
+  );
+  expect(Reflect.get(Object.prototype, "preserved")).toBeUndefined();
+  const stripped = createEvidence(TARGET, PROVIDER, {
+    operation: "health",
+    parameters: {},
+    result: { constructor: "ordinary" },
+    rawResult: { constructor: "ordinary" },
+  });
+  expect(stripped.evidence_id).not.toBe(evidence.evidence_id);
 });

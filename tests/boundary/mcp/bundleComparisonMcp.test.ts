@@ -1,3 +1,4 @@
+import { ok as resultOk } from "../../../src/domain/result.js";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -36,7 +37,7 @@ const sourceEvidence = (label: string) =>
   );
 
 describe("bundle comparison MCP integration", () => {
-  it("reads caller-selected bundle files and records a compact result", async () => {
+  it("reads caller-selected bundle files and returns complete Evidence", async () => {
     const root = await createTestTempDirectory("rea-bundle-mcp-");
     roots.push(root);
     const leftPath = join(root, "left.json");
@@ -70,7 +71,7 @@ describe("bundle comparison MCP integration", () => {
       });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({
-        result: { status: "changed" },
+        normalized_result: { status: "changed" },
         evidence_id: expect.stringMatching(/^ev_[a-f0-9]{64}$/u),
       });
     } finally {
@@ -100,7 +101,43 @@ describe("bundle comparison MCP integration", () => {
       });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({
-        result: { status: "unchanged" },
+        normalized_result: { status: "unchanged" },
+      });
+    } finally {
+      await connected.close();
+    }
+  });
+
+  it("explains that a single Evidence record is not a bundle", async () => {
+    const root = await createTestTempDirectory("rea-bundle-record-");
+    roots.push(root);
+    const record = sourceEvidence("single");
+    const recordPath = join(root, "record.json");
+    const bundlePath = join(root, "bundle.json");
+    await Promise.all([
+      writeFile(recordPath, JSON.stringify(record)),
+      writeFile(
+        bundlePath,
+        serializeEvidenceBundle(createEvidenceBundle([record])),
+      ),
+    ]);
+    const connected = await connect();
+    try {
+      const result = await connected.client.callTool({
+        name: "compare_bundles",
+        arguments: {
+          left_bundle_path: recordPath,
+          right_bundle_path: bundlePath,
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        error: {
+          code: "evidence_integrity_mismatch",
+          message: expect.stringContaining(
+            `this JSON is one Evidence record (${record.evidence_id})`,
+          ),
+        },
       });
     } finally {
       await connected.close();
@@ -112,7 +149,7 @@ const connect = async () => {
   const session = createTestBinarySession(() => ({
     health: () => Promise.resolve(),
     execute: () => Promise.resolve(observed(null)),
-    close: () => Promise.resolve(),
+    close: () => Promise.resolve(resultOk(null)),
   }));
   const server = createServer(session, session);
   const client = new Client({ name: "bundle-comparison-test", version: "1" });

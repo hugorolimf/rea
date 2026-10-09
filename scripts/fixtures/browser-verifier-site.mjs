@@ -7,6 +7,13 @@ export async function startBrowserVerifierSite() {
   let port = 0;
   let sessionGeneration = 0;
   const server = createServer((request, response) => {
+    if (request.url === "/slow-json") {
+      response.setHeader("content-type", "application/json");
+      response.write('{"pending":');
+      const timer = setTimeout(() => response.end("true}"), 350);
+      response.once("close", () => clearTimeout(timer));
+      return;
+    }
     if (request.url === "/screenshot-noise") {
       response.setHeader("content-type", "text/html");
       response.end(`<!doctype html><html><body style="margin:0"><canvas width="2048" height="1536"></canvas><script>
@@ -27,6 +34,50 @@ export async function startBrowserVerifierSite() {
       response.end(sourceMap());
       return;
     }
+    if (request.url === "/bad.js.map") {
+      response.setHeader("content-type", "application/source-map+json");
+      response.end(
+        JSON.stringify({
+          version: 3,
+          names: [],
+          sources: ["../src/bad.ts"],
+          mappings: "AAAAD",
+        }),
+      );
+      return;
+    }
+    if (request.url === "/expanded.js.map") {
+      response.setHeader("content-type", "application/source-map+json");
+      response.end(
+        JSON.stringify({
+          version: 3,
+          names: [],
+          sources: ["../src/" + "x".repeat(300000) + ".ts"],
+          mappings: "AAAA" + ",CAAA".repeat(127),
+        }),
+      );
+      return;
+    }
+    if (request.url === "/overflow.js.map") {
+      response.setHeader("content-type", "application/source-map+json");
+      response.end(
+        JSON.stringify({
+          version: 3,
+          sections: [
+            {
+              offset: { line: 0, column: Number.MAX_SAFE_INTEGER },
+              map: {
+                version: 3,
+                names: [],
+                sources: ["overflow.ts"],
+                mappings: "CAAA",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
     if (request.url === "/session-generation") {
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ generation: sessionGeneration }));
@@ -35,6 +86,27 @@ export async function startBrowserVerifierSite() {
     if (request.url?.startsWith("/app.js") === true) {
       response.setHeader("content-type", "text/javascript");
       response.end(browserScript(port));
+      return;
+    }
+    if (request.url?.startsWith("/bad.js") === true) {
+      response.setHeader("content-type", "text/javascript");
+      response.end(
+        "export const badMapProbe = true;\n//# sourceMappingURL=/bad.js.map",
+      );
+      return;
+    }
+    if (request.url?.startsWith("/expanded.js") === true) {
+      response.setHeader("content-type", "text/javascript");
+      response.end(
+        "export const expandedMapProbe = true;\n//# sourceMappingURL=/expanded.js.map",
+      );
+      return;
+    }
+    if (request.url?.startsWith("/overflow.js") === true) {
+      response.setHeader("content-type", "text/javascript");
+      response.end(
+        "export const overflowMapProbe = true;\n//# sourceMappingURL=/overflow.js.map",
+      );
       return;
     }
     if (request.url?.startsWith("/api") === true) {
@@ -109,10 +181,18 @@ const browserScript = (port) => `
       },
       body: JSON.stringify({ token: "request-body-secret-value", active: true })
     });
+    fetch("/slow-json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pending: true })
+    });
     const socket = new WebSocket("ws://127.0.0.1:${String(port)}/live?token=websocket-url-secret");
     socket.addEventListener("open", () => socket.send(JSON.stringify({ token: "websocket-secret-value" })));
     socket.addEventListener("message", () => socket.close());
   };
+  void import("/bad.js");
+  void import("/expanded.js");
+  void import("/overflow.js");
   observe();
   setInterval(observe, 150);
   let observedGeneration = 0;

@@ -22,6 +22,97 @@ import { javascriptRuntimeReconciliationResultSchema } from "../../../src/domain
 import { startFakeV8Inspector } from "../../fixtures/inspector/fakeV8Inspector.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
+describe("Inspector execution-context lifecycle metadata", () => {
+  test.each([
+    [
+      "Runtime.executionContextDestroyed",
+      { executionContextId: 1 },
+      "destroyed",
+    ],
+    ["Runtime.executionContextsCleared", {}, "cleared"],
+  ] as const)(
+    "preserves observed context metadata after %s",
+    async (method, params, state) => {
+      const fixture = await runtimeFixture();
+      const fake = await startFakeV8Inspector({
+        targetUrl: pathToFileURL(fixture.entry).href,
+        runtimeEvents: [
+          {
+            method: "Runtime.executionContextCreated",
+            params: {
+              context: {
+                id: 1,
+                origin: "https://context.example",
+                name: "worker#one",
+              },
+            },
+          },
+          { method, params },
+        ],
+      });
+      try {
+        const result = await new V8InspectorProvider().observe(
+          observeInput(fake.endpoint, fake.targetId, "node"),
+        );
+        if (!result.ok) throw result.error;
+        expect(result.value.execution_contexts).toEqual([
+          {
+            context_key: "1",
+            state,
+            name: "worker#one",
+            origin: "https://context.example",
+          },
+        ]);
+      } finally {
+        await fake.close();
+      }
+    },
+  );
+
+  test("replaces context metadata only when a new context creation is observed", async () => {
+    const fixture = await runtimeFixture();
+    const fake = await startFakeV8Inspector({
+      targetUrl: pathToFileURL(fixture.entry).href,
+      runtimeEvents: [
+        {
+          method: "Runtime.executionContextCreated",
+          params: {
+            context: {
+              id: 1,
+              origin: "https://old.example",
+              name: "old context",
+            },
+          },
+        },
+        {
+          method: "Runtime.executionContextDestroyed",
+          params: { executionContextId: 1 },
+        },
+        {
+          method: "Runtime.executionContextCreated",
+          params: { context: { id: 1, origin: "", name: "" } },
+        },
+        {
+          method: "Runtime.executionContextDestroyed",
+          params: { executionContextId: 2 },
+        },
+      ],
+    });
+    try {
+      const result = await new V8InspectorProvider().observe(
+        observeInput(fake.endpoint, fake.targetId, "node"),
+      );
+      if (!result.ok) throw result.error;
+      expect(result.value.execution_contexts).toEqual([
+        { context_key: "1", state: "created", name: "", origin: "" },
+        { context_key: "2", state: "destroyed", name: null, origin: null },
+      ]);
+    } finally {
+      await fake.close();
+    }
+  });
+});
+
 describe("passive V8 Inspector provider", () => {
   test("rejects unknown runtime observation fields", () => {
     expect(
@@ -43,8 +134,7 @@ describe("passive V8 Inspector provider", () => {
       const listed = await new V8InspectorProvider().listTargets({
         inspector_endpoint: fake.endpoint,
       });
-      expect(listed.ok).toBe(true);
-      if (!listed.ok) return;
+      if (!listed.ok) throw listed.error;
       expect(listed.value.targets).toHaveLength(206);
       expect(listed.value.targets[0]?.target_id).toBe(fake.targetId);
     } finally {
@@ -63,8 +153,7 @@ describe("passive V8 Inspector provider", () => {
       const result = await new V8InspectorProvider().listTargets({
         inspector_endpoint: fake.endpoint,
       });
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.targets).toHaveLength(2);
       expect(
         result.value.targets.map(({ location }) => location),
@@ -89,16 +178,15 @@ describe("passive V8 Inspector provider", () => {
       const result = await new V8InspectorProvider().observe(
         observeInput(fake.endpoint, fake.targetId, "node"),
       );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.scripts.items).toHaveLength(3);
       expect(result.value.scripts.excluded.unsupported_location).toBe(0);
       expect(result.value.execution_contexts).toEqual([
         {
           context_key: "1",
           state: "created",
-          name: null,
-          origin: null,
+          name: "node[fixture]",
+          origin: "",
         },
       ]);
       expect(new Set(fake.commands.map(({ method }) => method))).toEqual(
@@ -124,8 +212,7 @@ describe("passive V8 Inspector provider", () => {
       const listed = await provider.listTargets({
         inspector_endpoint: fake.endpoint,
       });
-      expect(listed.ok).toBe(true);
-      if (!listed.ok) return;
+      if (!listed.ok) throw listed.error;
       expect(listed.value.targets).toEqual([]);
 
       const observed = await provider.observe(
@@ -179,11 +266,11 @@ describe("complete Inspector script hashes", () => {
       scriptHashes,
     });
     try {
-      const result = await new V8InspectorProvider().observe(
-        observeInput(fake.endpoint, fake.targetId, "node"),
-      );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      const result = await new V8InspectorProvider().observe({
+        ...observeInput(fake.endpoint, fake.targetId, "node"),
+        observation_ms: 1_000,
+      });
+      if (!result.ok) throw result.error;
       expect(result.value.scripts.items).toHaveLength(scriptHashes.length);
       expect(
         new Set(result.value.scripts.items.map(({ cdp_hash }) => cdp_hash)),
@@ -205,8 +292,7 @@ describe("undeclared V8 runtime role", () => {
       const input = observeInput(fake.endpoint, fake.targetId, "node");
       delete input.runtime_kind;
       const result = await new V8InspectorProvider().observe(input);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.target).toMatchObject({
         protocol_type: "page",
         runtime_kind: "unknown",
@@ -218,7 +304,7 @@ describe("undeclared V8 runtime role", () => {
   });
 });
 
-describe("passive V8 Inspector evidence", () => {
+describe("V8 Inspector script retention", () => {
   test("retains authorized script locations longer than the former byte ceiling", async () => {
     const longUrl = `https://example.test/${"a".repeat(20_000)}`;
     const fake = await startFakeV8Inspector({
@@ -230,8 +316,7 @@ describe("passive V8 Inspector evidence", () => {
         ...observeInput(fake.endpoint, fake.targetId, "node"),
       };
       const result = await new V8InspectorProvider().observe(input);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.scripts.items).toHaveLength(1);
       expect(result.value.scripts.items[0]?.location).toMatchObject({
         kind: "url",
@@ -259,8 +344,7 @@ describe("passive V8 Inspector evidence", () => {
         observation_ms: 1_000,
       };
       const result = await new V8InspectorProvider().observe(input);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.capture.truncated).toBe(false);
       expect(result.value.capture.truncation_reasons).toEqual([]);
       expect(result.value.capture.events_dropped).toBe(0);
@@ -269,7 +353,69 @@ describe("passive V8 Inspector evidence", () => {
       await fake.close();
     }
   });
+});
 
+describe("bounded V8 Inspector capture", () => {
+  test("bounds aggregate script and context metadata while retaining a useful partial capture", async () => {
+    const fixture = await runtimeFixture();
+    const url = pathToFileURL(fixture.entry).href;
+    const scriptHashes = Array.from(
+      { length: 2_300 },
+      (_, index) => `${"h".repeat(4_096)}${String(index)}`,
+    );
+    const fake = await startFakeV8Inspector({
+      targetUrl: url,
+      scriptUrls: scriptHashes.map(() => url),
+      scriptHashes,
+      contextTransitionCount: 2_000,
+    });
+    try {
+      const result = await new V8InspectorProvider().observe({
+        ...observeInput(fake.endpoint, fake.targetId, "node"),
+        observation_ms: 1_000,
+      });
+      if (!result.ok) throw result.error;
+      expect(result.value.capture.truncated).toBe(true);
+      expect(result.value.capture.truncation_reasons).toEqual([
+        "retained_metadata_budget_exceeded",
+      ]);
+      expect(result.value.capture.events_dropped).toBeGreaterThan(0);
+      expect(result.value.capture.metadata_bytes_retained).toBeLessThanOrEqual(
+        8 * 1024 * 1024,
+      );
+      expect(result.value.capture.events_observed).toBeGreaterThan(
+        result.value.capture.events_retained,
+      );
+      expect(result.value.execution_contexts).toHaveLength(1);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  test("rejects a CDP event larger than the configured transport payload budget", async () => {
+    const fixture = await runtimeFixture();
+    const fake = await startFakeV8Inspector({
+      targetUrl: pathToFileURL(fixture.entry).href,
+      oversizedEventBytes: 16 * 1024 * 1024,
+    });
+    try {
+      const result = await new V8InspectorProvider().observe(
+        observeInput(fake.endpoint, fake.targetId, "node"),
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({
+        _tag: "BrowserObservationError",
+        reason: "payload_limit",
+      });
+      expect(result.error.userMessage).toContain("protocol budget");
+    } finally {
+      await fake.close();
+    }
+  });
+});
+
+describe("passive V8 Inspector evidence", () => {
   test("produces deterministic Evidence through the service without grants", async () => {
     const fixture = await runtimeFixture();
     const fake = await startFakeV8Inspector({
@@ -323,8 +469,7 @@ describe("passive V8 Inspector evidence", () => {
       static_layers: JAVASCRIPT_RUNTIME_RECONCILIATION_EXAMPLE.static_layers,
       runtime_observations: [runtimeEvidence],
     });
-    expect(reconciled.ok).toBe(true);
-    if (!reconciled.ok) return;
+    if (!reconciled.ok) throw reconciled.error;
     const result = javascriptRuntimeReconciliationResultSchema.parse(
       reconciled.value.normalized_result,
     );

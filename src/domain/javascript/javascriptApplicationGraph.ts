@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canonicalDigest, canonicalJson } from "../comparisonSemantics.js";
 import { compareCodePoints, uniqueSorted } from "../canonicalOrdering.js";
+import { freezeOwnedJsonSnapshotSteps } from "../immutableJson.js";
 
 import type {
   ApplicationGraphEvidence,
@@ -148,6 +149,27 @@ const checkEvidenceNormalization = (
     });
 };
 
+const sourceMapObservationMatchesIdentity = (
+  identity: Extract<
+    ApplicationNodeIdentity,
+    { readonly strategy: "source-map-original" }
+  >,
+  observation: ApplicationNode["observations"][number],
+): boolean => {
+  const { evidence, source_map_reference: reference } = observation;
+  return (
+    reference !== null &&
+    evidence.state === "observed" &&
+    evidence.artifact.available &&
+    evidence.artifact.sha256 === identity.source_map_sha256 &&
+    reference.source_name === identity.original_source &&
+    reference.source_root === identity.source_root &&
+    evidence.location.available &&
+    evidence.location.value.kind === "artifact-path" &&
+    reference.map_path === evidence.location.value.path
+  );
+};
+
 const observationMatchesIdentity = (
   node: ApplicationNode,
   observation: ApplicationNode["observations"][number],
@@ -161,11 +183,7 @@ const observationMatchesIdentity = (
       evidence.artifact.sha256 === identity.sha256
     );
   if (identity.strategy === "source-map-original")
-    return (
-      evidence.state === "observed" &&
-      evidence.artifact.available &&
-      evidence.artifact.sha256 === identity.source_map_sha256
-    );
+    return sourceMapObservationMatchesIdentity(identity, observation);
   if (identity.strategy === "canonical-path")
     return (
       evidence.artifact.available &&
@@ -244,6 +262,22 @@ const checkNode = (
           "observations",
           observationIndex,
           "observation_id",
+        ],
+      });
+    if (
+      node.identity.strategy === "source-map-original" &&
+      !observationMatchesIdentity(node, observation)
+    )
+      context.addIssue({
+        code: "custom",
+        message:
+          "Source-map observation must retain its exact declaration and map location",
+        path: [
+          "nodes",
+          index,
+          "observations",
+          observationIndex,
+          "source_map_reference",
         ],
       });
     checkEvidenceNormalization(
@@ -449,6 +483,30 @@ export const createJavaScriptApplicationGraph = (
     graph_id: `jag_${canonicalDigest(semantic, "JavaScript Application Graph")}`,
   });
 };
+
+const validatedImmutableApplicationGraphs = new WeakSet<object>();
+
+/** Clone and validate synchronously, then return steps to seal the owned graph. */
+export const createImmutableJavaScriptApplicationGraphSteps = (
+  input: unknown,
+): Generator<void, JavaScriptApplicationGraph> =>
+  sealValidatedApplicationGraphSteps(createJavaScriptApplicationGraph(input));
+
+function* sealValidatedApplicationGraphSteps(
+  graph: JavaScriptApplicationGraph,
+): Generator<void, JavaScriptApplicationGraph> {
+  yield* freezeOwnedJsonSnapshotSteps(graph);
+  validatedImmutableApplicationGraphs.add(graph);
+  return graph;
+}
+
+/** Recognize the exact completely sealed graph produced by the owned factory. */
+export const isValidatedImmutableJavaScriptApplicationGraph = (
+  value: unknown,
+): value is JavaScriptApplicationGraph =>
+  typeof value === "object" &&
+  value !== null &&
+  validatedImmutableApplicationGraphs.has(value);
 
 /** Parse a stored graph and reject stale IDs. */
 export const parseJavaScriptApplicationGraph = (

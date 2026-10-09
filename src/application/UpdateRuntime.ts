@@ -1,15 +1,16 @@
 import { realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homeDirectoryFromEnvironment } from "../config/homeDirectory.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
-import { z } from "zod";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
 import { err, ok, type Result } from "../domain/result.js";
+import { safeParseJson } from "../domain/safeJson.js";
 import {
   updateInstallCommand,
   type NpmInstallation,
+  type ReleaseLookupFailure,
   type UpdateHost,
   type UpdateOutput,
 } from "./Update.js";
@@ -25,6 +26,7 @@ export interface NpmInstallationHost {
 /** Run an updater subprocess with complete diagnostics and isolated machine output. */
 export const runUpdateCommand = (
   command: readonly string[],
+  selectedEnvironment: Readonly<NodeJS.ProcessEnv>,
   output: UpdateOutput = "structured",
 ): Promise<Result<string, string>> =>
   new Promise((resolveResult) => {
@@ -33,7 +35,7 @@ export const runUpdateCommand = (
       resolveResult(err("No executable supplied."));
       return;
     }
-    const environment = { ...process.env };
+    const environment = { ...selectedEnvironment };
     // A fresh installed entry point must not inherit npx's invocation identity.
     delete environment.npm_command;
     const child = spawn(executable, args, {
@@ -71,8 +73,9 @@ export const runUpdateCommand = (
 
 const requireCommandOutput = async (
   command: readonly string[],
+  environment: Readonly<NodeJS.ProcessEnv>,
 ): Promise<string> => {
-  const result = await runUpdateCommand(command);
+  const result = await runUpdateCommand(command, environment);
   if (!result.ok) throw new Error(result.error);
   return result.value;
 };
@@ -116,56 +119,103 @@ export const detectNpmInstallation = async (
   return { prefix: dirname(library), packageRoot: canonicalPackageRoot };
 };
 
+const INVALID_NPM_RELEASE_METADATA =
+  "Invalid npm release metadata: expected a version string or a single-element version array.";
+
+/** npm view arguments for dist-tags.latest, scoped to the owning prefix when known. */
+export const npmLatestVersionCommand = (
+  installation: NpmInstallation | undefined,
+): readonly string[] => [
+  "npm",
+  "view",
+  "--global",
+  ...(installation === undefined ? [] : ["--prefix", installation.prefix]),
+  PRODUCT_IDENTITY.packageName,
+  "dist-tags.latest",
+  "--json",
+  "--fetch-retries=0",
+  "--fetch-timeout=10000",
+];
+
+/**
+ * Read one latest version from `npm view --json`.
+ * npm 11 emits a JSON string. npm 12 emits that string as a one-element array.
+ */
+export const parseNpmLatestVersion = (
+  metadata: string,
+): Result<string, string> => {
+  const decoded = safeParseJson(metadata);
+  if (!decoded.ok) return err(decoded.error);
+  const version = readNpmLatestVersion(decoded.value);
+  return version === undefined
+    ? err(INVALID_NPM_RELEASE_METADATA)
+    : ok(version);
+};
+
+const readNpmLatestVersion = (value: unknown): string | undefined => {
+  if (typeof value === "string") return nonemptyVersion(value);
+  if (!Array.isArray(value) || value.length !== 1) return undefined;
+  const only = value[0];
+  return typeof only === "string" ? nonemptyVersion(only) : undefined;
+};
+
+const nonemptyVersion = (value: string): string | undefined =>
+  value.length === 0 ? undefined : value;
+
+/** Classify npm view output as a version or a lookup failure. */
+export const npmReleaseLookup = (
+  response: Result<string, string>,
+): Result<string, ReleaseLookupFailure> => {
+  if (!response.ok) return err({ kind: "unavailable", detail: response.error });
+  const parsed = parseNpmLatestVersion(response.value);
+  return parsed.ok
+    ? ok(parsed.value)
+    : err({ kind: "invalid-metadata", detail: parsed.error });
+};
+
 /** Create npm, registry, verification, and read-only maintenance effects. */
 export const systemUpdateHost = (
   packageRoot = fileURLToPath(new URL("../..", import.meta.url)),
-  home = homedir(),
+  home: string | undefined = undefined,
+  environment: Readonly<NodeJS.ProcessEnv> = process.env,
 ): UpdateHost => ({
   installation: () =>
     detectNpmInstallation(packageRoot, {
       canonicalPath: realpath,
-      globalRoot: () => requireCommandOutput(["npm", "root", "--global"]),
-      globalPrefix: () => requireCommandOutput(["npm", "prefix", "--global"]),
+      globalRoot: () =>
+        requireCommandOutput(["npm", "root", "--global"], environment),
+      globalPrefix: () =>
+        requireCommandOutput(["npm", "prefix", "--global"], environment),
     }),
-  latestVersion: async (installation) => {
-    const response = await runUpdateCommand([
-      "npm",
-      "view",
-      "--global",
-      ...(installation === undefined ? [] : ["--prefix", installation.prefix]),
-      PRODUCT_IDENTITY.packageName,
-      "dist-tags.latest",
-      "--json",
-      "--fetch-retries=0",
-      "--fetch-timeout=10000",
-    ]);
-    if (!response.ok) return response;
-    try {
-      const parsed = z.string().min(1).safeParse(JSON.parse(response.value));
-      return parsed.success
-        ? ok(parsed.data)
-        : err(`Invalid npm release metadata: ${parsed.error.message}`);
-    } catch (cause: unknown) {
-      return err(cause instanceof Error ? cause.message : String(cause));
-    }
-  },
+  latestVersion: async (installation) =>
+    npmReleaseLookup(
+      await runUpdateCommand(
+        npmLatestVersionCommand(installation),
+        environment,
+      ),
+    ),
   installVersion: async (installation, version, output) => {
     const result = await runUpdateCommand(
       updateInstallCommand(installation, version),
+      environment,
       output,
     );
     return result.ok ? ok(undefined) : result;
   },
   installedVersion: (installation) =>
-    runUpdateCommand([
-      process.execPath,
-      join(installation.packageRoot, "scripts", "rea.mjs"),
-      "--version",
-    ]),
+    runUpdateCommand(
+      [
+        process.execPath,
+        join(installation.packageRoot, "scripts", "rea.mjs"),
+        "--version",
+      ],
+      environment,
+    ),
   planMaintenance: (installation) =>
     planIntegrationMaintenance(
-      home,
+      home ?? homeDirectoryFromEnvironment(environment, process.platform),
       join(installation.packageRoot, "scripts", "rea.mjs"),
-      runUpdateCommand,
+      environment,
+      (command) => runUpdateCommand(command, environment),
     ),
 });

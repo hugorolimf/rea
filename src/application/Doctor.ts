@@ -1,19 +1,20 @@
 import { constants } from "node:fs";
 import { access, readFile, readdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { homeDirectoryFromEnvironment } from "../config/homeDirectory.js";
+import { join } from "node:path";
 
 import { analysisErrorRemediationAction } from "../domain/analysisErrorPresentation.js";
 import { parseBinaryTarget } from "./BinaryTargetResolver.js";
 import { execFileOutput } from "../process/ExecFileOutput.js";
 import type { JsonValue } from "../domain/jsonValue.js";
-import { probeHomebrew } from "./homebrew.js";
+import { installedCaskAppdir, probeHomebrew } from "./homebrew.js";
 import {
   linuxHopperBinarySupported,
   linuxSharedLibrariesAvailable,
   readLinuxDistribution,
   type LinuxDistribution,
 } from "./LinuxHopper.js";
+import { canonicalSkillNeedsInstall } from "./SetupSkill.js";
 import { CATALOG_IDENTITY } from "../catalogIdentity.js";
 import { PRODUCT_IDENTITY, SDK_IDENTITY } from "../identity.js";
 import {
@@ -75,7 +76,7 @@ export interface DoctorHost {
   readonly platform: NodeJS.Platform;
   readonly architecture: NodeJS.Architecture;
   readonly nodeVersion: string;
-  readonly homeDirectory?: string;
+  readonly homeDirectory: string;
   readonly configuredHopperPath?: string;
   readonly configuredIlspyCmdPath?: string;
   macosVersion(): Promise<string | undefined>;
@@ -95,11 +96,13 @@ export interface DoctorHost {
   ilspyCmdVersion?(path: string): Promise<string | undefined>;
 }
 
-/** Parsed identity committed by an installed REA skill. */
+/** Observed skill metadata and comparison with the packaged instruction bundle. */
 interface InstalledSkillIdentity {
   readonly version: string | null;
   readonly toolCount: number | null;
   readonly catalogDigest: string | null;
+  /** Whether all managed instruction and reference files match this package. */
+  readonly canonical: boolean;
 }
 
 /** Structured result returned by the read-only doctor workflow. */
@@ -139,6 +142,7 @@ interface DoctorIdentity {
   readonly skill: {
     readonly installed_version: string | null;
     readonly installed_tool_count: number | null;
+    /** Legacy catalog digest observed in older bundles; current bundles omit it. */
     readonly installed_catalog_digest: string | null;
     readonly state: "aligned" | "stale" | "missing";
     readonly remediation: string | null;
@@ -211,7 +215,7 @@ const collectDoctorIdentity = async (
       ...registrations
         .filter(
           (registration): registration is UnhealthyClientRegistrationStatus =>
-            registration.state !== "aligned",
+            registration.state !== "aligned" && registration.state !== "manual",
         )
         .map(registrationCheck),
     ],
@@ -253,7 +257,7 @@ const skillIdentityAligned = (
 ): boolean =>
   identity?.version === PRODUCT_IDENTITY.skillVersion &&
   identity.toolCount === CATALOG_IDENTITY.counts.mcp_tools &&
-  identity.catalogDigest === CATALOG_IDENTITY.digests.combined_sha256;
+  identity.canonical;
 
 const skillIdentityCheck = (
   identity: InstalledSkillIdentity | undefined,
@@ -283,21 +287,6 @@ const installationState = (
 ): DoctorIdentity["installations"]["state"] =>
   paths.length === 0 ? "unknown" : paths.length === 1 ? "single" : "multiple";
 
-const homeFromEnvironment = (
-  environment: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-): string => {
-  const selected =
-    platform === "win32"
-      ? (environment.USERPROFILE ??
-        (environment.HOMEDRIVE !== undefined &&
-        environment.HOMEPATH !== undefined
-          ? `${environment.HOMEDRIVE}${environment.HOMEPATH}`
-          : environment.HOME))
-      : (environment.HOME ?? environment.USERPROFILE);
-  return selected ?? homedir();
-};
-
 /** Optional outer-adapter diagnostics composed without reversing dependencies. */
 export interface SystemDoctorHostOptions {
   readonly platform?: NodeJS.Platform;
@@ -318,7 +307,7 @@ export const systemDoctorHost = (
   const architecture = options.architecture ?? process.arch;
   const environment = options.environment ?? process.env;
   const hostExecFileOutput = options.execFileOutput ?? execFileOutput;
-  const homeDirectory = homeFromEnvironment(environment, platform);
+  const homeDirectory = homeDirectoryFromEnvironment(environment, platform);
   const commandEnvironment = { env: environment };
   return {
     platform,
@@ -376,20 +365,30 @@ export const systemDoctorHost = (
     supportedLinuxHopper: linuxHopperBinarySupported,
     async brewHopperPath() {
       return probeHomebrew(async (command) => {
+        let caskroom: string;
         try {
-          const prefix = (
+          // Without a cask argument, `--caskroom` does not load Homebrew's
+          // cask API, so doctor writes no Homebrew cache files.
+          caskroom = (
             await hostExecFileOutput(
               command,
-              ["--prefix", "--cask", "hopper-disassembler"],
+              ["--caskroom"],
               commandEnvironment,
             )
           ).stdout.trim();
-          return `${prefix}/Hopper Disassembler.app/Contents/MacOS/hopper`;
         } catch (cause: unknown) {
           // best-effort cleanup: optional Homebrew probing; absence means uninstalled.
           void cause;
           return undefined;
         }
+        const appdir = await installedCaskAppdir(
+          caskroom,
+          "hopper-disassembler",
+          homeDirectory,
+        );
+        return appdir === undefined
+          ? undefined
+          : join(appdir, "Hopper Disassembler.app/Contents/MacOS/hopper");
       });
     },
     manualHopperPaths: () => manualHopperPaths(homeDirectory),
@@ -437,8 +436,8 @@ export const systemDoctorHost = (
 };
 
 const readMacosVersion = async (
-  run: typeof execFileOutput = execFileOutput,
-  options: { readonly env: NodeJS.ProcessEnv } = { env: process.env },
+  run: typeof execFileOutput,
+  options: { readonly env: NodeJS.ProcessEnv },
 ): Promise<string | undefined> => {
   try {
     return (await run("sw_vers", ["-productVersion"], options)).stdout.trim();
@@ -451,9 +450,9 @@ const readMacosVersion = async (
 
 const executableAvailable = async (
   path: string,
-  platform: NodeJS.Platform = process.platform,
-  run: typeof execFileOutput = execFileOutput,
-  options: { readonly env: NodeJS.ProcessEnv } = { env: process.env },
+  platform: NodeJS.Platform,
+  run: typeof execFileOutput,
+  options: { readonly env: NodeJS.ProcessEnv },
 ): Promise<boolean> => {
   try {
     await access(path, constants.X_OK);
@@ -476,9 +475,7 @@ const uncomposedLinuxDemoRuntimeCheck = (): Promise<DoctorCheck> =>
     remediation: "Run rea doctor through the production CLI adapter.",
   });
 
-const manualHopperPaths = async (
-  home: string = homedir(),
-): Promise<readonly string[]> => {
+const manualHopperPaths = async (home: string): Promise<readonly string[]> => {
   const paths: string[] = [];
   for (const root of ["/Applications", join(home, "Applications")]) {
     try {
@@ -507,6 +504,7 @@ const installedSkillIdentity = async (
     const content = await readInstalledSkill(home);
     const countText = /^\s{2}tool_count:\s*(\d+)\s*$/mu.exec(content)?.[1];
     return {
+      canonical: !(await canonicalSkillNeedsInstall(home)),
       version: /^\s{2}version:\s*"([^"]+)"\s*$/mu.exec(content)?.[1] ?? null,
       toolCount:
         countText === undefined ? null : Number.parseInt(countText, 10),

@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { open as openFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 
 import type { ArtifactCommand } from "../domain/artifactGraph.js";
@@ -7,7 +7,12 @@ import {
   XcrunCommandRunner,
   type NativeCommandRunner,
 } from "../native/CommandRunner.js";
-import { parseLipoArchitectures } from "../native/parsers/lipo.js";
+import {
+  parseLipoArchitectures,
+  type LipoArchitecture,
+} from "../native/parsers/lipo.js";
+import type { MachoSlice } from "../domain/apple/dylibResolution.js";
+import { readMachoImage, type ReadAt } from "./apple/MachoLoadCommandReader.js";
 import {
   ArtifactReaderFailure,
   type ArtifactEntry,
@@ -22,7 +27,10 @@ export class MachOSliceArtifactReader implements ArtifactReader {
 
   constructor(
     private readonly path: string,
-    private readonly runner: NativeCommandRunner = new XcrunCommandRunner(),
+    environment: Readonly<NodeJS.ProcessEnv>,
+    private readonly runner: NativeCommandRunner = new XcrunCommandRunner(
+      environment,
+    ),
   ) {}
 
   async *entries(signal?: AbortSignal): AsyncIterable<ArtifactEntry> {
@@ -46,19 +54,56 @@ export class MachOSliceArtifactReader implements ArtifactReader {
       effects: ["read"],
     };
     const fileSize = (await stat(this.path)).size;
-    for (const architecture of parseLipoArchitectures(captured.value.stdout)) {
-      if (architecture.file_offset === null || architecture.size === null)
+    const architectures = parseLipoArchitectures(captured.value.stdout);
+    const structural = await readStructuralSlices(this.path, fileSize);
+    if (structural.status === "malformed")
+      throw new ArtifactReaderFailure(
+        "integrity",
+        `Mach-O structural slice index is malformed: ${structural.reason}`,
+      );
+    if (structural.status === "unsupported")
+      throw new ArtifactReaderFailure(
+        "format",
+        `Mach-O structural slice index is unsupported: ${structural.reason}`,
+      );
+    const slices = structural.status === "parsed" ? structural.slices : null;
+    const matchingSlices = new Map<LipoArchitecture, MachoSlice>();
+    if (slices !== null) {
+      if (slices.length !== architectures.length)
+        throw new ArtifactReaderFailure(
+          "integrity",
+          "lipo architecture count disagrees with the Mach-O FAT table",
+        );
+      const unmatched = [...slices];
+      for (const reported of architectures) {
+        const match = unmatched.findIndex((observed) =>
+          lipoMatchesSlice(reported, observed, slices.length === 1),
+        );
+        if (match < 0)
+          throw new ArtifactReaderFailure(
+            "integrity",
+            `lipo slice metadata disagrees with the Mach-O FAT table: ${reported.name} (cputype=${reported.cpu_type ?? "unknown"}, cpusubtype=${reported.cpu_subtype ?? "unknown"}, offset=${reported.file_offset ?? "unknown"}, size=${reported.size ?? "unknown"}, alignment=${reported.alignment ?? "unknown"})`,
+          );
+        const [observed] = unmatched.splice(match, 1);
+        if (observed !== undefined) matchingSlices.set(reported, observed);
+      }
+    }
+    for (const architecture of architectures) {
+      const structuralSlice = matchingSlices.get(architecture);
+      const offset = architecture.file_offset ?? structuralSlice?.slice_offset;
+      const sliceSize = architecture.size ?? structuralSlice?.slice_size;
+      if (offset === undefined || sliceSize === undefined)
         throw new ArtifactReaderFailure(
           "integrity",
           "lipo omitted a universal slice byte range",
         );
       if (
-        !Number.isSafeInteger(architecture.file_offset) ||
-        !Number.isSafeInteger(architecture.size) ||
-        architecture.file_offset < 0 ||
-        architecture.size <= 0 ||
-        !Number.isSafeInteger(architecture.file_offset + architecture.size) ||
-        architecture.file_offset + architecture.size > fileSize
+        !Number.isSafeInteger(offset) ||
+        !Number.isSafeInteger(sliceSize) ||
+        offset < 0 ||
+        sliceSize <= 0 ||
+        !Number.isSafeInteger(offset + sliceSize) ||
+        offset + sliceSize > fileSize
       )
         throw new ArtifactReaderFailure(
           "integrity",
@@ -67,15 +112,38 @@ export class MachOSliceArtifactReader implements ArtifactReader {
       yield {
         path: `slices/${architecture.name}`,
         kind: "slice",
-        declaredSize: architecture.size,
+        declaredSize: sliceSize,
         compressedSize: null,
         executable: true,
         encrypted: false,
-        byteOffset: architecture.file_offset,
+        byteOffset: offset,
         declaredSha256: null,
         unpacked: false,
-        limitations: [],
-        adapterKey: `${String(architecture.file_offset)}:${String(architecture.size)}`,
+        limitations: [
+          ...(structural.status === "not-mach-o"
+            ? [
+                "Structural Mach-O facts were unavailable; slice range is based on lipo output.",
+              ]
+            : []),
+          ...(architecture.file_offset === null || architecture.size === null
+            ? [
+                "Slice range was derived from structural Mach-O facts because lipo omitted it.",
+              ]
+            : []),
+          ...(architecture.cpu_type !== null &&
+          architecture.cpu_type_code === null
+            ? [
+                `lipo CPU type is retained as unnormalized source text: ${architecture.cpu_type}`,
+              ]
+            : []),
+          ...(architecture.cpu_subtype !== null &&
+          architecture.cpu_subtype_code === null
+            ? [
+                `lipo CPU subtype is retained as unnormalized source text: ${architecture.cpu_subtype}${architecture.capabilities === null ? "" : `; capabilities ${architecture.capabilities}`}`,
+              ]
+            : []),
+        ],
+        adapterKey: `${String(offset)}:${String(sliceSize)}`,
       };
     }
   }
@@ -156,6 +224,62 @@ export class MachOSliceArtifactReader implements ArtifactReader {
     return Promise.resolve();
   }
 }
+
+/** Compare lipo's independent ranges with structurally parsed slice identity. */
+const readStructuralSlices = async (
+  path: string,
+  size: number,
+): Promise<Awaited<ReturnType<typeof readMachoImage>>> => {
+  const file = await openFile(path, "r");
+  try {
+    const readAt: ReadAt = async (offset, length) => {
+      const bytes = Buffer.alloc(length);
+      const { bytesRead } = await file.read(bytes, 0, length, offset);
+      return bytes.subarray(0, bytesRead);
+    };
+    const facts = await readMachoImage(readAt, size);
+    return facts;
+  } finally {
+    await file.close();
+  }
+};
+
+const lipoMatchesSlice = (
+  reported: LipoArchitecture,
+  observed: MachoSlice,
+  structurallyUnique: boolean,
+): boolean => {
+  const observedCpuType = observed.fat_cpu_type ?? observed.cpu_type;
+  const observedCpuSubtype = observed.fat_cpu_subtype ?? observed.cpu_subtype;
+  const hasPhysicalIdentity =
+    reported.file_offset !== null ||
+    reported.size !== null ||
+    reported.cpu_type_code !== null ||
+    reported.cpu_subtype_code !== null;
+  return (
+    (hasPhysicalIdentity || structurallyUnique) &&
+    lipoNameMatches(reported.name, observed.architecture) &&
+    (reported.file_offset === null ||
+      reported.file_offset === observed.slice_offset) &&
+    (reported.size === null || reported.size === observed.slice_size) &&
+    (reported.cpu_type_code === null ||
+      reported.cpu_type_code === observedCpuType) &&
+    (reported.cpu_subtype_code === null ||
+      reported.cpu_subtype_code === observedCpuSubtype) &&
+    (reported.alignment === null ||
+      observed.fat_alignment_exponent === null ||
+      reported.alignment === 2 ** observed.fat_alignment_exponent)
+  );
+};
+
+/**
+ * Newer lipo names an arm64e ABI variant `arm64e.<variant>` (for example
+ * `arm64e.v1` for pointer-auth ABI version 1). The FAT table names that slice
+ * `arm64e`; its physical identity is still compared field by field.
+ */
+const lipoNameMatches = (reported: string, observed: string): boolean =>
+  reported === observed ||
+  (observed === "arm64e" && /^arm64e\.[A-Za-z0-9_]+$/u.test(reported));
 
 const parseSliceKeyInteger = (value: string | undefined): number | null => {
   if (value === undefined || !/^\d+$/u.test(value)) return null;

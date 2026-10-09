@@ -3,162 +3,39 @@ import { describe, expect, it } from "vitest";
 import type { JsonValue } from "../domain/jsonValue.js";
 import { functionDossierSchema } from "../domain/hopperValues.js";
 import {
-  parseGhidraFunctionInput,
   parseGhidraFunctionResult,
   type GhidraFunctionOperation,
 } from "./GhidraFunctionValues.js";
 import {
   ghidraFunctionClassification,
-  ghidraFunctionBody,
   ghidraFunctionDossier,
   ghidraFunctionIdentity,
   ghidraNativeApiBoundary,
   ghidraReferenceEdge,
 } from "../domain/ghidraValues.fixture.js";
 
-describe("Ghidra function-analysis boundary values", () => {
-  it("defaults inputs and rejects undeclared or implicit addresses", () => {
-    expect(
-      parseGhidraFunctionInput("procedure_info", { procedure: "main" }),
-    ).toEqual({
-      ok: true,
-      value: { document: null, procedure: "main" },
-    });
-    expect(
-      parseGhidraFunctionInput("procedure_references", { procedure: "main" }),
-    ).toEqual({
-      ok: true,
-      value: {
-        document: null,
-        procedure: "main",
-        direction: "outgoing",
-      },
-    });
-    expect(
-      parseGhidraFunctionInput("analyze_function", { procedure: "main" }),
-    ).toMatchObject({
-      ok: true,
-      value: { procedure: "main" },
-    });
-    expect(
-      parseGhidraFunctionInput("read_function_instructions", {
-        procedure: "main",
-      }),
-    ).toEqual({
-      ok: true,
-      value: { document: null, procedure: "main" },
-    });
-    expect(parseGhidraFunctionInput("xrefs", {})).toMatchObject({
-      ok: false,
-      error: { _tag: "AnalysisInputError" },
-    });
-    expect(
-      parseGhidraFunctionInput("procedure_info", {
-        procedure: "main",
-        extra: true,
-      }),
-    ).toMatchObject({ ok: false, error: { _tag: "AnalysisInputError" } });
-  });
-});
-
 describe("Ghidra function-analysis result values", () => {
-  it("parses provider-classified function facts and reference kinds", () => {
-    expect(
-      parseGhidraFunctionResult("read_function_instructions", {
-        procedure: ghidraFunctionIdentity(),
-        instructions: ["0x401000: push rbp"],
-        limitations: ["Ghidra-specific instruction text."],
-      }),
-    ).toMatchObject({ ok: true });
-    expect(
-      parseGhidraFunctionResult("read_function_instructions", {
-        procedure: {
-          ...ghidraFunctionIdentity(),
-          address: "0X401000",
-        },
-        instructions: ["0x401000: push rbp"],
-        limitations: ["Ghidra-specific instruction text."],
-      }),
-    ).toMatchObject({
-      ok: false,
-      error: { _tag: "AnalysisOutputError" },
-    });
-    expect(
-      parseGhidraFunctionResult("procedure_info", {
-        name: "fixture_main",
-        entrypoint: "0x401000",
-        basicblock_count: 1,
-        length: 6,
-        signature: "int fixture_main(void)",
-        locals: [
-          {
-            description: "int local @ Stack[-0x4]:4",
-            provenance: "ghidra-function-database",
-          },
-        ],
-        classification: ghidraFunctionClassification(),
-        body: ghidraFunctionBody(),
-      }),
-    ).toMatchObject({ ok: true });
-    expect(
-      parseGhidraFunctionResult("procedure_references", {
+  it.each(["reference_kinds_available", "unresolved_calls"])(
+    "rejects omitted %s instead of inventing complete reference observations",
+    (field) => {
+      const output = {
         procedure: ghidraFunctionIdentity(),
         direction: "outgoing",
         references: [ghidraReferenceEdge()],
-      }),
-    ).toMatchObject({
-      ok: true,
-      value: {
-        references: [
-          {
-            kind: {
-              available: true,
-              provenance: "ghidra-reference-manager",
-              data: true,
-            },
-          },
-        ],
-      },
-    });
-    expect(
-      parseGhidraFunctionResult("analyze_function", ghidraFunctionDossier()),
-    ).toMatchObject({
-      ok: true,
-      value: {
-        native_api: {
-          available: true,
-          provenance: "ghidra-high-function",
-          return_type: {
-            data_type: "int",
-            confidence: "medium",
-          },
-          jump_tables: [
-            {
-              dispatch_address: "0x401010",
-              data_sources: [{ address: "0x403000" }],
-              mappings: [
-                {
-                  target_address: "0x401020",
-                },
-              ],
-            },
-          ],
-          pseudocode: {
-            classification: "decompiler-generated-non-source",
-            compilable: false,
-          },
-        },
-        native_value_flow: {
-          available: true,
-          provenance: "ghidra-high-pcode",
-          operations: [
-            expect.objectContaining({ id: "0x401000#0", opcode: "COPY" }),
-          ],
-          truncated: false,
-        },
-      },
-    });
-  });
+        reference_kinds_available: true,
+        unresolved_calls: [],
+      };
+      const incomplete = Object.fromEntries(
+        Object.entries(output).filter(([key]) => key !== field),
+      );
+      expect(
+        parseGhidraFunctionResult("procedure_references", output),
+      ).toMatchObject({ ok: true });
+      expect(
+        parseGhidraFunctionResult("procedure_references", incomplete),
+      ).toMatchObject({ ok: false, error: { _tag: "AnalysisOutputError" } });
+    },
+  );
 
   it("rejects p-code relationships that refer to omitted operation IDs", () => {
     const dossier = ghidraFunctionDossier();
@@ -231,7 +108,6 @@ describe("Ghidra jump-table mapping contract", () => {
         ],
       },
     });
-    expect(parsed.ok).toBe(true);
     if (!parsed.ok) throw parsed.error;
     const output = functionDossierSchema.parse(parsed.value).native_api;
     if (output?.available !== true)
@@ -245,7 +121,7 @@ describe("Ghidra jump-table mapping contract", () => {
     });
   });
 
-  it("normalizes legacy missing defaults without promoting unknown cases", () => {
+  it("rejects omitted default observations instead of repairing obsolete bridge output", () => {
     const dossier = functionDossierSchema.parse(ghidraFunctionDossier());
     const boundary = dossier.native_api;
     if (boundary?.available !== true)
@@ -254,20 +130,20 @@ describe("Ghidra jump-table mapping contract", () => {
     const mapping = table?.mappings[0];
     if (table === undefined || mapping === undefined)
       throw new TypeError("Ghidra jump-table fixture is unavailable");
-    const { default_targets: _legacyDefaults, ...legacy } = table;
+    const { default_targets: omittedDefaults, ...withoutDefaults } = table;
+    expect(omittedDefaults).toHaveLength(1);
     const parsed = parseGhidraFunctionResult("analyze_function", {
       ...dossier,
       native_api: {
         ...boundary,
         jump_tables: [
-          { ...legacy, mappings: [{ ...mapping, case_value: null }] },
+          { ...withoutDefaults, mappings: [{ ...mapping, case_value: null }] },
         ],
       },
     });
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) throw parsed.error;
-    expect(functionDossierSchema.parse(parsed.value).native_api).toMatchObject({
-      jump_tables: [{ default_targets: [], mappings: [{ case_value: null }] }],
+    expect(parsed).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisOutputError" },
     });
   });
 

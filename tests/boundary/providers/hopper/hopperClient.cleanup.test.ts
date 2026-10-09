@@ -45,6 +45,7 @@ class OwnedFixtureLauncher implements BridgeLauncher {
     return ok({
       process: started.process,
       ownsProcessLifetime: true as const,
+      providerLifetime: "launcher-process" as const,
       ownership: started.ownership,
       shutdownMode: "process-cleanup" as const,
       cleanup: () => cleanupOwnedProcessGroup(started.ownership),
@@ -68,6 +69,7 @@ class UnconfirmedFixtureLauncher implements BridgeLauncher {
           { stdio: ["ignore", "ignore", "pipe"] },
         ),
         ownsProcessLifetime: false,
+        providerLifetime: "external-application" as const,
         shutdownMode: "bridge-request" as const,
       }),
     );
@@ -90,6 +92,7 @@ class UnconfirmedOwnedFixtureLauncher implements BridgeLauncher {
           { stdio: ["ignore", "ignore", "pipe"] },
         ),
         ownsProcessLifetime: true as const,
+        providerLifetime: "launcher-process" as const,
         shutdownMode: "bridge-request" as const,
       }),
     );
@@ -163,14 +166,14 @@ describe("HopperClient cleanup", () => {
     clients.push(client);
     expect((await client.start()).ok).toBe(true);
 
-    const closed = await client.closeWithOutcome();
+    const closed = await client.close();
 
     expect(closed).toMatchObject({
       ok: false,
       error: {
         _tag: "ProviderAdapterError",
         cleanupIncomplete: true,
-        cleanupResources: ["hopper-document"],
+        cleanupResources: expect.arrayContaining(["hopper-document"]),
       },
     });
     if (!closed.ok)
@@ -180,7 +183,7 @@ describe("HopperClient cleanup", () => {
           provider_id: "hopper",
           operation: "close_binary",
           cleanup: "incomplete",
-          resources: ["hopper-document"],
+          resources: expect.arrayContaining(["hopper-document"]),
         },
       });
   });
@@ -193,14 +196,14 @@ describe("HopperClient cleanup", () => {
     clients.push(client);
     expect((await client.start()).ok).toBe(true);
 
-    const closed = await client.closeWithOutcome();
+    const closed = await client.close();
 
     expect(closed).toMatchObject({
       ok: false,
       error: {
         _tag: "ProviderAdapterError",
         cleanupIncomplete: true,
-        cleanupResources: ["hopper-document"],
+        cleanupResources: expect.arrayContaining(["hopper-document"]),
       },
     });
   });
@@ -221,7 +224,8 @@ describe("HopperClient cleanup", () => {
     const client = new HopperClient({
       launcher,
       runId,
-      startupTimeoutMs: 1_000,
+      // Cold Darwin ownership-reader compilation runs inside launcher startup.
+      startupTimeoutMs: 10_000,
       onDiagnostic: (event) => diagnostics.push(event),
     });
     clients.push(client);

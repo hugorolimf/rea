@@ -1,9 +1,13 @@
+import { snapshotEnvironment } from "./process/snapshotEnvironment.js";
+import { createDirectAnalysis } from "./composition/directAnalysis.js";
 import { registerEvmCommands } from "./cli/evmCommands.js";
+import { registerAnalysisViewCommands } from "./cli/analysisViewCommands.js";
 import { registerBinaryDiagnosticsCommands } from "./cli/binaryDiagnosticsCommands.js";
 import { Cli } from "incur";
 
 import { createLogger, parseLogLevel } from "./logger.js";
 import { PRODUCT_IDENTITY } from "./identity.js";
+import { npxRegistrationCommand } from "./application/ClientRegistrationIdentity.js";
 import { registerSetupCommands } from "./cli/setupCommands.js";
 import { registerCoreAnalysisCommands } from "./cli/coreAnalysisCommands.js";
 import { registerUtilityCommands } from "./cli/utilityCommands.js";
@@ -25,6 +29,7 @@ import { registerBrowserScenarioCommands } from "./cliBrowserScenarioCommands.js
 import { registerElectronCommands } from "./cli/electronCommands.js";
 import { registerJavaScriptRuntimeObservationCommands } from "./cliJavaScriptRuntimeCommands.js";
 import { registerApplicationCommands } from "./cli/applicationCommands.js";
+import { presentOmittableDefaults } from "./cli/omittableDefaults.js";
 import type { CliInstance } from "./cli/types.js";
 import type { CliResultOutput } from "./cli/streamedJsonOutput.js";
 
@@ -34,9 +39,13 @@ import type { CliResultOutput } from "./cli/streamedJsonOutput.js";
  * `--mcp` are intercepted by the executable dispatcher before this module loads.
  */
 export const createCli = (
-  environment: Readonly<Record<string, string | undefined>> = process.env,
+  selectedEnvironment: Readonly<
+    Record<string, string | undefined>
+  > = process.env,
   resultOutput?: CliResultOutput,
 ): CliInstance => {
+  const environment = snapshotEnvironment(selectedEnvironment);
+  const analysis = createDirectAnalysis(environment);
   const logger = createLogger(
     "cli",
     environment.REA_LOG_LEVEL === undefined
@@ -47,22 +56,28 @@ export const createCli = (
     version: PRODUCT_IDENTITY.packageVersion,
     description: "Reverse engineer anything from your terminal or agent.",
     mcp: {
-      command: PRODUCT_IDENTITY.mcpCommand,
+      command: npxRegistrationCommand().join(" "),
       instructions:
         "Ask what software, artifact, protocol, or behavior the user wants to understand, then choose the available investigation capabilities that can produce evidence.",
     },
     sync: false,
   });
 
-  registerSetupCommands(cli, logger);
-  registerCoreAnalysisCommands(cli, logger, resultOutput);
-  registerUtilityCommands(cli, logger, environment);
+  registerSetupCommands(cli, logger, environment);
+  registerCoreAnalysisCommands(
+    cli,
+    logger,
+    analysis.runDirectAnalysis,
+    resultOutput,
+  );
+  registerUtilityCommands(cli, logger, environment, analysis);
   registerEvmCommands(cli, logger, environment);
-  registerArtifactCommands(cli, logger);
-  registerManagedCommands(cli, logger);
+  registerArtifactCommands(cli, logger, analysis.runProviderAnalysis);
+  registerManagedCommands(cli, logger, analysis.runProviderAnalysis);
   registerAndroidCommands(cli, logger, environment);
   registerFirmwareCommands(cli, logger, environment);
   registerBinaryDiagnosticsCommands(cli, logger, environment);
+  registerAnalysisViewCommands(cli, logger);
   registerEvidenceCommands(cli, logger);
   registerProcessCommands(cli, logger, environment);
   registerBrowserCommands(cli, logger);
@@ -73,9 +88,10 @@ export const createCli = (
   registerWebNetworkCaptureCommands(cli, logger, environment);
   registerJavaScriptRecoveryCommands(cli, logger, environment);
   registerAdvancedBrowserCommands(cli, logger);
-  registerBrowserScenarioCommands(cli, logger);
-  registerElectronCommands(cli, logger, resultOutput);
+  registerBrowserScenarioCommands(cli, logger, environment);
+  registerElectronCommands(cli, logger, environment, resultOutput);
   registerJavaScriptRuntimeObservationCommands(cli, logger);
   registerApplicationCommands(cli, logger);
+  presentOmittableDefaults(cli);
   return cli;
 };

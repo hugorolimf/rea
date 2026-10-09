@@ -7,6 +7,8 @@ import type { AnalysisProfileCommitment } from "../../domain/analysisProfile.js"
 import type { AnalysisProviderSelector } from "../../contracts/providerSelection.js";
 import type { AnalysisError } from "../../domain/analysisErrorBase.js";
 import type { Result } from "../../domain/result.js";
+import type { EvidenceIntegrityError } from "../../domain/evidenceErrors.js";
+import type { WorkflowSnapshotRecordInput } from "./BinarySessionRecords.js";
 
 import type {
   AnalysisOperation,
@@ -14,6 +16,18 @@ import type {
   ExecutionOptions,
   ProviderIdentity,
 } from "../AnalysisProvider.js";
+
+/** Receipt for an atomically saved snapshot followed by provider cleanup. */
+export interface SavedAnalysisSnapshot {
+  readonly path: string;
+  readonly bytes: number;
+  /** Eligible primitive query bindings. */
+  readonly primitive_entries: number;
+  /** Eligible composed workflow bindings, separate from primitive queries. */
+  readonly workflow_entries: number;
+  /** All retained Evidence records, including observations without a replay binding. */
+  readonly evidence_records: number;
+}
 
 /** Target lifecycle used by CLI and MCP without exposing a concrete provider. */
 export interface BinarySessionPort
@@ -33,6 +47,12 @@ export interface BinarySessionPort
       readonly retainProviderDocuments?: boolean;
     },
   ): Promise<Result<null, AnalysisError>>;
+  /** Save a snapshot and close while excluding later provider requests. */
+  closeWithSnapshot(
+    path: string,
+    overwrite: boolean,
+    options?: Pick<ExecutionOptions, "progress">,
+  ): Promise<Result<SavedAnalysisSnapshot, AnalysisError>>;
   status(): JsonValue;
   activeTarget(): BinaryTarget | undefined;
   exportAnalysisSnapshot(): Result<AnalysisSnapshot, AnalysisError>;
@@ -43,7 +63,10 @@ export interface BinarySessionPort
   analysisProfile(
     operation?: AnalysisOperation,
   ): AnalysisProfileCommitment | undefined;
-  openCompatibility(): Readonly<Record<string, JsonValue>>;
+  allowsSnapshotReplay(operation: AnalysisOperation): boolean;
+  recordWorkflowSnapshot(
+    input: WorkflowSnapshotRecordInput,
+  ): Result<null, EvidenceIntegrityError>;
   onAvailabilityChanged?(listener: () => void | Promise<void>): () => void;
   onAnalysisSnapshotChanged?(listener: () => void | Promise<void>): () => void;
 }

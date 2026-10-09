@@ -1,13 +1,19 @@
-import { lstat, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, lstat, realpath } from "node:fs/promises";
 
 import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
+import {
+  AnalysisAccessDeniedError,
+  AnalysisInputError,
+  AnalysisUnsupportedTargetError,
+} from "../../domain/analysisErrorCore.js";
 import { createJavaScriptArtifactReader as createReader } from "../../artifacts/javascript/JavaScriptArtifactReader.js";
 import type { JavaScriptApplicationGraph } from "../../domain/javascript/javascriptApplicationGraph.js";
 import type { JavaScriptSemanticGraph } from "../../domain/javascript/javascriptSemanticGraph.js";
 import type { ElectronBoundarySummary } from "../../domain/javascript/javascriptApplicationAnalysis.js";
 import { analyzeAndProjectJavaScriptArtifactFiles } from "./JavaScriptArtifactAnalysis.js";
 import { readJavaScriptArtifactFiles } from "../../artifacts/javascript/JavaScriptArtifactFiles.js";
-import { buildJavaScriptArtifactGraph } from "./JavaScriptArtifactGraphBuilder.js";
+import { buildImmutableJavaScriptArtifactGraphSteps } from "./JavaScriptArtifactGraphBuilder.js";
 import {
   javascriptArtifactReconstructionInputSchema,
   type JavaScriptArtifactReconstructionInput,
@@ -16,6 +22,10 @@ import { scanCanonicalArtifactInventory } from "../../artifacts/inventory/Artifa
 import { summarizeElectronBoundaries } from "./ElectronBoundaryAnalysis.js";
 import { createJavaScriptSemanticGraphProjection } from "./JavaScriptSemanticGraphBuilder.js";
 import type { ProgressReporter } from "../ProgressReporter.js";
+import {
+  checkpointJavaScriptAnalysis,
+  completeJavaScriptAnalysisSteps,
+} from "./JavaScriptAnalysisControl.js";
 
 /** Application-layer result retaining local diagnostics outside the canonical graph. */
 export interface JavaScriptArtifactReconstructionResult {
@@ -50,10 +60,11 @@ export const reconstructJavaScriptArtifact = async (
 ): Promise<JavaScriptArtifactReconstructionResult> => {
   const reportPhase = async (phase: string, message: string): Promise<void> => {
     await progress?.report({ phase, completed: 0, total: 1, message });
+    await checkpointJavaScriptAnalysis(signal);
   };
   const input = javascriptArtifactReconstructionInputSchema.parse(rawInput);
   abortIfNeeded(signal);
-  const path = await realpath(input.input_path);
+  const path = await resolveSelectedInput(input.input_path);
   const format = await resolveFormat(path, input);
   const snapshot = await scanCanonicalArtifactInventory(path, { signal });
   if (snapshot.manifest.root_format !== format)
@@ -87,21 +98,43 @@ export const reconstructJavaScriptArtifact = async (
         abortIfNeeded(signal);
       },
     );
+    await checkpointJavaScriptAnalysis(signal);
     abortIfNeeded(signal);
     await reportPhase(
       "build_javascript_application_graph",
       "Constructing application and Electron boundary relationships",
     );
-    const graph = buildJavaScriptArtifactGraph(snapshot, files, analysis);
+    const applicationGraphSteps = buildImmutableJavaScriptArtifactGraphSteps(
+      snapshot,
+      files,
+      analysis,
+    );
+    await reportPhase(
+      "seal_javascript_application_graph",
+      "Sealing the validated application graph",
+    );
+    const graph = await completeJavaScriptAnalysisSteps(
+      applicationGraphSteps,
+      signal,
+    );
     await reportPhase(
       "build_javascript_semantic_graph",
       "Binding and validating static semantic relationships",
     );
-    const semanticGraph = semanticProjection.finish(
+    const semanticGraphSteps = semanticProjection.finishImmutableSteps(
       snapshot.manifest.root_sha256,
       graph,
       analysis,
     );
+    await reportPhase(
+      "seal_javascript_semantic_graph",
+      "Validating and sealing the semantic graph",
+    );
+    const semanticGraph = await completeJavaScriptAnalysisSteps(
+      semanticGraphSteps,
+      signal,
+    );
+    await checkpointJavaScriptAnalysis(signal);
     return {
       input_path: path,
       format,
@@ -132,6 +165,37 @@ export const reconstructJavaScriptArtifact = async (
   }
 };
 
+const OPERATION = "analyze_javascript_application";
+
+/**
+ * Resolve the caller-selected input. A missing or unreadable selection is a
+ * caller or host-permission failure, not a damaged artifact.
+ */
+const resolveSelectedInput = async (inputPath: string): Promise<string> => {
+  try {
+    const path = await realpath(inputPath);
+    await access(path, constants.R_OK);
+    return path;
+  } catch (cause: unknown) {
+    const code =
+      cause instanceof Error && "code" in cause ? String(cause.code) : "";
+    if (code === "EACCES" || code === "EPERM")
+      throw new AnalysisAccessDeniedError(OPERATION, inputPath, code, {
+        cause,
+      });
+    if (code === "ENOENT" || code === "ENOTDIR")
+      throw new AnalysisInputError(OPERATION, { cause }, [
+        {
+          path: ["input_path"],
+          reason: "invalid_value",
+          message: `No file or directory exists at the selected input path (${code}): ${inputPath}`,
+        },
+      ]);
+    throw cause;
+  }
+};
+
+/** The selected input's kind, checked against the caller's requested format. */
 const resolveFormat = async (
   path: string,
   input: JavaScriptArtifactReconstructionInput,
@@ -143,15 +207,24 @@ const resolveFormat = async (
       ? "asar"
       : undefined;
   if (observed === undefined)
-    throw new ArtifactReaderFailure(
-      "format",
-      `JavaScript artifact reconstruction accepts only a directory or .asar file: ${path}`,
+    throw new AnalysisUnsupportedTargetError(
+      OPERATION,
+      input.input_path,
+      "JavaScript application analysis accepts only a directory or an .asar file",
+      {
+        remediationAction:
+          "Select an extracted application directory, an app bundle, or an .asar file such as Contents/Resources/app.asar.",
+      },
     );
   if (input.format !== "auto" && input.format !== observed)
-    throw new ArtifactReaderFailure(
-      "format",
-      `Requested ${input.format} input but observed ${observed}: ${path}`,
-    );
+    throw new AnalysisInputError(OPERATION, undefined, [
+      {
+        path: ["format"],
+        reason: "invalid_value",
+        message: `Requested ${input.format} input, but the selected input is ${observed === "asar" ? "an .asar file" : "a directory"}: ${input.input_path}`,
+        expected: ["auto", observed],
+      },
+    ]);
   return observed;
 };
 

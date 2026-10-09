@@ -8,6 +8,7 @@ import type { EnhancedToolName } from "../contracts/enhancedInputs.js";
 import { enhancedInputSchemas } from "../contracts/enhancedInputs.js";
 import {
   AnalysisCancelledError,
+  AnalysisCapabilityUnavailableError,
   AnalysisOutputError,
 } from "../domain/analysisErrorCore.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
@@ -15,7 +16,6 @@ import { type AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   addressDistance,
   functionDossierSchema,
-  parseDocuments,
   parseFunctionDossier,
   parseListCount,
   parseRelatedAddresses,
@@ -37,7 +37,9 @@ import {
   type EnhancedResult,
   type ValidatedEnhancedCall,
 } from "./EnhancedToolTypes.js";
+import { resolveAnalysisDocument } from "./AnalysisDocument.js";
 import { traceCallPath } from "./CallPathTracing.js";
+import { resolveProcedureAddress } from "./ProcedureAddressResolution.js";
 import { traceLiteralFeature } from "./EnhancedLiteralTracing.js";
 import { projectNativeApiInspection } from "./native/NativeApiInspection.js";
 export type { ValidatedEnhancedCall } from "./EnhancedToolTypes.js";
@@ -252,20 +254,33 @@ export class EnhancedTools {
   ): EnhancedResult {
     const items = await Promise.all(
       addresses.map(async (address) => {
+        const resolved = await resolveProcedureAddress(
+          this.#call.bind(this),
+          address,
+          signal,
+        );
+        const procedure = resolved.ok
+          ? await this.#batchProcedureIdentity(resolved.value, signal)
+          : {
+              status: "unknown" as const,
+              error: projectAnalysisError(resolved.error),
+            };
         const result = await this.#call(
           "procedure_pseudo_code",
-          { procedure: address },
+          { procedure: resolved.ok ? resolved.value : address },
           signal,
         );
         if (!result.ok)
           return {
             address,
+            procedure,
             status: "error" as const,
             error: projectAnalysisError(result.error),
           };
         if (typeof result.value !== "string" || result.value.length === 0)
           return {
             address,
+            procedure,
             status: "error" as const,
             error: projectAnalysisError(
               new AnalysisOutputError(
@@ -274,7 +289,12 @@ export class EnhancedTools {
               ),
             ),
           };
-        return { address, status: "ok" as const, pseudocode: result.value };
+        return {
+          address,
+          procedure,
+          status: "ok" as const,
+          pseudocode: result.value,
+        };
       }),
     );
     const succeeded = items.filter(({ status }) => status === "ok").length;
@@ -284,6 +304,30 @@ export class EnhancedTools {
       succeeded,
       failed: items.length - succeeded,
     });
+  }
+
+  async #batchProcedureIdentity(address: string, signal?: AbortSignal) {
+    const observed = await this.#call("address_name", { address }, signal);
+    const named =
+      observed.ok &&
+      (typeof observed.value === "string" || observed.value === null);
+    return {
+      status: "resolved" as const,
+      address,
+      name: named ? observed.value : null,
+      ...(named
+        ? {}
+        : {
+            name_error: projectAnalysisError(
+              observed.ok
+                ? new AnalysisOutputError(
+                    "address_name",
+                    "provider returned an invalid entry label",
+                  )
+                : observed.error,
+            ),
+          }),
+    };
   }
 
   async #callGraph(
@@ -296,9 +340,15 @@ export class EnhancedTools {
     const relation = input.direction === "forward" ? "callees" : "callers";
     const tool =
       input.direction === "forward" ? "procedure_callees" : "procedure_callers";
-    const discovered = new Set([input.address]);
+    const resolved = await resolveProcedureAddress(
+      this.#call.bind(this),
+      input.address,
+      signal,
+    );
+    if (!resolved.ok) return resolved;
+    const discovered = new Set([resolved.value]);
     const queue: Array<{ address: string; depth: number }> = [
-      { address: input.address, depth: 0 },
+      { address: resolved.value, depth: 0 },
     ];
     let queueIndex = 0;
     const graph: Record<string, JsonValue[]> = {};
@@ -351,9 +401,30 @@ export class EnhancedTools {
     signal?: AbortSignal,
   ): EnhancedResult {
     const procedures = await this.#allAddressed("list_procedures", signal);
-    return procedures.ok
-      ? ok(categorizeSwiftTypes(procedures.value, input))
-      : procedures;
+    if (!procedures.ok) return procedures;
+    const symbols = await this.#allAddressed("list_names", signal);
+    if (
+      !symbols.ok &&
+      !(symbols.error instanceof AnalysisCapabilityUnavailableError)
+    )
+      return symbols;
+    const result = categorizeSwiftTypes(
+      procedures.value,
+      input,
+      symbols.ok ? symbols.value : [],
+    );
+    return ok(
+      symbols.ok
+        ? result
+        : {
+            ...result,
+            symbol_inventory_error: projectAnalysisError(symbols.error),
+            limitations: [
+              ...result.limitations,
+              "The provider's symbol inventory is unavailable; demangled procedures could not be joined to their Swift aliases.",
+            ],
+          },
+    );
   }
 
   async #findXrefs(name: string, signal?: AbortSignal): EnhancedResult {
@@ -388,29 +459,32 @@ export class EnhancedTools {
   }
 
   async #binaryOverview(signal?: AbortSignal): EnhancedResult {
-    const [segmentsResult, documentsResult, proceduresResult, stringsResult] =
-      await Promise.all([
+    const document = await resolveAnalysisDocument(
+      this.analysis,
+      undefined,
+      signal,
+    );
+    if (!document.ok) return document;
+    const [segmentsResult, proceduresResult, stringsResult] = await Promise.all(
+      [
         this.#call("list_segments", {}, signal),
-        this.#call("list_documents", {}, signal),
         this.#call("list_procedures", {}, signal),
         this.#call("list_strings", {}, signal),
-      ]);
+      ],
+    );
     if (!segmentsResult.ok) return segmentsResult;
-    if (!documentsResult.ok) return documentsResult;
     if (!proceduresResult.ok) return proceduresResult;
     if (!stringsResult.ok) return stringsResult;
 
     const segments = parseSegments(segmentsResult.value);
     if (!segments.ok) return segments;
-    const documents = parseDocuments(documentsResult.value);
-    if (!documents.ok) return documents;
     const procedureCount = parseListCount(proceduresResult.value, "procedures");
     if (!procedureCount.ok) return procedureCount;
     const stringCount = parseListCount(stringsResult.value, "strings");
     if (!stringCount.ok) return stringCount;
 
     return ok({
-      document: documents.value[0] ?? "unknown",
+      document: document.value,
       segments: segments.value.map(({ name, start, end }) => ({
         name,
         start,

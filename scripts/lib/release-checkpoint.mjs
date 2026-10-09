@@ -5,6 +5,7 @@ const shaSchema = z.string().regex(/^[a-f0-9]{40}$/u);
 const versionSchema = z.object({ version: z.string() });
 const manifestSchema = z.object({ ".": z.string() });
 const sectionsSchema = z.object({
+  versioning: z.string().optional(),
   "changelog-sections": z.array(
     z.object({ type: z.string(), hidden: z.boolean().optional() }),
   ),
@@ -72,6 +73,14 @@ function readCommits(text) {
       breaking:
         /^[a-z]+(?:\([^)]*\))?!: /u.test(title) ||
         /^BREAKING(?: CHANGE|-CHANGE):\s*\S/mu.test(body),
+      breakingNotes: Array.from(
+        body
+          .replace(/\r\n/gu, "\n")
+          .matchAll(
+            /^BREAKING(?: CHANGE|-CHANGE):[ \t]*(\S[^\n]*(?:\n(?!\n|[A-Za-z-]+: )[^\n]+)*)/gmu,
+          ),
+        (match) => match[1].replace(/\s+/gu, " ").trim(),
+      ),
     });
   }
   return commits;
@@ -180,13 +189,8 @@ async function validateCandidate(git, sha, version, commits) {
     ["server.json", server.version],
     ["server.json rea-agents package", npmPackage.version],
   );
-  const catalog = await readJson(
-    git,
-    sha,
-    "docs/product-catalog.json",
-    z.object({ package: versionSchema }),
-  );
-  versions.push(["docs/product-catalog.json", catalog.package.version]);
+  // Catalogs are generated and checked from this candidate by the release job;
+  // they are not version authority stored in the immutable source tree.
   const generated = await git([
     "show",
     `${sha}:src/generatedPackageMetadata.ts`,
@@ -211,8 +215,15 @@ async function validateCandidate(git, sha, version, commits) {
     version,
   );
   const breakingNotes = breakingSection(notes);
+  const normalizedBreakingNotes = breakingNotes.replace(/\s+/gu, " ");
   const missingBreaking = commits.filter(
-    (commit) => commit.breaking && !referencesCommit(breakingNotes, commit),
+    (commit) =>
+      commit.breaking &&
+      !referencesCommit(breakingNotes, commit) &&
+      (commit.breakingNotes.length === 0 ||
+        commit.breakingNotes.some(
+          (note) => !normalizedBreakingNotes.includes(note),
+        )),
   );
   if (missingBreaking.length > 0) {
     throw new Error(
@@ -228,14 +239,24 @@ export async function inspectReleaseCheckpoint(git, options) {
     .object({
       phase: z.enum(["prepare", "publish"]),
       stage: z.enum(["source", "candidate"]),
-      releaseBranch: z.string().startsWith("release/"),
+      releaseBranch: z.union([
+        z.literal("main"),
+        z.string().startsWith("release/"),
+      ]),
       sourceSha: shaSchema,
       candidateSha: shaSchema.optional(),
     })
     .parse(options);
+  if (releaseBranch === "main" && (phase !== "publish" || stage !== "source")) {
+    throw new Error(
+      "Main publication validates its reviewed merged source SHA.",
+    );
+  }
   const expectedVersion = releaseVersion(
-    releaseBranch.slice("release/".length),
-    "release/VERSION",
+    releaseBranch === "main"
+      ? (await readJson(git, sourceSha, "package.json", versionSchema)).version
+      : releaseBranch.slice("release/".length),
+    releaseBranch === "main" ? "reviewed main release" : "release/VERSION",
   );
   if (phase === "publish" && stage === "candidate") {
     throw new Error(
@@ -302,6 +323,7 @@ export async function inspectReleaseCheckpoint(git, options) {
   ).filter((commit) => commit.breaking || visibleTypes.has(commit.type));
   const breaking = commits.filter((commit) => commit.breaking);
   if (
+    configuration.versioning !== "always-bump-minor" &&
     breaking.length > 0 &&
     major(baselineVersion) > 0 &&
     major(expectedVersion) <= major(baselineVersion)

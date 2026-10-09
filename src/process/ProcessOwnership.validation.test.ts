@@ -6,21 +6,12 @@ import {
   type WindowsProcessTreeHost,
 } from "./ProcessOwnership.js";
 import {
-  createSystemProcessOwnershipHost,
   observeOwnedProcessGroup,
   observeOwnedProcessLineage,
 } from "./ProcessOwnershipObservation.js";
 import { host, ownership } from "./ProcessOwnership.fixture.js";
 
 describe("owned process-group cleanup validation: ownership and lineage", () => {
-  it("builds a host seam from the injected platform and environment", async () => {
-    const host = createSystemProcessOwnershipHost("win32", {
-      PATH: "/injected/path",
-    });
-    expect(host.platform).toBe("win32");
-    await expect(host.listProcesses()).resolves.toEqual([]);
-  });
-
   it("fails closed when a descendant in another process group lacks the token", async () => {
     const adapter: ProcessOwnershipHost = {
       listProcesses: () =>
@@ -154,6 +145,41 @@ describe("owned process-group cleanup validation: ownership and lineage", () => 
 });
 
 describe("owned process-group cleanup validation: exited members", () => {
+  it("preserves cancellation during process-table observation instead of reporting unverifiable ownership", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancelled process observation");
+    const adapter: ProcessOwnershipHost = {
+      listProcesses: async (signal) => {
+        controller.abort(reason);
+        signal?.throwIfAborted();
+        return [];
+      },
+      environment: () => Promise.resolve({}),
+      signalGroup: () => {
+        throw new Error("Observation must never signal processes");
+      },
+    };
+    await expect(
+      observeOwnedProcessGroup(ownership, adapter, controller.signal),
+    ).rejects.toBe(reason);
+  });
+  it("does not inspect a process group after observation was cancelled", async () => {
+    const controller = new AbortController();
+    const reason = new Error("already cancelled observation");
+    controller.abort(reason);
+    const adapter: ProcessOwnershipHost = {
+      listProcesses: () => {
+        throw new Error("Cancelled observation must not inspect processes");
+      },
+      environment: () => Promise.resolve({}),
+      signalGroup: () => {
+        throw new Error("Observation must never signal processes");
+      },
+    };
+    await expect(
+      observeOwnedProcessGroup(ownership, adapter, controller.signal),
+    ).rejects.toBe(reason);
+  });
   it("ignores exited zombie members during live ownership checks", async () => {
     const environment = vi.fn((pid: number) =>
       Promise.resolve(pid === 101 ? {} : { REA_PROCESS_RUN_ID: "run-token" }),
@@ -280,7 +306,7 @@ describe("Windows P0 process-tree cleanup", () => {
     await expect(cleanupWindowsProcessTree(42, failing)).resolves.toEqual({
       cleaned: false,
       reason:
-        "Windows P0 process-tree termination failed; Job Object ownership is unavailable",
+        "Windows process-tree termination failed for PID 42: taskkill failed",
     });
   });
 });

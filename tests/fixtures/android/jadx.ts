@@ -1,9 +1,10 @@
-import { access, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, onTestFinished } from "vitest";
 import { AndroidAnalysisService } from "../../../src/application/android/AndroidAnalysisService.js";
 import { createAndroidAnalysisProvider } from "../../../src/composition/android.js";
+import { ProviderCleanupError } from "../../../src/domain/providerCleanupError.js";
 import {
   ProviderProcessSupervisor,
   spawnOwnedProviderProcess,
@@ -11,16 +12,29 @@ import {
 import { cleanupOwnedProcessGroup } from "../../../src/process/ProcessOwnership.js";
 import { writeOrderedZip } from "../artifactEntryOrder.js";
 import { createTestTempDirectory } from "../temporaryDirectory.js";
+import { writeJadxJarInventory } from "./jadxJar.js";
 
 const fixture = fileURLToPath(new URL("./jadx-mcp.mjs", import.meta.url));
 
 /** Real owned subprocess running a synthetic MCP producer, with no module mocks. */
-export const createJadxProtocolFixture = async (mode = "normal") => {
+export const createJadxProtocolFixture = async (
+  mode = "normal",
+  cleanupFailure?: () => boolean,
+) => {
   const root = await createTestTempDirectory("rea-android-boundary-");
   const apk = join(root, "fixture.apk");
   const jar = join(root, "fixture.jar");
+  const javaHome = join(root, "jdk");
+  const javaBin = join(javaHome, "bin");
+  const java = join(javaBin, "java");
+  await mkdir(javaBin, { recursive: true });
+  await writeFile(
+    java,
+    `#!/usr/bin/env node\nif (process.argv[2] === "--list-modules") console.log("java.base@21.0.0\\njdk.compiler@21.0.0");\n`,
+  );
+  await chmod(java, 0o755);
   await writeOrderedZip(apk, ["AndroidManifest.xml", "classes.dex"]);
-  await writeFile(jar, "synthetic engine bytes; not a Java archive");
+  await writeJadxJarInventory(jar);
   const launches: {
     runId: string;
     cwd: string | undefined;
@@ -31,6 +45,7 @@ export const createJadxProtocolFixture = async (mode = "normal") => {
   }[] = [];
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
+    JAVA_HOME: javaHome,
     REA_JADX_MCP_JAR: jar,
   };
   const provider = createAndroidAnalysisProvider(
@@ -52,7 +67,7 @@ export const createJadxProtocolFixture = async (mode = "normal") => {
         legacyJavaOptions:
           options.env?._JAVA_OPTIONS ?? options.hostEnvironment?._JAVA_OPTIONS,
       });
-      if (mode === "cleanup-failure") {
+      if (mode === "cleanup-failure" || cleanupFailure !== undefined) {
         onTestFinished(async () => {
           const supervisor = new ProviderProcessSupervisor({
             ...spawned,
@@ -65,16 +80,30 @@ export const createJadxProtocolFixture = async (mode = "normal") => {
         });
         return {
           ...spawned,
-          cleanup: async () => ({
-            cleaned: false,
-            reason: "injected ownership verification failure",
-          }),
+          cleanup: async () =>
+            (cleanupFailure?.() ?? true)
+              ? {
+                  cleaned: false,
+                  reason: "injected ownership verification failure",
+                }
+              : cleanupOwnedProcessGroup(spawned.ownership),
         };
       }
       return spawned;
     },
   );
-  onTestFinished(() => provider.close().catch(() => undefined));
+  onTestFinished(async () => {
+    try {
+      await provider.close();
+    } catch (cause) {
+      if (
+        mode !== "cleanup-failure" ||
+        !(cause instanceof ProviderCleanupError) ||
+        cause.providerId !== "jadx"
+      )
+        throw cause;
+    }
+  });
   return {
     service: new AndroidAnalysisService(provider),
     provider,

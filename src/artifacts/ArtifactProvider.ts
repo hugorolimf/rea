@@ -1,3 +1,4 @@
+import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
 import {
   createAnalysisExecution,
   type AnalysisClient,
@@ -21,12 +22,16 @@ import {
   type ArtifactAnalysisOperation,
 } from "../contracts/artifactToolContracts.js";
 import type { BinaryTarget } from "../domain/binaryTarget.js";
-import { AnalysisCapabilityUnavailableError } from "../domain/analysisErrorCore.js";
+import {
+  AnalysisCapabilityUnavailableError,
+  AnalysisInputError,
+  AnalysisUnsupportedTargetError,
+} from "../domain/analysisErrorCore.js";
 import { ArtifactOperationError } from "../domain/artifactOperationError.js";
 import { type AnalysisError } from "../domain/analysisErrorBase.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import { interfaceBuilderLimitsSchema } from "../domain/apple/interfaceBuilderGraph.js";
-import { err, ok } from "../domain/result.js";
+import { err, ok, type Result } from "../domain/result.js";
 import { ArtifactReaderFailure } from "./ArtifactReader.js";
 import {
   ARTIFACT_PROVIDER_IDENTITY as IDENTITY,
@@ -39,9 +44,16 @@ import { resolveArtifactIntegrityPolicy } from "./inventory/policy.js";
 /** Read-only inventory and exclusively owned extraction provider. */
 export class ArtifactProvider implements AnalysisProvider {
   readonly #capabilities: readonly CapabilityDescriptor[];
+  readonly #platform: NodeJS.Platform;
+  private readonly environment: Readonly<NodeJS.ProcessEnv>;
 
-  constructor(platform: NodeJS.Platform = process.platform) {
+  constructor(
+    environment: Readonly<NodeJS.ProcessEnv>,
+    platform: NodeJS.Platform = process.platform,
+  ) {
+    this.environment = snapshotEnvironment(environment, platform);
     this.#capabilities = artifactCapabilities(platform);
+    this.#platform = platform;
   }
 
   identity(): ProviderIdentity {
@@ -53,12 +65,16 @@ export class ArtifactProvider implements AnalysisProvider {
   }
 
   createClient(target: BinaryTarget): AnalysisClient {
-    return new ArtifactClient(target);
+    return new ArtifactClient(target, this.environment, this.#platform);
   }
 }
 
 class ArtifactClient implements AnalysisClient {
-  constructor(private readonly target: BinaryTarget) {}
+  constructor(
+    private readonly target: BinaryTarget,
+    private readonly environment: Readonly<NodeJS.ProcessEnv>,
+    private readonly platform: NodeJS.Platform,
+  ) {}
 
   async execute(
     operation: AnalysisOperation,
@@ -86,8 +102,8 @@ class ArtifactClient implements AnalysisClient {
           this.target.sourcePath === undefined ||
           !this.target.sourcePath.toLowerCase().endsWith(".app")
         )
-          throw new ArtifactReaderFailure(
-            "unavailable",
+          throw this.unsupportedTarget(
+            operation,
             "decode_interface_builder requires an active .app bundle target",
           );
         const limits = interfaceBuilderLimitsSchema.parse(parameters);
@@ -116,10 +132,15 @@ class ArtifactClient implements AnalysisClient {
           parameters.path !== "." &&
           parameters.path !== basename(this.target.path)
         )
-          throw new ArtifactReaderFailure(
-            "path",
-            "For an active plist, path must select that archive (omit path or use its basename)",
-          );
+          throw new AnalysisInputError(operation, undefined, [
+            {
+              path: ["path"],
+              reason: "invalid_value",
+              message:
+                "For an active plist, path must select that archive (omit path or use its basename).",
+              expected: basename(this.target.path),
+            },
+          ]);
         const bundlePath = standalone
           ? dirname(this.target.path)
           : this.target.sourcePath;
@@ -127,8 +148,8 @@ class ArtifactClient implements AnalysisClient {
           bundlePath === undefined ||
           (!standalone && !bundlePath.toLowerCase().endsWith(".app"))
         )
-          throw new ArtifactReaderFailure(
-            "unavailable",
+          throw this.unsupportedTarget(
+            operation,
             "inspect_keyed_archive requires an active plist or .app bundle",
           );
         const result = await inspectBundleKeyedArchive({
@@ -137,6 +158,7 @@ class ArtifactClient implements AnalysisClient {
           parameters: standalone
             ? { ...parameters, path: basename(this.target.path) }
             : parameters,
+          platform: this.platform,
           ...(options?.signal === undefined ? {} : { signal: options.signal }),
         });
         if (standalone && result.archive_sha256 !== this.target.sha256)
@@ -163,6 +185,7 @@ class ArtifactClient implements AnalysisClient {
             inputPath: this.target.sourcePath ?? this.target.path,
             inputFormat: this.target.format,
             outputRoot: parsed.output_root,
+            environment: this.environment,
           },
           options?.signal,
         );
@@ -202,8 +225,20 @@ class ArtifactClient implements AnalysisClient {
     }
   }
 
-  close(): Promise<void> {
-    return Promise.resolve();
+  close(): Promise<Result<null, AnalysisError>> {
+    return Promise.resolve(ok(null));
+  }
+
+  /** The active target's kind is outside this operation's supported targets. */
+  private unsupportedTarget(
+    operation: string,
+    reason: string,
+  ): AnalysisUnsupportedTargetError {
+    return new AnalysisUnsupportedTargetError(
+      operation,
+      this.target.sourcePath ?? this.target.path,
+      reason,
+    );
   }
 
   private async inspectAssetCatalog(
@@ -216,11 +251,12 @@ class ArtifactClient implements AnalysisClient {
       bundlePath === undefined ||
       !bundlePath.toLowerCase().endsWith(".app")
     )
-      throw new ArtifactReaderFailure(
-        "unavailable",
+      throw this.unsupportedTarget(
+        "inspect_asset_catalog",
         "inspect_asset_catalog requires an active .app bundle target",
       );
     const result = await analyzeAppleAssetCatalogs({
+      environment: this.environment,
       bundlePath,
       targetSha256: this.target.sha256,
       page: parameters,
@@ -242,8 +278,8 @@ class ArtifactClient implements AnalysisClient {
     options?: ExecutionOptions,
   ) {
     if (this.target.kind !== "executable" || this.target.format !== "mach-o")
-      throw new ArtifactReaderFailure(
-        "unavailable",
+      throw this.unsupportedTarget(
+        "trace_dylib_resolution",
         "trace_dylib_resolution requires an active Mach-O or .app bundle target",
       );
     // Only a target opened from an app bundle directory carries its Info.plist;
@@ -326,6 +362,7 @@ class ArtifactClient implements AnalysisClient {
     options?: ExecutionOptions,
   ) {
     return inventoryArtifact(this.target.sourcePath ?? this.target.path, {
+      environment: this.environment,
       ...(options?.signal === undefined ? {} : { signal: options.signal }),
       integrity: resolveArtifactIntegrityPolicy({
         mode: parsed.integrity_policy,
@@ -352,6 +389,13 @@ const translateFailure = (
       cause.details,
       cause.message,
     );
+  // Caller-selection and unsupported-target failures are already typed; keep
+  // their correction details instead of reducing them to an I/O failure.
+  if (
+    cause instanceof AnalysisInputError ||
+    cause instanceof AnalysisUnsupportedTargetError
+  )
+    return cause;
   return new ArtifactOperationError(operation, "io");
 };
 
@@ -359,7 +403,7 @@ const subjectFor = (
   path: string,
   manifest: {
     readonly root_sha256: string;
-    readonly root_format: import("../domain/artifactGraph.js").ArtifactNode["format"];
+    readonly root_format: import("../domain/artifactGraph.js").ArtifactInventoryResult["manifest"]["root_format"];
   },
 ) => ({
   path,

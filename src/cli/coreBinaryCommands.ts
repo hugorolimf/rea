@@ -2,7 +2,8 @@ import { z } from "incur";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { runDirectAnalysis } from "../composition/directAnalysis.js";
+import { resolveCliAnalysisSelector } from "./analysisSelector.js";
+import type { DirectAnalysis } from "../composition/directAnalysis.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
 import { logCliCommand } from "../cliLogging.js";
 import type { Logger } from "../logger.js";
@@ -13,28 +14,29 @@ import {
 } from "./options.js";
 import type { CliInstance } from "./types.js";
 import { runCliJavaScriptApplicationAnalysis } from "./javascriptApplicationAnalysis.js";
-import type {
-  CliCommandOutput,
-  CliResultOutput,
-} from "./streamedJsonOutput.js";
+import { withCommandCancellation } from "./commandCancellation.js";
+import type { CliResultOutput } from "./streamedJsonOutput.js";
 
 /** Register provider-neutral binary overview and procedure CLI commands. */
 export const registerCoreBinaryCommands = (
   cli: CliInstance,
   logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
   resultOutput?: CliResultOutput,
 ): void => {
-  registerOverviewCommands(cli, logger, resultOutput);
-  registerFunctionCommand(cli, logger);
-  registerInstructionsCommand(cli, logger);
-  registerSearchCommand(cli, logger);
-  registerXrefsCommand(cli, logger);
-  registerTraceCommand(cli, logger);
+  registerOverviewCommands(cli, logger, runDirectAnalysis, resultOutput);
+  registerDecompileCommand(cli, logger, runDirectAnalysis);
+  registerFunctionCommand(cli, logger, runDirectAnalysis);
+  registerInstructionsCommand(cli, logger, runDirectAnalysis);
+  registerSearchCommand(cli, logger, runDirectAnalysis);
+  registerXrefsCommand(cli, logger, runDirectAnalysis);
+  registerTraceCommand(cli, logger, runDirectAnalysis);
 };
 
 const registerOverviewCommands = (
   cli: CliInstance,
   logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
   resultOutput?: CliResultOutput,
 ): void => {
   const overviewOptions = z.object({
@@ -52,17 +54,38 @@ const registerOverviewCommands = (
       path: z.string().describe("App, program, or analysis database path"),
     }),
     options: overviewOptions,
-    run: ({ args, options, format }) =>
-      logCliCommand(logger, "analyze", () =>
-        runRoutedOverview(
+    run: async ({ args, options, format }) => {
+      const output =
+        resultOutput === undefined
+          ? undefined
+          : { output: resultOutput, command: CLI_COMMANDS.analyze, format };
+      // Route JavaScript targets exactly like analyze-javascript-application,
+      // including typed cancellation; cancellation wraps logging so its exit
+      // code is not replaced by the logged failure status.
+      if (await routesToJavaScriptAnalysis(args.path, options))
+        return withCommandCancellation((signal) =>
+          logCliCommand(logger, "analyze", () =>
+            runCliJavaScriptApplicationAnalysis(
+              { input_path: resolve(args.path) },
+              output,
+              signal,
+            ),
+          ),
+        );
+      return logCliCommand(logger, "analyze", () =>
+        runDirectAnalysis(
           args.path,
-          options,
-          logger,
-          resultOutput === undefined
-            ? undefined
-            : { output: resultOutput, command: CLI_COMMANDS.analyze, format },
+          "binary_overview",
+          {},
+          directAnalysisOptions(
+            logger,
+            options.snapshot,
+            options.provider,
+            options["target-format"],
+          ),
         ),
-      ),
+      );
+    },
   });
   cli.command(CLI_COMMANDS.inspect, {
     description: "Inspect an app overview with evidence",
@@ -85,13 +108,31 @@ const registerOverviewCommands = (
         ),
       ),
   });
+};
+
+const registerDecompileCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
   cli.command(CLI_COMMANDS.decompile, {
     description: "Read one part of an app as code",
     args: z.object({
       path: z.string().describe("App or program path"),
-      address: z.string().describe("Procedure address"),
+      address: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Procedure name or address"),
     }),
     options: z.object({
+      procedure: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Procedure name or address; use --procedure=<value> for leading dashes",
+        ),
       snapshot: z
         .string()
         .min(1)
@@ -105,7 +146,14 @@ const registerOverviewCommands = (
         runDirectAnalysis(
           args.path,
           "procedure_pseudo_code",
-          { procedure: args.address },
+          {
+            procedure: resolveCliAnalysisSelector(
+              args.address,
+              options.procedure,
+              "procedure",
+              "procedure_pseudo_code",
+            ),
+          },
           directAnalysisOptions(
             logger,
             options.snapshot,
@@ -117,38 +165,19 @@ const registerOverviewCommands = (
   });
 };
 
-const runRoutedOverview = async (
+/** Select static JavaScript analysis only when no binary-analysis option applies. */
+const routesToJavaScriptAnalysis = async (
   path: string,
   options: {
     readonly snapshot?: string | undefined;
     readonly "target-format"?: "dos-com" | undefined;
     readonly provider?: string | undefined;
   },
-  logger: Logger,
-  output?: CliCommandOutput,
-) => {
-  if (
-    options.provider === undefined &&
-    options.snapshot === undefined &&
-    options["target-format"] === undefined &&
-    (await isJavaScriptApplicationPath(path))
-  )
-    return runCliJavaScriptApplicationAnalysis(
-      { input_path: resolve(path) },
-      output,
-    );
-  return runDirectAnalysis(
-    path,
-    "binary_overview",
-    {},
-    directAnalysisOptions(
-      logger,
-      options.snapshot,
-      options.provider,
-      options["target-format"],
-    ),
-  );
-};
+): Promise<boolean> =>
+  options.provider === undefined &&
+  options.snapshot === undefined &&
+  options["target-format"] === undefined &&
+  (await isJavaScriptApplicationPath(path));
 
 const isJavaScriptApplicationPath = async (path: string): Promise<boolean> => {
   const lower = path.toLowerCase();
@@ -164,14 +193,25 @@ const isJavaScriptApplicationPath = async (path: string): Promise<boolean> => {
   }
 };
 
-const registerXrefsCommand = (cli: CliInstance, logger: Logger): void => {
+const registerXrefsCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
   cli.command(CLI_COMMANDS.xrefs, {
     description: "List bounded references to an analyzed address",
     args: z.object({
       path: z.string().describe("App or program path"),
-      address: z.string().describe("Hexadecimal address"),
+      address: z.string().min(1).optional().describe("Address or symbol name"),
     }),
     options: z.object({
+      address: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Address or symbol name; use --address=<value> for leading dashes",
+        ),
       snapshot: z
         .string()
         .min(1)
@@ -185,7 +225,14 @@ const registerXrefsCommand = (cli: CliInstance, logger: Logger): void => {
         runDirectAnalysis(
           args.path,
           "xrefs",
-          { address: args.address },
+          {
+            address: resolveCliAnalysisSelector(
+              args.address,
+              options.address,
+              "address",
+              "xrefs",
+            ),
+          },
           directAnalysisOptions(
             logger,
             options.snapshot,
@@ -197,14 +244,25 @@ const registerXrefsCommand = (cli: CliInstance, logger: Logger): void => {
   });
 };
 
-const registerTraceCommand = (cli: CliInstance, logger: Logger): void => {
+const registerTraceCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
   cli.command(CLI_COMMANDS.trace, {
     description: "Trace a literal feature through analyzed references",
     args: z.object({
       path: z.string().describe("App or program path"),
-      query: z.string().min(1).describe("Literal feature query"),
+      query: z.string().min(1).optional().describe("Literal feature query"),
     }),
     options: z.object({
+      query: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Complete literal feature query; use --query=<value> for leading dashes",
+        ),
       caseSensitive: z
         .boolean()
         .default(false)
@@ -226,7 +284,12 @@ const registerTraceCommand = (cli: CliInstance, logger: Logger): void => {
           args.path,
           "trace_feature",
           {
-            query: args.query,
+            query: resolveCliAnalysisSelector(
+              args.query,
+              options.query,
+              "query",
+              "trace_feature",
+            ),
             case_sensitive: options.caseSensitive,
           },
           directAnalysisOptions(
@@ -240,14 +303,29 @@ const registerTraceCommand = (cli: CliInstance, logger: Logger): void => {
   });
 };
 
-const registerFunctionCommand = (cli: CliInstance, logger: Logger): void => {
+const registerFunctionCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
   cli.command(CLI_COMMANDS.function, {
     description: "Analyze one complete function with evidence",
     args: z.object({
       path: z.string().describe("App or program path"),
-      address: z.string().describe("Procedure name or address"),
+      address: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Procedure name or address"),
     }),
     options: z.object({
+      procedure: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Procedure name or address; use --procedure=<value> for leading dashes",
+        ),
       snapshot: z
         .string()
         .min(1)
@@ -261,7 +339,14 @@ const registerFunctionCommand = (cli: CliInstance, logger: Logger): void => {
         runDirectAnalysis(
           args.path,
           "analyze_function",
-          { procedure: args.address },
+          {
+            procedure: resolveCliAnalysisSelector(
+              args.address,
+              options.procedure,
+              "procedure",
+              "analyze_function",
+            ),
+          },
           directAnalysisOptions(
             logger,
             options.snapshot,
@@ -276,14 +361,26 @@ const registerFunctionCommand = (cli: CliInstance, logger: Logger): void => {
 const registerInstructionsCommand = (
   cli: CliInstance,
   logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
 ): void => {
   cli.command(CLI_COMMANDS.instructions, {
     description: "Read every raw instruction without decompiling",
     args: z.object({
       path: z.string().describe("App or program path"),
-      address: z.string().describe("Procedure name or address"),
+      address: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Procedure name or address"),
     }),
     options: z.object({
+      procedure: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Procedure name or address; use --procedure=<value> for leading dashes",
+        ),
       snapshot: z
         .string()
         .min(1)
@@ -298,7 +395,12 @@ const registerInstructionsCommand = (
           args.path,
           "read_function_instructions",
           {
-            procedure: args.address,
+            procedure: resolveCliAnalysisSelector(
+              args.address,
+              options.procedure,
+              "procedure",
+              "read_function_instructions",
+            ),
           },
           directAnalysisOptions(
             logger,
@@ -311,14 +413,29 @@ const registerInstructionsCommand = (
   });
 };
 
-const registerSearchCommand = (cli: CliInstance, logger: Logger): void => {
+const registerSearchCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
   cli.command(CLI_COMMANDS.search, {
     description: "Search every analyzed string or procedure name",
     args: z.object({
       path: z.string().describe("App or program path"),
-      pattern: z.string().min(1).describe("Literal text or regex pattern"),
+      pattern: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Literal text or regex pattern"),
     }),
     options: z.object({
+      pattern: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Complete literal text or regex pattern; use --pattern=<value> for leading dashes",
+        ),
       kind: z
         .enum(["strings", "procedures"])
         .default("strings")
@@ -346,7 +463,14 @@ const registerSearchCommand = (cli: CliInstance, logger: Logger): void => {
           args.path,
           options.kind === "strings" ? "search_strings" : "search_procedures",
           {
-            pattern: args.pattern,
+            pattern: resolveCliAnalysisSelector(
+              args.pattern,
+              options.pattern,
+              "pattern",
+              options.kind === "strings"
+                ? "search_strings"
+                : "search_procedures",
+            ),
             mode: options.mode,
             case_sensitive: options.caseSensitive,
           },

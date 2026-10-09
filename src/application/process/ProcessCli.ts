@@ -1,11 +1,16 @@
 import { readFile } from "node:fs/promises";
+import { z } from "zod";
 
 import { AnalysisError } from "../../domain/analysisErrorBase.js";
 import { AnalysisInputError } from "../../domain/analysisErrorCore.js";
 import { projectAnalysisError } from "../../domain/analysisErrorProjection.js";
 import { createEvidence, parseEvidence } from "../../domain/evidence.js";
+import { describeValidationFailure } from "../../domain/evidenceBundle.js";
 import { jsonValueSchema } from "../../domain/jsonValue.js";
-import { projectInputIssues } from "../../domain/inputIssueProjection.js";
+import {
+  analysisInputErrorFromIssues,
+  projectInputIssues,
+} from "../../domain/inputIssueProjection.js";
 import { processTraceSpecificationSchema } from "../../domain/process/processTraceComparison.js";
 import { processScenarioSchema } from "../../domain/process/processScenario.js";
 import {
@@ -42,19 +47,21 @@ export const isProcessCliFailure = (
 export const captureProcessScenarioFile = async (
   path: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  signal?: AbortSignal,
 ) => {
   try {
     const input = await readJson(path);
     const parsed = processScenarioSchema.safeParse(input);
     if (!parsed.success)
-      throw new AnalysisInputError(
+      throw analysisInputErrorFromIssues(
         "capture_process_scenario",
+        parsed.error.issues,
+        input,
         { cause: parsed.error },
-        projectInputIssues(parsed.error.issues, input),
       );
     const captured = await captureProcessScenario(
       parsed.data,
-      undefined,
+      signal,
       process.platform,
       environment,
     );
@@ -113,7 +120,13 @@ const parseCaptureEvidence = (input: unknown) => {
   try {
     evidence = parseEvidence(input);
   } catch (cause: unknown) {
-    throw invalidCaptureEvidence();
+    if (cause instanceof z.ZodError)
+      throw new AnalysisInputError(
+        "compare_process_captures",
+        { cause },
+        projectInputIssues(cause.issues, input),
+      );
+    throw invalidCaptureEvidence(cause);
   }
   if (
     evidence.operation !== "capture_process_scenario" ||
@@ -133,24 +146,28 @@ const parseCaptureEvidence = (input: unknown) => {
       locations: evidence.locations,
     };
   } catch (cause: unknown) {
-    throw invalidCaptureEvidence();
+    throw invalidCaptureEvidence(cause);
   }
 };
 
 const parseTraceSpecification = (input: unknown) => {
   const parsed = processTraceSpecificationSchema.safeParse(input);
   if (parsed.success) return parsed.data;
+  // Match the MCP boundary: the operation name and a trace_spec-rooted path.
   throw new AnalysisInputError(
-    "compare-process-captures",
+    "compare_process_captures",
     { cause: parsed.error },
-    projectInputIssues(parsed.error.issues, input),
+    projectInputIssues(parsed.error.issues, input).map((issue) => ({
+      ...issue,
+      path: ["trace_spec", ...issue.path],
+    })),
   );
 };
 
-const invalidCaptureEvidence = (): ProcessCliFailure =>
+const invalidCaptureEvidence = (cause: unknown): ProcessCliFailure =>
   new ProcessCliFailure(
     "invalid_input",
-    "Capture evidence is malformed. Create new capture evidence, then try again.",
+    `Capture evidence is malformed (${describeValidationFailure(cause)}). Create new capture evidence, then try again.`,
   );
 
 const readJson = async (path: string): Promise<unknown> => {
@@ -158,10 +175,9 @@ const readJson = async (path: string): Promise<unknown> => {
   try {
     bytes = await readFile(path);
   } catch (cause: unknown) {
-    void cause;
     throw new ProcessCliFailure(
       "invalid_input",
-      "Process input file could not be read. Check that the path exists and is readable.",
+      `Process input file could not be read: ${path} (${describeValidationFailure(cause)}). Check the reported filesystem constraint and retry.`,
     );
   }
   try {
@@ -172,10 +188,9 @@ const readJson = async (path: string): Promise<unknown> => {
     const parsed: unknown = JSON.parse(text);
     return parsed;
   } catch (cause: unknown) {
-    void cause;
     throw new ProcessCliFailure(
       "invalid_input",
-      "Process input file is not valid JSON. Repair the file, then try again.",
+      `Process input file is not valid UTF-8 JSON: ${path} (${describeValidationFailure(cause)}). Repair the file, then try again.`,
     );
   }
 };
@@ -194,7 +209,7 @@ const cliAnalysisError = (error: AnalysisError): ProcessCliErrorOutput => ({
   ...projectAnalysisError(error),
 });
 
-/** Project any process CLI failure without exposing its cause. */
+/** Preserve typed failures and local diagnostics at the process CLI boundary. */
 export const projectProcessCliError = (
   cause: unknown,
 ): ProcessCliErrorOutput => {
@@ -208,7 +223,6 @@ export const projectProcessCliError = (
   return {
     error: "Process command failed",
     category: "execution_failure",
-    message:
-      "Process command could not complete. Check the input files and run `rea doctor`, then try again.",
+    message: `Process command could not complete: ${describeValidationFailure(cause)}`,
   };
 };

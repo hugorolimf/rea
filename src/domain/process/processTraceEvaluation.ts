@@ -15,7 +15,7 @@ import {
   type ProcessTraceSpecification,
 } from "./processTraceSpecification.js";
 
-const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9._-]{0,63}$/u);
+const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9._\x2d]{0,63}$/u);
 
 export type ProcessTraceLocation = ProcessObservationLocation;
 
@@ -160,7 +160,7 @@ const collectRecords = (
   sources: ReadonlySet<ProcessTraceSource>,
 ): readonly TraceRecord[] => {
   const records: TraceRecord[] = [];
-  for (const location of capture.event_journal ?? []) {
+  for (const location of capture.event_journal) {
     const record = projectProcessObservation(capture, location);
     if (record !== null && sources.has(record.source))
       records.push({
@@ -416,7 +416,7 @@ export const evaluateProcessTraceSide = (
     capture.residual_unknowns.some(({ scope }) => relevantScopes.has(scope))
   )
     return { result: unknownSide(), diagnostic: null };
-  if ((capture.event_journal ?? []).length === 0)
+  if (capture.event_journal.length === 0)
     return {
       result: unknownSide(),
       diagnostic: {

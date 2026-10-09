@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
@@ -13,7 +15,11 @@ import {
   SOURCE_TO_BUNDLE_COMPARISON_EXAMPLE,
 } from "../../../src/contracts/javascript/javascriptApplicationWorkflowExamples.js";
 import { analyzeJavaScriptApplication } from "../../../src/application/javascript/JavaScriptApplicationService.js";
-import { javascriptApplicationAnalysisResultSchema } from "../../../src/domain/javascript/javascriptApplicationAnalysis.js";
+import {
+  javascriptApplicationAnalysisResultSchema,
+  type JavaScriptApplicationAnalysisResult,
+} from "../../../src/domain/javascript/javascriptApplicationAnalysis.js";
+import { z } from "zod";
 
 const execute = promisify(execFile);
 const temporary: string[] = [];
@@ -25,6 +31,144 @@ afterEach(async () => {
       .map(async (path) => rm(path, { recursive: true, force: true })),
   );
 });
+
+const writeSelfImportFixture = async (root: string): Promise<void> => {
+  await Promise.all([
+    writeFile(
+      join(root, "esm.js"),
+      'import "./esm.js"; export const value = 1;\n',
+    ),
+    writeFile(
+      join(root, "common.cjs"),
+      'const self = require("./common.cjs"); module.exports = self;\n',
+    ),
+    writeFile(
+      join(root, "util.ts"),
+      'import "./util.ts"; export const value = 1;\n',
+    ),
+  ]);
+};
+
+const expectSelfImportEvidence = (
+  graph: JavaScriptApplicationAnalysisResult["graph"],
+): void => {
+  const rawSelfImports = graph.edges.filter(
+    ({ relation, properties, evidence }) =>
+      relation === "imports" &&
+      (properties.kind === "static-import" || properties.kind === "require") &&
+      evidence.location.available &&
+      evidence.location.value.kind === "source-range" &&
+      ((properties.specifier === "./esm.js" &&
+        properties.kind === "static-import" &&
+        evidence.location.value.source === "esm.js") ||
+        (properties.specifier === "./common.cjs" &&
+          properties.kind === "require" &&
+          evidence.location.value.source === "common.cjs") ||
+        (properties.specifier === "./util.ts" &&
+          properties.kind === "static-import" &&
+          evidence.location.value.source === "util.ts")),
+  );
+  expect(rawSelfImports).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          kind: "static-import",
+          specifier: "./esm.js",
+        }),
+        evidence: expect.objectContaining({
+          authority: "static-relationship-inference",
+          location: expect.objectContaining({
+            available: true,
+            value: expect.objectContaining({
+              kind: "source-range",
+              source: "esm.js",
+              start: expect.objectContaining({ line: 1, column: 0 }),
+            }),
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          kind: "require",
+          specifier: "./common.cjs",
+        }),
+        evidence: expect.objectContaining({
+          authority: "static-relationship-inference",
+          location: expect.objectContaining({
+            available: true,
+            value: expect.objectContaining({
+              kind: "source-range",
+              source: "common.cjs",
+              start: expect.objectContaining({ line: 1, column: 13 }),
+            }),
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          kind: "static-import",
+          specifier: "./util.ts",
+        }),
+        evidence: expect.objectContaining({
+          authority: "static-relationship-inference",
+          location: expect.objectContaining({
+            available: true,
+            value: expect.objectContaining({
+              kind: "source-range",
+              source: "util.ts",
+              start: expect.objectContaining({ line: 1, column: 0 }),
+            }),
+          }),
+        }),
+      }),
+    ]),
+  );
+  expect(rawSelfImports).toHaveLength(3);
+};
+
+const analyzeThroughStdioMcp = async (
+  inputPath: string,
+): Promise<JavaScriptApplicationAnalysisResult> => {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [resolve("scripts/rea.mjs"), "mcp"],
+    cwd: process.cwd(),
+    env: {
+      PATH: process.env.PATH ?? "",
+      REA_LOG_LEVEL: "silent",
+    },
+    stderr: "pipe",
+  });
+  const client = new Client({
+    name: "javascript-self-import-parity",
+    version: "1",
+  });
+  try {
+    await client.connect(transport);
+    const response = await client.callTool({
+      name: "analyze_javascript_application",
+      arguments: { input_path: inputPath },
+    });
+    expect(response.isError).not.toBe(true);
+    expect(response.content).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "text" })]),
+    );
+    const result = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(response.structuredContent).normalized_result;
+    expect(result).toMatchObject({
+      input_path: inputPath,
+      format: "directory",
+    });
+    return result;
+  } finally {
+    try {
+      await client.close();
+    } finally {
+      await transport.close();
+    }
+  }
+};
 
 describe("JavaScript application path CLI", () => {
   it("accepts a relative local application path and preserves canonical Evidence identity", async () => {
@@ -51,6 +195,30 @@ describe("JavaScript application path CLI", () => {
       },
       subject: { local_path: absolute.value.subject?.local_path },
     });
+  }, 20_000);
+
+  it("returns the self-import graph consistently through CLI and stdio MCP", async () => {
+    const root = await createTestTempDirectory(
+      "rea-self-import-application-cli-",
+    );
+    temporary.push(root);
+    await writeSelfImportFixture(root);
+
+    const analyzed = await runCli([
+      "analyze-javascript-application",
+      root,
+      "--json",
+    ]);
+    const result = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(analyzed);
+    const graph = result.normalized_result.graph;
+    expectSelfImportEvidence(graph);
+    const mcpResult = await analyzeThroughStdioMcp(root);
+    expect(mcpResult.graph).toEqual(graph);
+    expect(mcpResult.semantic_graph).toEqual(
+      result.normalized_result.semantic_graph,
+    );
   }, 20_000);
 });
 
@@ -341,9 +509,107 @@ describe("application workflow CLI export Evidence", () => {
           {
             status: "added",
             path: "/depth",
+            presence: { left: "absent", right: "present" },
             right: { availability: "literal", value: 1 },
           },
         ],
+      },
+    });
+  }, 20_000);
+});
+
+describe("application workflow CLI export property presence", () => {
+  it("reports tagged search property presence through compare-javascript-export-shapes", async () => {
+    const root = await createTestTempDirectory(
+      "rea-export-shape-presence-cli-",
+    );
+    temporary.push(root);
+    const leftRoot = join(root, "left");
+    const rightRoot = join(root, "right");
+    await Promise.all([mkdir(leftRoot), mkdir(rightRoot)]);
+    await Promise.all([
+      writeFile(
+        join(leftRoot, "search.js"),
+        [
+          "export function search(items, q) {",
+          "  const matches = items.filter((item) => item.includes(q));",
+          '  return { kind: "results", matches, count: matches.length };',
+          "}",
+          "",
+        ].join("\n"),
+      ),
+      writeFile(
+        join(rightRoot, "search.js"),
+        [
+          "export function search(items, q) {",
+          "  const matches = items.filter((item) => item.includes(q));",
+          '  return { kind: "results", matches, total: matches.length, query: String(q) };',
+          "}",
+          "",
+        ].join("\n"),
+      ),
+    ]);
+    const [left, right] = await Promise.all([
+      analyzeJavaScriptApplication({ input_path: leftRoot }),
+      analyzeJavaScriptApplication({ input_path: rightRoot }),
+    ]);
+    if (!left.ok) throw left.error;
+    if (!right.ok) throw right.error;
+    const inputPath = join(root, "comparison.json");
+    await writeFile(
+      inputPath,
+      JSON.stringify({
+        left: left.value,
+        right: right.value,
+        left_module_path: "search.js",
+        left_export_name: "search",
+        right_module_path: "search.js",
+        right_export_name: "search",
+      }),
+    );
+    const compared = await runCli([
+      "compare-javascript-export-shapes",
+      inputPath,
+      "--json",
+    ]);
+    expect(compared).toMatchObject({
+      operation: "compare_javascript_export_shapes",
+      normalized_result: {
+        summary: { added: 2, removed: 1 },
+        property_inventories: expect.arrayContaining([
+          expect.objectContaining({
+            side: "left",
+            paired: true,
+            properties: expect.arrayContaining(["/count", "/kind", "/matches"]),
+          }),
+          expect.objectContaining({
+            side: "right",
+            paired: true,
+            properties: expect.arrayContaining([
+              "/kind",
+              "/matches",
+              "/query",
+              "/total",
+            ]),
+          }),
+        ]),
+        changes: expect.arrayContaining([
+          expect.objectContaining({
+            status: "removed",
+            path: "/count",
+            presence: { left: "present", right: "absent" },
+          }),
+          expect.objectContaining({
+            status: "added",
+            path: "/total",
+            presence: { left: "absent", right: "present" },
+          }),
+          expect.objectContaining({
+            status: "added",
+            path: "/query",
+            presence: { left: "absent", right: "present" },
+          }),
+        ]),
       },
     });
   }, 20_000);

@@ -1,4 +1,11 @@
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +24,7 @@ import type { BinaryTarget } from "../../../../src/domain/binaryTarget.js";
 describe("artifact extraction", () => {
   it("declares possible native mounts and fresh extraction directories", () => {
     for (const platform of ["linux", "darwin"] as const) {
-      const provider = new ArtifactProvider(platform);
+      const provider = new ArtifactProvider(process.env, platform);
       for (const operation of [
         "inventory_artifact",
         "inspect_artifact",
@@ -58,7 +65,7 @@ describe("artifact extraction", () => {
     const cancelledOutput = join(root, "cancelled-output");
     const controller = new AbortController();
     controller.abort();
-    const cancelled = await new ArtifactProvider()
+    const cancelled = await new ArtifactProvider(process.env)
       .createClient(targetValue)
       .execute(
         "extract_artifact",
@@ -73,7 +80,7 @@ describe("artifact extraction", () => {
     });
     await expect(access(cancelledOutput)).rejects.toThrow();
     const output = join(root, "output");
-    const result = await new ArtifactProvider()
+    const result = await new ArtifactProvider(process.env)
       .createClient(targetValue)
       .execute(
         "extract_artifact",
@@ -81,8 +88,7 @@ describe("artifact extraction", () => {
           output_root: output,
         }),
       );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) throw result.error;
     const firstExtraction = artifactExtractionResultSchema.parse(
       result.value.result,
     );
@@ -102,7 +108,7 @@ describe("artifact extraction", () => {
     );
 
     const relocatedOutput = join(root, "relocated-output");
-    const relocated = await new ArtifactProvider()
+    const relocated = await new ArtifactProvider(process.env)
       .createClient(targetValue)
       .execute(
         "extract_artifact",
@@ -110,14 +116,13 @@ describe("artifact extraction", () => {
           output_root: relocatedOutput,
         }),
       );
-    expect(relocated.ok).toBe(true);
-    if (!relocated.ok) return;
+    if (!relocated.ok) throw relocated.error;
     expect(
       artifactExtractionResultSchema.parse(relocated.value.result)
         .extraction_manifest,
     ).toEqual(firstExtraction.extraction_manifest);
 
-    const second = await new ArtifactProvider()
+    const second = await new ArtifactProvider(process.env)
       .createClient(targetValue)
       .execute(
         "extract_artifact",
@@ -135,9 +140,42 @@ describe("artifact extraction", () => {
       "source",
     ]);
   });
+  it("refuses a format without an extraction reader before inventory or output", async () => {
+    const root = await createTestTempDirectory("rea-extract-dmg-");
+    const image = join(root, "Image.dmg");
+    await writeFile(image, "not mounted");
+    // A caller-specific alias must be the path the refusal reports.
+    const alias = join(root, "Alias.dmg");
+    await symlink(image, alias);
+    const output = join(root, "output");
+    const extract = (signal?: AbortSignal) =>
+      new ArtifactProvider(process.env)
+        .createClient(target(alias, "dmg"))
+        .execute(
+          "extract_artifact",
+          artifactExtractionExecutionSchema.parse({ output_root: output }),
+          signal === undefined ? undefined : { signal },
+        );
+    expect(await extract()).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "AnalysisUnsupportedTargetError",
+        operation: "extract_artifact",
+        path: alias,
+        reason: "Artifact format has no extraction reader: dmg",
+      },
+    });
+    const controller = new AbortController();
+    controller.abort();
+    expect(await extract(controller.signal)).toMatchObject({
+      ok: false,
+      error: { _tag: "ArtifactOperationError", reason: "cancelled" },
+    });
+    await expect(access(output)).rejects.toThrow();
+  });
 });
 const inventory = async (targetValue: BinaryTarget) => {
-  const result = await new ArtifactProvider()
+  const result = await new ArtifactProvider(process.env)
     .createClient(targetValue)
     .execute("inventory_artifact", {});
   if (!result.ok) throw result.error;

@@ -27,7 +27,7 @@ REA_PWNTOOLS_PYTHON=/absolute/isolated-env/bin/python \
 REA never installs Python, packages or GDB, changes a user init file, launches
 the selected object as a host process, or requests runtime library resolution. The Python process
 uses isolated mode and an owned cache. Exact upstream profiles are recorded in
-[upstream provenance](../third_party/pwntools/README.md).
+[upstream provenance](https://github.com/morluto/rea/blob/main/third_party/pwntools/README.md).
 
 ## Interpreting results
 
@@ -83,6 +83,13 @@ uses isolated mode and an owned cache. Exact upstream profiles are recorded in
   executable-stack are separate upstream indicators: on x86-64 an executable
   stack can accompany an unknown (`null`) NX indicator. ET_DYN can be a shared
   library, and an absent canary symbol does not prove every function unprotected.
+
+When complete layout Evidence is already retained, `inspect_analysis_view` /
+`inspect-analysis-view` projects a summary, the mitigations or linkage facet,
+one section or symbol, or a stable page without re-running the decoder. CLI
+one-shot invocations pass portable inline Evidence JSON; an MCP session uses
+the retained `evidence_id`. Page `limit` is required and bounded by the
+measured MCP stdio budget documented on the tool contract.
 
 Complete results have a 32 MiB input, 64 MiB reply, 1 MiB combined diagnostics
 and 30-second owned command deadline. The reply budget applies to the decoder

@@ -1,10 +1,10 @@
 import { accessSync, constants } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { ConfigurationError } from "../domain/configurationErrors.js";
 import { ok, type Result } from "../domain/result.js";
 import { parseEnvironment } from "./environment.js";
+import { homeDirectoryFromEnvironment } from "./homeDirectory.js";
 import { parseStringArray, parseLoaderArgs } from "./parsers.js";
 import type { AppConfig } from "./types.js";
 
@@ -21,9 +21,9 @@ const executableAvailable = (path: string): boolean => {
   }
 };
 
-export const defaultHopperLauncherPath = (
-  platform: NodeJS.Platform = process.platform,
-  homeDirectory: string = homedir(),
+const defaultHopperLauncherPath = (
+  platform: NodeJS.Platform,
+  homeDirectory: string,
   executable: (path: string) => boolean = executableAvailable,
 ): string => {
   if (platform !== "linux") return DEFAULT_HOPPER_LAUNCHER_PATH;
@@ -47,17 +47,26 @@ export const parseConfig = (
   );
   if (!secretPatterns.ok) return secretPatterns;
   return ok({
+    ...(env.REA_MCP_MAX_RESPONSE_BYTES === undefined
+      ? {}
+      : { mcpMaxResponseBytes: env.REA_MCP_MAX_RESPONSE_BYTES }),
     analysisProvider: env.REA_ANALYSIS_PROVIDER,
     ...(env.REA_IDA_MCP_CONFIG === undefined
       ? {}
       : { idaMcpConfigPath: env.REA_IDA_MCP_CONFIG }),
     ghidraInstallDir: env.GHIDRA_INSTALL_DIR,
     ghidraJavaHome: env.JAVA_HOME,
+    ghidraStartupTimeoutMs: env.REA_GHIDRA_STARTUP_TIMEOUT_MS,
     ...(env.REA_GHIDRA_NATIVEAOT_JAR === undefined
       ? {}
       : { ghidraNativeAotJar: env.REA_GHIDRA_NATIVEAOT_JAR }),
     ilspyCmdPath: env.REA_ILSPY_CMD_PATH,
-    hopperLauncherPath: env.HOPPER_LAUNCHER_PATH ?? defaultHopperLauncherPath(),
+    hopperLauncherPath:
+      env.HOPPER_LAUNCHER_PATH ??
+      defaultHopperLauncherPath(
+        process.platform,
+        homeDirectoryFromEnvironment(environment, process.platform),
+      ),
     hopperTargetPath: env.HOPPER_TARGET_PATH,
     hopperTargetKind: env.HOPPER_TARGET_KIND,
     hopperLoaderArgs: loaderArgs.value,

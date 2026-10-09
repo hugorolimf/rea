@@ -44,17 +44,17 @@ export const ENHANCED_TOOL_CONTRACTS = [
   ),
   enhanced(
     "batch_decompile",
-    "Decompile each explicit procedure symbol or address concurrently. Returns ordered per-item success or error results and aggregate counts.",
+    "Decompile each explicit procedure symbol or address concurrently. Preserves each input selector in address and reports the observed canonical entry and entry label in procedure; identity or label failures remain explicit without discarding usable pseudocode. Returns ordered per-item success or error results and aggregate counts.",
     enhancedInputSchemas.batch_decompile,
   ),
   enhanced(
     "get_call_graph",
-    "Traverse the bound provider's caller or callee relationships from one symbol or address until the reachable graph is exhausted. Every node has an ok/error status and failures use safe typed projections; unresolved indirect calls may be missing and results are not a whole-program CFG.",
+    "Resolve one symbol or address to its canonical procedure entry, then traverse the bound provider's caller or callee relationships until the reachable graph is exhausted. Every node uses a canonical address and has an ok/error status; failures use safe typed projections. Unresolved indirect calls may be missing and results are not a whole-program CFG.",
     enhancedInputSchemas.get_call_graph,
   ),
   enhanced(
     "analyze_swift_types",
-    'Categorize analyzed procedure names into Swift classes, structs, enums, protocols, extensions, and other symbols. Returns deduplicated names grouped with counts. Optionally select one category and/or apply a case-sensitive literal name filter; for example, use {category: "classes", pattern: "Account"} to find matching class symbols.',
+    'Categorize analyzed Swift procedure names using their manglings or same-address Swift symbol aliases. Decodes legacy and literal modern nominal contexts into classes, structs, enums, protocols, and extensions. Preserves provider names and supporting mangled_names; unresolved categories appear in other and in unclassified, which remains inline even under category filters. Returns deduplicated procedure-name counts, not unique source types, plus identification limitations. Optionally select one category and/or apply a case-sensitive literal filter to provider names or supporting manglings; for example, use {category: "structs", pattern: "Pair"}.',
     enhancedInputSchemas.analyze_swift_types,
   ),
   enhanced(
@@ -70,12 +70,12 @@ export const ENHANCED_TOOL_CONTRACTS = [
   ...FUNCTION_WORKFLOW_TOOL_CONTRACTS,
   enhanced(
     "trace_feature",
-    "Trace a literal feature query through every matching string and procedure, their xrefs, and truthful containing-procedure resolution. Returns observations, operation count, and residual unknowns without inferring reference kinds.",
+    "Trace the complete literal query, preserving spaces, through every matching string and procedure, their xrefs, and truthful containing-procedure resolution. Returns observations, operation count, and residual unknowns without inferring reference kinds.",
     enhancedInputSchemas.trace_feature,
   ),
   enhanced(
     "trace_call_path",
-    "Trace direct callers or callees from one exact procedure address until the graph is exhausted or the optional goal is reached. Returns visited nodes, direct-call edges, a shortest traversal path, provider failures, and residual unknowns; unresolved indirect calls remain unknown.",
+    "Resolve start and optional goal symbols or addresses to canonical procedure entries, then trace direct callers or callees until the graph is exhausted or the goal is reached. Results use canonical addresses; Evidence preserves supplied selectors. Returns visited nodes, direct-call edges, a shortest traversal path, provider failures, and residual unknowns; unresolved indirect calls remain unknown.",
     enhancedInputSchemas.trace_call_path,
   ),
   enhanced(

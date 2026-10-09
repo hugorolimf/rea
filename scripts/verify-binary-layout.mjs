@@ -1169,7 +1169,7 @@ try {
       );
       const ownershipInspection =
         ["/usr/bin/ps", "/bin/ps"].includes(match[1]) &&
-        line.includes('["ps", "-axo", "pid=,ppid=,pgid=,stat=,command="]');
+        line.includes('["ps", "-axo", "pid=,ppid=,pgid=,uid=,stat=,command="]');
       assert.ok(
         [process.execPath, python].includes(match[1]) || ownershipInspection,
         `Unexpected attempted host execution: ${line}`,
@@ -1254,8 +1254,7 @@ async function inspect(
       return value.error;
     }
     assert.notEqual(response.isError, true, mcpTextValue(response));
-    envelope = value.evidence;
-    assert.deepEqual(value.result, envelope.normalized_result);
+    envelope = value;
   } else {
     let response;
     try {

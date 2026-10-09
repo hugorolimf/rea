@@ -1,3 +1,4 @@
+import { ok as resultOk } from "../../../src/domain/result.js";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 
@@ -11,7 +12,7 @@ describe("reconstruction coverage MCP", () => {
   it("evaluates inline fail-closed coverage without session retention", async () => {
     const session = createTestBinarySession(() => ({
       execute: () => Promise.resolve(observed(null)),
-      close: () => Promise.resolve(),
+      close: () => Promise.resolve(resultOk(null)),
     }));
     const server = createServer(session, session);
     const client = new Client({ name: "coverage-mcp-test", version: "1" });
@@ -33,6 +34,28 @@ describe("reconstruction coverage MCP", () => {
         status: "ready",
         boundary_id: boundaryId,
         summary: { reasons: 0 },
+      });
+      const unknown = await client.callTool({
+        name: "evaluate_reconstruction_coverage",
+        arguments: {
+          coverage: currentFixtureCoverage(boundaryId),
+          boundary_id: "replacement.missing",
+        },
+      });
+      expect(unknown.isError).toBe(true);
+      expect(unknown.structuredContent).toMatchObject({
+        error: {
+          code: "invalid_request",
+          details: {
+            issues: [
+              {
+                path: [],
+                reason: "invalid_value",
+                message: "Unknown reconstruction boundary: replacement.missing",
+              },
+            ],
+          },
+        },
       });
     } finally {
       await client.close();

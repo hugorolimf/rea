@@ -18,8 +18,11 @@ import {
   processCaptureSchema,
 } from "../domain/process/processCapture.js";
 import {
+  analysisBookmarkSchema,
   functionInstructionWindowSchema,
-  referenceKindSchema,
+  referenceEdgeSchema,
+  unresolvedCallSchema,
+  analysisStringSchema,
 } from "../domain/hopperValues.js";
 import { nativeApiInspectionResultSchema } from "../domain/native/nativeApiBoundary.js";
 import {
@@ -82,25 +85,16 @@ const contextFacetSchema = z.discriminatedUnion("state", [
   }),
 ]);
 const bookmarkFacetSchema = z.discriminatedUnion("state", [
-  z.object({ state: z.literal("available"), value: z.array(addressedEntry) }),
+  z.object({
+    state: z.literal("available"),
+    value: z.array(analysisBookmarkSchema),
+  }),
   z.object({
     state: z.literal("unavailable"),
     reason: z.string(),
     remediation: z.string(),
   }),
 ]);
-
-const addressedString = z.object({
-  address: z.string(),
-  value: z.string(),
-  string: z
-    .object({
-      encoding: z.string().min(1),
-      termination: z.enum(["missing", "present_or_not_required"]),
-      byte_length: z.number().int().min(0),
-    })
-    .optional(),
-});
 
 /** Exact structured-content schemas shared by direct analysis providers. */
 export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
@@ -116,12 +110,12 @@ export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
   current_document: resultOf(z.string()),
   goto_address: resultOf(z.string()),
   inline_comment: resultOf(nullableText),
-  list_bookmarks: resultOf(z.array(addressedEntry)),
+  list_bookmarks: resultOf(z.array(analysisBookmarkSchema)),
   list_documents: resultOf(z.array(z.string())),
   list_names: resultOf(z.array(addressedValue)),
   list_procedures: resultOf(z.array(addressedValue)),
   list_segments: segmentOutput,
-  list_strings: resultOf(z.array(addressedString)),
+  list_strings: resultOf(z.array(analysisStringSchema)),
   next_address: resultOf(z.string()),
   prev_address: resultOf(z.string()),
   procedure_address: resultOf(z.string()),
@@ -143,6 +137,30 @@ export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
     z.object({
       address: z.string(),
       file_offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+      provider_file_offset: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .exactOptional()
+        .describe(
+          "Original coordinate returned by the provider's mapping API.",
+        ),
+      image_base_file_offset: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .exactOptional()
+        .describe(
+          "File offset of the loaded image within its source container; zero for a thin executable.",
+        ),
+      source_path: z
+        .string()
+        .exactOptional()
+        .describe(
+          "Observed original executable path used to verify the file mapping.",
+        ),
     }),
   ),
   procedure_references: resultOf(
@@ -150,18 +168,8 @@ export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
       procedure: procedureIdentity,
       direction: z.enum(["incoming", "outgoing"]),
       reference_kinds_available: z.boolean().optional(),
-      unresolved_calls: z
-        .array(z.object({ address: z.string(), reason: z.string() }))
-        .default([]),
-      references: z.array(
-        z.object({
-          source_address: z.string(),
-          target_address: z.string(),
-          source_procedure: procedureIdentity.nullable(),
-          target_procedure: procedureIdentity.nullable(),
-          kind: referenceKindSchema,
-        }),
-      ),
+      unresolved_calls: z.array(unresolvedCallSchema).default([]),
+      references: z.array(referenceEdgeSchema),
     }),
   ),
   procedure_pseudo_code: resultOf(nullableText),
@@ -169,14 +177,11 @@ export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
   search_procedures: resultOf(
     z.array(z.object({ address: z.string(), value: z.string() })),
   ),
-  search_strings: resultOf(
-    z.array(z.object({ address: z.string(), value: z.string() })),
-  ),
+  search_strings: resultOf(z.array(analysisStringSchema)),
   set_address_name: resultOf(z.boolean()),
   set_addresses_names: resultOf(z.record(z.string(), z.boolean())),
   set_bookmark: resultOf(z.boolean()),
   set_comment: resultOf(z.boolean()),
-  set_current_document: resultOf(z.string()),
   set_inline_comment: resultOf(z.boolean()),
   unset_bookmark: resultOf(z.boolean()),
   xrefs: resultOf(addressList),
@@ -240,6 +245,23 @@ const callPathTraceOutput = resultOf(
   }),
 );
 
+/** Identity facts attached to one requested batch selector. */
+const batchProcedureIdentity = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("resolved"),
+    address: z.string().min(1).describe("Observed canonical procedure entry."),
+    name: z
+      .string()
+      .nullable()
+      .describe("Provider's entry label, or null when unavailable."),
+    name_error: analysisErrorProjectionSchema.optional(),
+  }),
+  z.object({
+    status: z.literal("unknown"),
+    error: analysisErrorProjectionSchema,
+  }),
+]);
+
 /** Exact structured-content schemas for composed analysis workflows. */
 export const enhancedOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
   inspect_native_dispatch_metadata: resultOf(
@@ -254,12 +276,18 @@ export const enhancedOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
       items: z.array(
         z.discriminatedUnion("status", [
           z.object({
-            address: z.string(),
+            address: z
+              .string()
+              .describe("Original caller-selected symbol or address."),
+            procedure: batchProcedureIdentity,
             status: z.literal("ok"),
             pseudocode: z.string().min(1),
           }),
           z.object({
-            address: z.string(),
+            address: z
+              .string()
+              .describe("Original caller-selected symbol or address."),
+            procedure: batchProcedureIdentity,
             status: z.literal("error"),
             error: analysisErrorProjectionSchema,
           }),
@@ -278,9 +306,21 @@ export const enhancedOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
         z.string(),
         z.object({
           count: z.number().int().min(0),
-          items: z.array(addressedEntry),
+          items: z.array(
+            addressedEntry.extend({
+              mangled_names: z.array(z.string()),
+            }),
+          ),
         }),
       ),
+      unclassified: z.array(
+        addressedEntry.extend({
+          mangled_names: z.array(z.string()),
+          reason: z.enum(["category_not_decoded", "conflicting_categories"]),
+        }),
+      ),
+      limitations: z.array(z.string()),
+      symbol_inventory_error: analysisErrorProjectionSchema.exactOptional(),
     }),
   ),
   find_xrefs_to_name: resultOf(
@@ -368,13 +408,12 @@ export const managedWorkflowOutputSchemas: Readonly<
 };
 
 /** Exact structured-content schemas for target lifecycle operations. */
-export const sessionOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
+export const sessionOutputSchemas = {
   open_binary: lifecycleResultOf(
     z.object({
       path: z.string(),
       format: targetFormatSchema,
       kind: targetKindSchema,
-      loaderArgs: z.array(z.string()),
       sha256: z.string().regex(/^[a-f0-9]{64}$/u),
       architecture: z.enum(["x86", "x86_64", "arm", "arm64"]).nullable(),
     }),
@@ -385,7 +424,23 @@ export const sessionOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
       z.object({
         path: z.string(),
         bytes: z.number().int().min(0),
-        entries: z.number().int().min(0),
+        primitive_entries: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Retained eligible primitive query bindings."),
+        workflow_entries: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Retained eligible composed workflow bindings."),
+        evidence_records: z
+          .number()
+          .int()
+          .min(0)
+          .describe(
+            "All retained Evidence records, including observations without replay bindings.",
+          ),
       }),
     ]),
   ),
@@ -464,4 +519,4 @@ export const sessionOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
       unknown: residualUnknownSchema,
     }),
   ),
-};
+} satisfies Readonly<Record<string, z.ZodObject>>;

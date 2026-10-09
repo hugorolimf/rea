@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ToolContract } from "./toolContractTypes.js";
+import { presentInputJsonSchema } from "./inputSchemaPresentation.js";
 
 const PROPERTY_DESCRIPTIONS: Readonly<Record<string, string>> = {
   addresses: "Ordered provider-normalized procedure addresses to analyze.",
@@ -56,17 +57,31 @@ export const toolInputSchemaWithMetadata = <Contract extends ToolContract>(
   withAdvertisedJsonSchema(
     contract.inputSchema,
     "input",
-    (project) => (options) => ({
-      ...describeProperties(project(options)),
-      examples: contract.examples.map(({ input }) => input),
-    }),
+    (project) => (options) => {
+      const shared = project({
+        ...options,
+        libraryOptions: { reused: "ref", ...options.libraryOptions },
+      });
+      return {
+        ...presentInputJsonSchema(shared, fallbackPropertyDescription),
+        examples: contract.examples.map(({ input }) => input),
+      };
+    },
   );
 
-/** Advertise a canonical output schema without reconverting it per listing. */
+/** Share repeated output definitions without changing canonical validation. */
 export const toolOutputSchemaWithMetadata = <Contract extends ToolContract>(
   contract: Contract,
 ): Contract["outputSchema"] =>
-  withAdvertisedJsonSchema(contract.outputSchema, "output");
+  withAdvertisedJsonSchema(
+    contract.outputSchema,
+    "output",
+    (project) => (options) =>
+      project({
+        ...options,
+        libraryOptions: { reused: "ref", ...options.libraryOptions },
+      }),
+  );
 
 const withAdvertisedJsonSchema = <Schema extends z.ZodType>(
   canonical: Schema,
@@ -113,38 +128,10 @@ const memoizeByTarget = (
   };
 };
 
-const describeProperties = (
-  value: Readonly<Record<string, unknown>>,
-): Record<string, unknown> =>
-  Object.fromEntries(
-    Object.entries(value).map(([key, child]) => {
-      if (key !== "properties" || !isObject(child))
-        return [key, describeValue(child)];
-      return [
-        key,
-        Object.fromEntries(
-          Object.entries(child).map(([property, propertySchema]) => [
-            property,
-            isObject(propertySchema) &&
-            typeof propertySchema.description !== "string"
-              ? {
-                  ...describeProperties(propertySchema),
-                  description: fallbackPropertyDescription(property),
-                }
-              : describeValue(propertySchema),
-          ]),
-        ),
-      ];
-    }),
-  );
-
-const describeValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(describeValue);
-  return isObject(value) ? describeProperties(value) : value;
-};
-
 const fallbackPropertyDescription = (property: string): string => {
-  const explicit = PROPERTY_DESCRIPTIONS[property];
+  const explicit = Object.hasOwn(PROPERTY_DESCRIPTIONS, property)
+    ? PROPERTY_DESCRIPTIONS[property]
+    : undefined;
   if (explicit !== undefined) return explicit;
   const words = property.replaceAll("_", " ");
   if (property.startsWith("max_"))
@@ -171,6 +158,3 @@ const fallbackPropertyDescription = (property: string): string => {
     return `Whether ${words}.`;
   return `Value for ${words}.`;
 };
-
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);

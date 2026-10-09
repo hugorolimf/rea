@@ -2,6 +2,32 @@
 
 volatile int rea_ghidra_inventory_global = 7;
 
+#if defined(__x86_64__) && defined(__ELF__)
+// Static decoder controls: these functions are retained but never executed.
+__attribute__((naked, noinline, used)) void rea_ghidra_flow_return(void) {
+  __asm__("ret");
+}
+__attribute__((naked, noinline, used)) void rea_ghidra_flow_cleanup_return(void) {
+  __asm__("ret $16");
+}
+__attribute__((naked, noinline, used)) void rea_ghidra_flow_shared_tail(void) {
+  __asm__("jmp rea_ghidra_flow_return");
+}
+__attribute__((naked, noinline, used)) void rea_ghidra_flow_trap(void) {
+  __asm__("ud2");
+}
+#endif
+
+// This literal reproduces stack exhaustion in Java's recursive regex matcher.
+#define REA_REPEAT_4(value) value value value value
+#define REA_REPEAT_16(value) REA_REPEAT_4(REA_REPEAT_4(value))
+#define REA_REGEX_RUN REA_REPEAT_16(REA_REPEAT_16(REA_REPEAT_16("a")))
+__attribute__((used)) const char *volatile rea_ghidra_regex_subject =
+    REA_REGEX_RUN REA_REGEX_RUN REA_REGEX_RUN "!";
+#undef REA_REGEX_RUN
+#undef REA_REPEAT_16
+#undef REA_REPEAT_4
+
 enum ReaFixtureState { REA_FIXTURE_IDLE = 0, REA_FIXTURE_READY = 3 };
 union ReaFixturePayload { unsigned int word; unsigned char bytes[4]; };
 struct ReaFixtureLayout {
@@ -16,6 +42,10 @@ __attribute__((noinline, used)) int rea_ghidra_inventory_leaf(int value) {
   puts("REA_GHIDRA_LEAF_VALUE");
   return value + rea_ghidra_inventory_global;
 }
+
+// A reference into the function body can land inside an instruction.
+__attribute__((used)) const unsigned char *volatile rea_ghidra_interior_pointer =
+    (const unsigned char *)(void *)rea_ghidra_inventory_leaf + 1;
 
 __attribute__((noinline, used)) int rea_ghidra_inventory_branch(int value) {
   if (value > 10) {

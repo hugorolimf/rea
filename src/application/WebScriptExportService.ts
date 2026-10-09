@@ -8,13 +8,14 @@ import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
 import { publishWebScripts } from "../browser/assets/PublishWebScripts.js";
 import { selectScriptCapture } from "../browser/assets/ScriptCaptureAdapters.js";
 import {
+  AnalysisAccessDeniedError,
   AnalysisCancelledError,
   AnalysisInputError,
   AnalysisOutputError,
 } from "../domain/analysisErrorCore.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import { createEvidence, type Evidence } from "../domain/evidence.js";
-import { projectInputIssues } from "../domain/inputIssueProjection.js";
+import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 import { jsonValueSchema } from "../domain/jsonValue.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { err, ok, type Result } from "../domain/result.js";
@@ -38,11 +39,7 @@ export const exportWebScripts = async (
   return input.success
     ? exportWebScriptsValidated(input.data, options)
     : err(
-        new AnalysisInputError(
-          OPERATION,
-          undefined,
-          projectInputIssues(input.error.issues, rawInput),
-        ),
+        analysisInputErrorFromIssues(OPERATION, input.error.issues, rawInput),
       );
 };
 
@@ -64,9 +61,9 @@ export const exportWebScriptsValidated = async (
     );
   try {
     options.signal?.throwIfAborted();
-    const bytes = await readFile(input.capture_path, {
-      signal: options.signal,
-    });
+    const read = await readCapture(input.capture_path, options.signal);
+    if (!read.ok) return read;
+    const bytes = read.value;
     const loaded = parseCapture(bytes);
     if (!loaded.ok) return loaded;
     options.signal?.throwIfAborted();
@@ -143,6 +140,40 @@ export const exportWebScriptsValidated = async (
         },
       }),
     );
+  }
+};
+
+/**
+ * Read the caller-selected capture. A missing, non-file or unreadable
+ * selection is a caller or host-permission failure, not an export failure.
+ */
+const readCapture = async (
+  path: string,
+  signal: AbortSignal | undefined,
+): Promise<Result<Buffer, AnalysisError>> => {
+  try {
+    return ok(await readFile(path, { signal }));
+  } catch (cause: unknown) {
+    const code =
+      cause instanceof Error && "code" in cause ? String(cause.code) : "";
+    if (code === "EACCES" || code === "EPERM")
+      return err(
+        new AnalysisAccessDeniedError(OPERATION, path, code, { cause }),
+      );
+    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR")
+      return err(
+        new AnalysisInputError(OPERATION, { cause }, [
+          {
+            path: ["capture_path"],
+            reason: "invalid_value",
+            message:
+              code === "EISDIR"
+                ? `Selected capture is a directory, not a file: ${path}`
+                : `Selected capture could not be read (${code}): ${path}`,
+          },
+        ]),
+      );
+    throw cause;
   }
 };
 

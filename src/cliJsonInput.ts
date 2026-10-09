@@ -37,9 +37,9 @@ export const parseCliJsonInput = async (
 /**
  * Resolve named string fields of CLI-supplied JSON against the operator
  * working directory. Each entry is a key path from the document root; only
- * fields holding strings are resolved, everything else passes through
- * untouched. Shared MCP contracts reject relative paths, so CLI workflows
- * resolve operator-relative values before validation.
+ * fields holding nonblank strings are resolved, everything else passes through
+ * untouched so shared schemas can reject blank paths. Shared MCP contracts reject
+ * relative paths, so CLI workflows resolve operator-relative values before validation.
  */
 export const resolveCliJsonPaths = (
   value: unknown,
@@ -61,7 +61,12 @@ const resolveJsonPath = (
     ([key, entry]: readonly [string, unknown]): readonly [string, unknown] => {
       if (key !== head) return [key, entry];
       if (tail.length === 0)
-        return [key, typeof entry === "string" ? resolve(entry) : entry];
+        return [
+          key,
+          typeof entry === "string" && entry.trim().length > 0
+            ? resolve(entry)
+            : entry,
+        ];
       return [key, resolveJsonPath(entry, tail)];
     },
   );
@@ -123,10 +128,26 @@ const jsonFileError = (
         cause === undefined ? undefined : { cause },
         reason === "invalid-json"
           ? [{ path: [], reason: "invalid_format", expected: "JSON" }]
-          : [],
+          : [readFailureIssue(path, cause)],
       ),
     ),
     ...(path === undefined ? {} : { input_path: path }),
     input_reason: reason,
   },
 });
+
+/** Name the system error so the caller can tell a typo from a permission denial. */
+const readFailureIssue = (path: string | undefined, cause: unknown) => {
+  const code =
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    typeof cause.code === "string"
+      ? ` (${cause.code})`
+      : "";
+  return {
+    path: [],
+    reason: "invalid_value" as const,
+    message: `The JSON input file could not be read${code}: ${path ?? ""}`,
+  };
+};

@@ -1,3 +1,4 @@
+import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 
 /** Stable failure phase for one private Ghidra headless session. */
@@ -14,6 +15,7 @@ export type GhidraSessionFailureKind =
 export interface GhidraSessionErrorOptions extends ErrorOptions {
   readonly timeoutMs?: number;
   readonly remoteCode?: string;
+  readonly cleanupFailure?: AnalysisError;
 }
 
 /** Provider-owned failure with bounded, token-redacted local diagnostics. */
@@ -21,6 +23,7 @@ export class GhidraSessionError extends Error {
   readonly diagnostics: Readonly<Record<string, JsonValue>>;
   readonly timeoutMs: number | undefined;
   readonly remoteCode: string | undefined;
+  readonly cleanupFailure: AnalysisError | undefined;
 
   constructor(
     readonly kind: GhidraSessionFailureKind,
@@ -33,6 +36,7 @@ export class GhidraSessionError extends Error {
     this.diagnostics = structuredClone(diagnostics);
     this.timeoutMs = options.timeoutMs;
     this.remoteCode = options.remoteCode;
+    this.cleanupFailure = options.cleanupFailure;
   }
 }
 
@@ -49,13 +53,17 @@ const createGhidraSessionError = (failure: {
   new GhidraSessionError(
     failure.kind,
     failure.message,
-    failure.remoteCode === undefined
-      ? failure.diagnostics
-      : {
-          ...failure.diagnostics,
-          remote_code: failure.redact(failure.remoteCode),
-          remote_message: failure.message,
-        },
+    {
+      ...failure.diagnostics,
+      failure_kind: failure.kind,
+      failure_message: failure.message,
+      ...(failure.remoteCode === undefined
+        ? {}
+        : {
+            remote_code: failure.redact(failure.remoteCode),
+            remote_message: failure.message,
+          }),
+    },
     {
       ...(failure.cause === undefined ? {} : { cause: failure.cause }),
       ...(failure.timeoutMs === undefined

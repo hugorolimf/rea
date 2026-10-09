@@ -8,6 +8,7 @@ import type {
 export type {
   JavaScriptSemanticPrimitive,
   JavaScriptSemanticProperty,
+  JavaScriptSemanticResourceLimit,
   JavaScriptSemanticValue,
 } from "./javascriptSemanticValueTypes.js";
 
@@ -379,7 +380,7 @@ export interface JavaScriptSemanticObjectOperation {
   readonly ownerCallableId: string | null;
   readonly objectBindingId: string | null;
   readonly targetBindingId: string | null;
-  readonly propertyName: string | null;
+  readonly propertyPath: readonly string[] | null;
   readonly resolution: "complete" | "partial";
 }
 

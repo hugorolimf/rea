@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { add, commit, init } from "isomorphic-git";
 import { describe, expect, it } from "vitest";
@@ -123,8 +123,7 @@ describe("reference source symlink import", () => {
 
     const imported = await importTree(root);
 
-    expect(imported.ok).toBe(true);
-    if (!imported.ok) return;
+    if (!imported.ok) throw imported.error;
     expect(imported.value.entries).toContainEqual(
       expect.objectContaining({
         kind: "symlink",
@@ -141,37 +140,48 @@ describe("reference source symlink import", () => {
 });
 
 describe("reference source manifest inventory", () => {
-  it("retains CMake build manifests in the imported inventory", async () => {
-    const root = await createTestTempDirectory("rea-reference-cmake-");
-    await mkdir(join(root, "src"));
-    await Promise.all([
-      writeFile(join(root, "CMakeLists.txt"), "project(example)\n"),
-      writeFile(
-        join(root, "src", "CMakeLists.txt"),
-        "add_library(example main.cpp)\n",
-      ),
-      writeFile(join(root, "notes.txt"), "Build notes.\n"),
-    ]);
+  it("retains manifest, test, generated and language classifications through import", async () => {
+    const root = await createTestTempDirectory("rea-reference-classification-");
+    const files = [
+      ["CMakeLists.txt", "Text", ["documentation", "manifest"]],
+      ["src/CMAKELISTS.TXT", "Text", ["documentation", "manifest", "source"]],
+      ["CMakeLists.txt.backup", null, ["unknown"]],
+      ["Dockerfile.dev.ts", "Dockerfile", ["source"]],
+      ["DockerfileGuide.d.mts", "TypeScript", ["generated", "source"]],
+      ["DockerfileHelper.py", "Python", ["source"]],
+      ["dockerfiles", null, ["unknown"]],
+      ["Widget_TeSt.TS", "TypeScript", ["source", "test"]],
+      ["parser_spec.rs", "Rust", ["source", "test"]],
+      ["main_test_helper.go", "Go", ["source"]],
+      ["main_spec.ts.bak", null, ["unknown"]],
+      ["tests/main.go", "Go", ["source", "test"]],
+      ["out/widget_spec.js", "JavaScript", ["generated", "source", "test"]],
+      ["vendor/widget_test.go", "Go", ["source", "test", "vendor"]],
+      ["settings_spec.json", "JSON", ["config", "test"]],
+    ] as const;
+    await Promise.all(
+      files.map(async ([path]) => {
+        const target = join(root, path);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, "");
+      }),
+    );
 
     const result = await importTree(root);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) throw result.error;
     expect(result.value.manifests).toEqual([
       "CMakeLists.txt",
-      "src/CMakeLists.txt",
+      "src/CMAKELISTS.TXT",
     ]);
-    expect(result.value.entries).toContainEqual(
-      expect.objectContaining({
-        path: "CMakeLists.txt",
-        classifications: ["documentation", "manifest"],
-      }),
+    const entries = new Map(
+      result.value.entries.map((entry) => [entry.path, entry]),
     );
-    expect(result.value.entries).toContainEqual(
-      expect.objectContaining({
-        path: "src/CMakeLists.txt",
-        classifications: ["documentation", "manifest", "source"],
-      }),
-    );
+    for (const [path, language, classifications] of files)
+      expect(entries.get(path), path).toMatchObject({
+        kind: "file",
+        language,
+        classifications,
+      });
   });
 });
 
@@ -210,8 +220,7 @@ describe("reference source import behavior", () => {
       policy: { secretPatterns: [] },
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) throw result.error;
     // The importer always reports one standing advisory about pathname races,
     // so completeness is asserted per entry rather than globally.
     const limited = result.value.entries.filter(
@@ -262,8 +271,7 @@ describe("reference source import behavior", () => {
         ),
       );
       const result = await importTree(root);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.entries.map(({ path }) => path)).toEqual(paths);
       const repeated = await importTree(root);
       expect(repeated).toEqual(result);
@@ -337,7 +345,6 @@ describe("reference source import behavior", () => {
         message: "fixture",
       });
       const result = await importTree(root);
-      expect(result.ok).toBe(true);
       if (!result.ok) throw result.error;
       expect(result.value.vcs).toEqual({ kind: "git", head: oid, dirty: null });
     } finally {
@@ -352,8 +359,7 @@ describe("reference source path selection", () => {
     try {
       const root = await fixture(parent, "tree");
       const result = await importTree(root, undefined, []);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (!result.ok) throw result.error;
       expect(result.value.entries).toContainEqual(
         expect.objectContaining({
           path: ".env",
@@ -383,8 +389,7 @@ describe("reference source rooted module specifiers", () => {
       "export const value = 1;\n",
     );
     const result = await importTree(root);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) throw result.error;
     expect(result.value.relationships).toContainEqual({
       from_path: "src/main.js",
       to: "/outside/dep.js",

@@ -37,6 +37,7 @@ const inspection = (
 ): GhidraInstallationInspection =>
   inspectGhidraInstallation(
     {
+      environment: {},
       platform: options.platform ?? "linux",
       architecture: options.architecture ?? "x64",
       ...(options.installDir === undefined
@@ -138,7 +139,7 @@ describe("Ghidra doctor integration", () => {
     ],
     [
       "unsupported architecture",
-      inspection({ installDir: INSTALL, architecture: "arm64" }),
+      inspection({ installDir: INSTALL, architecture: "arm" }),
       "ghidra-architecture",
     ],
   ] as const)("distinguishes %s", async (_label, ghidra, checkName) => {

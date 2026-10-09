@@ -3,6 +3,7 @@ import { constants, statSync, type BigIntStats } from "node:fs";
 import { open, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { IPty } from "@lydell/node-pty";
 
 import type {
@@ -36,6 +37,7 @@ import { classifyFilesystemEffects } from "./ProcessFilesystemEffects.js";
 import {
   cleanupOwnedProcessGroup,
   verifyNoTokenOwnedProcesses,
+  type OwnedProcessGroup,
   type ProcessCleanupResult,
   type ProcessOwnershipBaseline,
 } from "../ProcessOwnership.js";
@@ -46,6 +48,7 @@ import {
 } from "../ProcessOwnershipObservation.js";
 import {
   describeProcessCaptureExecutionFailure,
+  normalizeCaptureFailure,
   ProcessCaptureError,
 } from "./ProcessCaptureError.js";
 import { assertNotCancelled } from "./ProcessScenarioRuntimeValidation.js";
@@ -242,6 +245,15 @@ export const buildCaptureResult = (
     "No filesystem observation paths were selected; filesystem effects remain unknown.";
   const hasFilesystemObservations =
     options.scenario.filesystem_observation_paths.length > 0;
+  const filesystemEffects = classifyFilesystemEffects(
+    options.before,
+    options.after,
+  );
+  const hasUnknownFilesystemEffects = filesystemEffects.some(
+    ({ status }) => status === "unknown",
+  );
+  const incompleteFilesystemUnknown =
+    "Path absence in incomplete enumeration or below an unfollowed symbolic link remains unknown.";
   return {
     manifest: options.manifest,
     normalization: options.scenario.normalization,
@@ -266,10 +278,7 @@ export const buildCaptureResult = (
     event_journal: options.eventJournal,
     files_before: options.before.files,
     files_after: options.after.files,
-    filesystem_effects: classifyFilesystemEffects(
-      options.before.files,
-      options.after.files,
-    ),
+    filesystem_effects: filesystemEffects,
     truncated: options.truncated,
     limitations: [
       "The executable digest is a prelaunch file sample; matching path metadata immediately after spawn does not prove an atomic operating-system image binding.",
@@ -280,6 +289,7 @@ export const buildCaptureResult = (
       "Filesystem observations are before/after snapshots, not syscall traces.",
       "Inherited host environment variables are not recorded and may affect results.",
       ...(!hasFilesystemObservations ? [filesystemObservationUnknown] : []),
+      ...(hasUnknownFilesystemEffects ? [incompleteFilesystemUnknown] : []),
       ...(hasSensitiveScriptedInput ? [sensitiveInputUnknown] : []),
     ],
     residual_unknowns: [
@@ -306,6 +316,14 @@ export const buildCaptureResult = (
             {
               scope: "filesystem" as const,
               reason: filesystemObservationUnknown,
+            },
+          ]
+        : []),
+      ...(hasUnknownFilesystemEffects
+        ? [
+            {
+              scope: "filesystem" as const,
+              reason: incompleteFilesystemUnknown,
             },
           ]
         : []),
@@ -530,7 +548,9 @@ export const observeSettlement = async (
   settleMs: number,
   recordEvent: RecordProcessCaptureEvent = () => undefined,
   platform: NodeJS.Platform = process.platform,
+  signal?: AbortSignal,
 ): Promise<ObservedProcessSettlement> => {
+  assertNotCancelled(signal);
   if (platform === "win32") {
     recordEvent("lifecycle", 1);
     return { state: "unverifiable", elapsed_ms: 0 };
@@ -539,15 +559,17 @@ export const observeSettlement = async (
   let consecutiveEmpty = 0;
   let deadlineReached = false;
   while (!deadlineReached) {
+    assertNotCancelled(signal);
     const observations = await Promise.all(
       [...new Set(processGroupIds)].map((processGroupId) =>
-        observeOwnedProcessGroup({
-          runId,
-          leaderPid: processGroupId,
-          processGroupId,
-        }),
+        observeOwnedProcessGroup(
+          { runId, leaderPid: processGroupId, processGroupId },
+          undefined,
+          signal,
+        ),
       ),
     );
+    assertNotCancelled(signal);
     if (observations.some(({ state }) => state === "unverifiable")) {
       recordEvent("lifecycle", 1);
       return { state: "unverifiable", elapsed_ms: Date.now() - started };
@@ -561,7 +583,7 @@ export const observeSettlement = async (
     } else consecutiveEmpty = 0;
     deadlineReached = Date.now() - started >= settleMs;
     if (deadlineReached) break;
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await delay(50, undefined, { signal });
   }
   recordEvent("lifecycle", 1);
   return { state: "alive_at_deadline", elapsed_ms: Date.now() - started };
@@ -665,6 +687,66 @@ const verifyTokenOwnedProcessesUntilSettled = async (
   return result;
 };
 
+const releaseCapturedProcessGroup = async (
+  ownership: OwnedProcessGroup,
+  host: ProcessCaptureCleanupHost,
+): Promise<ProcessCaptureCleanupReport["owned_process_group"]> => {
+  if (host.platform === "win32")
+    return {
+      state: "unverified",
+      reason:
+        "owned process cleanup is unverifiable on Windows without process-job authority",
+    };
+  let outcome: ProcessCaptureCleanupReport["owned_process_group"] = {
+    state: "cleaned",
+    reason: null,
+  };
+  const unverified: Array<{
+    readonly pid: number;
+    readonly diagnostic: string;
+  }> = [];
+  try {
+    const cleaned = await host.cleanupProcessGroup(ownership);
+    unverified.push(...(cleaned.unverified ?? []));
+    if (!cleaned.cleaned) {
+      outcome = { state: "unverified", reason: cleaned.reason };
+    } else {
+      const verified = await verifyTokenOwnedProcessesUntilSettled(() =>
+        host.verifyTokenOwnedProcesses(
+          ownership.runId,
+          undefined,
+          ownership.captureBaseline,
+          ownership,
+        ),
+      );
+      unverified.push(...(verified.unverified ?? []));
+      if (!verified.cleaned)
+        outcome = { state: "unverified", reason: verified.reason };
+    }
+  } catch (cause: unknown) {
+    outcome = {
+      state: "failed",
+      reason:
+        cause instanceof Error
+          ? cause.message || cause.name || "owned process cleanup failed"
+          : "owned process cleanup failed",
+    };
+  }
+  return unverified.length === 0
+    ? outcome
+    : {
+        ...outcome,
+        unverified_processes: [
+          ...new Map(
+            unverified.map(({ pid, diagnostic }) => [
+              `${String(pid)}:${diagnostic}`,
+              { pid, reason: diagnostic },
+            ]),
+          ).values(),
+        ],
+      };
+};
+
 export const releaseProcessResources = async (options: {
   readonly timers: ReadonlySet<ProcessTimer>;
   readonly terminal: Pick<IPty, "pid"> | undefined;
@@ -692,45 +774,24 @@ export const releaseProcessResources = async (options: {
           : "renderer dispose failed",
     };
   }
-  let ownedProcessGroup: ProcessCaptureCleanupReport["owned_process_group"] = {
-    state: options.terminal === undefined ? "not_required" : "cleaned",
-    reason: null,
-  };
-  if (options.terminal !== undefined) {
-    if (host.platform === "win32") {
-      ownedProcessGroup = {
-        state: "unverified",
-        reason:
-          "owned process cleanup is unverifiable on Windows without process-job authority",
-      };
-    } else {
-      const cleaned = await host.cleanupProcessGroup({
-        runId: options.runId,
-        leaderPid: options.terminal.pid,
-        processGroupId: options.terminal.pid,
-        sweepTokenOwnedProcesses: true,
-        ...(options.sampledProcessGroupIds === undefined
-          ? {}
-          : { sampledProcessGroupIds: options.sampledProcessGroupIds }),
-        ...(options.captureBaseline === undefined
-          ? {}
-          : { captureBaseline: options.captureBaseline }),
-      });
-      if (!cleaned.cleaned) {
-        ownedProcessGroup = { state: "unverified", reason: cleaned.reason };
-      } else {
-        const verified = await verifyTokenOwnedProcessesUntilSettled(() =>
-          host.verifyTokenOwnedProcesses(
-            options.runId,
-            undefined,
-            options.captureBaseline,
-          ),
+  const ownedProcessGroup =
+    options.terminal === undefined
+      ? { state: "not_required" as const, reason: null }
+      : await releaseCapturedProcessGroup(
+          {
+            runId: options.runId,
+            leaderPid: options.terminal.pid,
+            processGroupId: options.terminal.pid,
+            sweepTokenOwnedProcesses: true,
+            ...(options.sampledProcessGroupIds === undefined
+              ? {}
+              : { sampledProcessGroupIds: options.sampledProcessGroupIds }),
+            ...(options.captureBaseline === undefined
+              ? {}
+              : { captureBaseline: options.captureBaseline }),
+          },
+          host,
         );
-        if (!verified.cleaned)
-          ownedProcessGroup = { state: "unverified", reason: verified.reason };
-      }
-    }
-  }
   let temporaryRoot: ProcessCaptureCleanupReport["temporary_root"] = {
     state: "cleaned",
     reason: null,
@@ -805,6 +866,7 @@ export const captureTerminalFrames = (options: {
       sequence,
       at_ms: atMs,
       data: normalized,
+      ...(normalized === data ? {} : { raw_data: data }),
     });
     options.renderer.write(data, atMs);
     options.recordEvent("frames", sequence);
@@ -823,6 +885,52 @@ export const resolveProcessResult = (
   },
 ): ProcessCapture => {
   const cleanupFailure = cleanupReportFailure(cleanup);
+  const executionFailureReason =
+    describeProcessCaptureExecutionFailure(executionFailure);
+  let partialObservation: PartialProcessCaptureObservation | undefined;
+  if (
+    (cleanupFailure !== undefined || executionFailure !== undefined) &&
+    (capture !== undefined || observations !== undefined)
+  ) {
+    const normalizedObservations =
+      observations === undefined || partialContext === undefined
+        ? observations
+        : normalizePartialProcessObservations(observations, partialContext);
+    if (capture === undefined) {
+      if (normalizedObservations !== undefined) {
+        const partialResult = partialProcessCaptureObservationSchema.safeParse({
+          observations: normalizedObservations,
+          cleanup,
+          execution_failure: executionFailureReason ?? null,
+        });
+        if (partialResult.success) partialObservation = partialResult.data;
+      }
+    } else {
+      const captureData =
+        "cleanup" in capture
+          ? (() => {
+              const { cleanup: _cleanup, ...data } = capture;
+              void _cleanup;
+              return data;
+            })()
+          : capture;
+      const settlement =
+        cleanupFailure !== undefined
+          ? { ...capture.settlement, cleanup_outcome: "failed" as const }
+          : capture.settlement.state === "quiesced"
+            ? {
+                ...capture.settlement,
+                cleanup_outcome: "not_required" as const,
+              }
+            : { ...capture.settlement, cleanup_outcome: "cleaned" as const };
+      const partialResult = partialProcessCaptureObservationSchema.safeParse({
+        capture: { ...captureData, settlement },
+        cleanup,
+        execution_failure: executionFailureReason ?? null,
+      });
+      if (partialResult.success) partialObservation = partialResult.data;
+    }
+  }
   if (cleanupFailure !== undefined) {
     const cleanupResources = Object.entries(cleanup)
       .filter(
@@ -830,44 +938,6 @@ export const resolveProcessResult = (
           outcome.state === "failed" || outcome.state === "unverified",
       )
       .map(([resource]) => resource);
-    const executionFailureReason =
-      describeProcessCaptureExecutionFailure(executionFailure);
-    let partialObservation: PartialProcessCaptureObservation | undefined;
-    if (capture !== undefined || observations !== undefined) {
-      const normalizedObservations =
-        observations === undefined || partialContext === undefined
-          ? observations
-          : normalizePartialProcessObservations(observations, partialContext);
-      const partialPayload =
-        capture === undefined
-          ? { observations: normalizedObservations }
-          : { capture };
-      const pendingCapture =
-        capture === undefined
-          ? undefined
-          : {
-              ...capture,
-              settlement: {
-                ...capture.settlement,
-                cleanup_outcome: "failed" as const,
-              },
-            };
-      const partialResult = partialProcessCaptureObservationSchema.safeParse({
-        ...partialPayload,
-        ...(pendingCapture === undefined
-          ? {}
-          : {
-              capture: Object.fromEntries(
-                Object.entries(pendingCapture).filter(
-                  ([key]) => key !== "cleanup",
-                ),
-              ),
-            }),
-        cleanup,
-        execution_failure: executionFailureReason ?? null,
-      });
-      if (partialResult.success) partialObservation = partialResult.data;
-    }
     throw new ProcessCaptureError(cleanupFailure, {
       cause: executionFailure,
       reason: "cleanup_incomplete",
@@ -879,20 +949,45 @@ export const resolveProcessResult = (
       cleanupReport: cleanup,
     });
   }
-  if (executionFailure instanceof ProcessCaptureError) throw executionFailure;
+  if (executionFailure instanceof ProcessCaptureError) {
+    const retainedExecutionFailure =
+      executionFailure.executionFailure ?? executionFailureReason;
+    const retainedPartialObservation =
+      executionFailure.partialObservation ?? partialObservation;
+    throw new ProcessCaptureError(executionFailure.message, {
+      cause: executionFailure,
+      ...(executionFailure.userMessage === undefined
+        ? {}
+        : { userMessage: executionFailure.userMessage }),
+      ...(executionFailure.userCategory === undefined
+        ? {}
+        : { userCategory: executionFailure.userCategory }),
+      reason: executionFailure.reason,
+      cleanupResources: executionFailure.cleanupResources,
+      ...(retainedExecutionFailure === undefined
+        ? {}
+        : { executionFailure: retainedExecutionFailure }),
+      ...(retainedPartialObservation === undefined
+        ? {}
+        : { partialObservation: retainedPartialObservation }),
+      cleanupReport: executionFailure.cleanupReport ?? cleanup,
+    });
+  }
   if (executionFailure !== undefined) {
-    const executionFailureReason =
-      describeProcessCaptureExecutionFailure(executionFailure);
     throw new ProcessCaptureError("process capture failed", {
       cause: executionFailure,
+      reason: "capture_failed",
       ...(executionFailureReason === undefined
         ? {}
         : { executionFailure: executionFailureReason }),
+      ...(partialObservation === undefined ? {} : { partialObservation }),
+      cleanupReport: cleanup,
     });
   }
   if (capture === undefined)
     throw new ProcessCaptureError("process capture produced no result");
-  if ("cleanup" in capture) return capture;
+  const unverifiedProcesses = cleanup.owned_process_group.unverified_processes;
+  if ("cleanup" in capture && unverifiedProcesses === undefined) return capture;
 
   const settlement: UnverifiedProcessCapture["settlement"] =
     capture.settlement.state === "quiesced"
@@ -902,9 +997,20 @@ export const resolveProcessResult = (
     return parseProcessCapture({
       ...capture,
       settlement,
+      residual_unknowns: [
+        ...capture.residual_unknowns,
+        ...(unverifiedProcesses ?? []).map(({ pid, reason }) => ({
+          scope: "process" as const,
+          reason: `Ownership of unrelated process ${String(pid)} could not be verified; it was left untouched: ${reason}`,
+        })),
+      ],
       cleanup: {
+        ...("cleanup" in capture ? capture.cleanup : {}),
         owned_process_group: "verified",
         temporary_root: "removed",
+        ...(unverifiedProcesses === undefined
+          ? {}
+          : { unverified_processes: unverifiedProcesses }),
       },
     });
   } catch (cause: unknown) {
@@ -930,16 +1036,36 @@ export const prepareProcessCapture = async (
   await host.prepareOwnershipInspector?.(signal);
   assertNotCancelled(signal);
   const before = await captureSnapshot(scenario, signal);
+  const runId = randomUUID();
   const temporaryRoot = await host.createTemporaryRoot();
   try {
     assertNotCancelled(signal);
-    const runId = randomUUID();
     const ownershipBaseline =
       (await host.captureOwnershipBaseline?.(signal)) ?? [];
     assertNotCancelled(signal);
     return { temporaryRoot, runId, ownershipBaseline, before };
   } catch (cause: unknown) {
-    await host.cleanup(temporaryRoot);
+    const cleanup = await releaseProcessResources({
+      timers: new Set(),
+      terminal: undefined,
+      renderer: undefined,
+      runId,
+      temporaryRoot,
+      host: { ...processCaptureCleanupHost, removeTemporaryRoot: host.cleanup },
+    });
+    resolveProcessResult(
+      undefined,
+      normalizeCaptureFailure(cause, signal),
+      cleanup,
+      createProcessCaptureObservationBuffer({
+        frames: [],
+        interactions: [],
+        samples: [],
+        eventJournal: [],
+        before,
+      }),
+      { scenario },
+    );
     throw cause;
   }
 };

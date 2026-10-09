@@ -151,16 +151,13 @@ export const spawnOwnedProviderProcess = async (
     REA_PROCESS_RUN_ID: options.runId,
   };
   if (platform === "win32" && process.platform === "win32") {
-    if (options.stdin === "pipe")
-      throw new Error(
-        "Owned Windows provider processes do not support protocol stdin",
-      );
     const child = new WindowsOwnedProcess(
       options.command,
       options.arguments,
       options.cwd,
       environment,
       options.windowsVerbatimArguments ?? false,
+      options.stdin === "pipe",
     );
     return {
       process: child,
@@ -222,6 +219,12 @@ export class ProviderProcessSupervisor {
   };
   readonly #onStderr = (chunk: Buffer | string): void => {
     this.#capture("stderr", this.#stderr, chunk);
+  };
+  readonly #onStdoutError = (cause: Error): void => {
+    this.#recordStreamError("stdout", cause);
+  };
+  readonly #onStderrError = (cause: Error): void => {
+    this.#recordStreamError("stderr", cause);
   };
   readonly #onExit = (
     code: number | null,
@@ -299,11 +302,14 @@ export class ProviderProcessSupervisor {
     );
   }
 
-  /** Stop an owned process once; concurrent callers share the same escalation. */
+  /** Share each stop attempt; incomplete cleanup retains ownership and permits retry. */
   stop(
     options: ProviderProcessStopOptions = {},
   ): Promise<ProviderProcessStopResult> {
-    this.#stopPromise ??= this.#stop(options);
+    this.#stopPromise ??= this.#stop(options).then((result) => {
+      if (result.status === "incomplete") this.#stopPromise = undefined;
+      return result;
+    });
     return this.#stopPromise;
   }
 
@@ -312,13 +318,28 @@ export class ProviderProcessSupervisor {
     if (this.#disposed) return;
     this.#disposed = true;
     this.launch.process.stdout?.off("data", this.#onStdout);
+    this.launch.process.stdout?.off("error", this.#onStdoutError);
     this.launch.process.stderr?.off("data", this.#onStderr);
+    this.launch.process.stderr?.off("error", this.#onStderrError);
     this.launch.process.off("exit", this.#onExit);
     this.launch.process.off("close", this.#onClose);
     this.launch.process.off("error", this.#onError);
   }
 
   async #stop(
+    options: ProviderProcessStopOptions,
+  ): Promise<ProviderProcessStopResult> {
+    let completed = false;
+    try {
+      const result = await this.#stopWithin(options);
+      completed = result.status !== "incomplete";
+      return result;
+    } finally {
+      if (completed) this.dispose();
+    }
+  }
+
+  async #stopWithin(
     options: ProviderProcessStopOptions,
   ): Promise<ProviderProcessStopResult> {
     try {
@@ -366,8 +387,6 @@ export class ProviderProcessSupervisor {
             ? cause.message
             : "owned provider process cleanup failed",
       };
-    } finally {
-      this.dispose();
     }
   }
 
@@ -390,8 +409,20 @@ export class ProviderProcessSupervisor {
   }
 
   #attach(stream: Readable | null, name: "stdout" | "stderr"): void {
-    if (name === "stdout") stream?.on("data", this.#onStdout);
-    else stream?.on("data", this.#onStderr);
+    if (name === "stdout") {
+      stream?.on("data", this.#onStdout);
+      stream?.on("error", this.#onStdoutError);
+    } else {
+      stream?.on("data", this.#onStderr);
+      stream?.on("error", this.#onStderrError);
+    }
+  }
+
+  #recordStreamError(stream: "stdout" | "stderr", cause: Error): void {
+    this.#options.onDiagnostic?.({
+      type: "error",
+      message: `${stream} stream failed: ${cause.message}`,
+    });
   }
 
   #capture(

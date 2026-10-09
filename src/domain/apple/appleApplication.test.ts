@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { projectAppleApplication } from "./appleApplication.js";
+import { compareCodePoints } from "../canonicalOrdering.js";
 import { canonicalDigest } from "../comparisonSemantics.js";
 import { createEvidence, type Evidence } from "../evidence.js";
 import { jsonValueSchema } from "../jsonValue.js";
@@ -31,17 +32,29 @@ const inventoryEvidence = (
   const rootId = artifactId(rootSha);
   const node = (sha256: string, format: string) => ({
     artifact_id: artifactId(sha256),
-    kind: "resource",
-    format,
+    format: [
+      "directory",
+      "mach-o",
+      "mach-o-universal",
+      "elf",
+      "pe",
+      "plist",
+    ].includes(format)
+      ? format
+      : "file",
     sha256,
     size: 1,
     media_type: null,
     architecture: null,
-    executable: false,
     content_state: "materialized",
     limitations: [],
   });
-  const occurrence = (path: string, kind: EntryKind, id: string | null) => ({
+  const occurrence = (
+    path: string,
+    kind: EntryKind,
+    id: string | null,
+    format = "file",
+  ) => ({
     occurrence_id:
       path === "."
         ? `occ_${canonicalDigest({ root: rootId }, "Artifact inventory")}`
@@ -53,6 +66,8 @@ const inventoryEvidence = (
     parent_occurrence_id: null,
     logical_path: path,
     entry_kind: kind,
+    artifact_kind: "resource",
+    artifact_format: format,
     declared_size: null,
     compressed_size: null,
     executable: false,
@@ -62,7 +77,7 @@ const inventoryEvidence = (
     limitations: [],
   });
   const nodes = new Map([[rootId, node(rootSha, rootFormat)]]);
-  const occurrences = [occurrence(".", "file", rootId)];
+  const occurrences = [occurrence(".", "file", rootId, rootFormat)];
   for (const { path, kind = "file", format = "file" } of entries) {
     if (kind === "symlink") {
       occurrences.push(occurrence(path, kind, null));
@@ -74,13 +89,15 @@ const inventoryEvidence = (
       id,
       node(contentSha, kind === "directory" ? "directory" : format),
     );
-    occurrences.push(occurrence(path, kind, id));
+    occurrences.push(
+      occurrence(path, kind, id, kind === "directory" ? "directory" : format),
+    );
   }
   const sortedNodes = [...nodes.values()].sort((left, right) =>
     left.artifact_id.localeCompare(right.artifact_id),
   );
   const sortedOccurrences = occurrences.sort((left, right) =>
-    left.logical_path.localeCompare(right.logical_path, "en"),
+    compareCodePoints(left.logical_path, right.logical_path),
   );
   const graphSha256 = canonicalDigest(
     {
@@ -493,5 +510,65 @@ describe("Apple application bridge candidates", () => {
         "Second.app/Contents/MacOS/Second",
       ],
     ]);
+  });
+
+  it("reports candidate omission when one root expands beyond the bridge safety budget", () => {
+    const escapedDirectory = `${"é".repeat(100)}${'"'.repeat(120)}`;
+    const scripts = Array.from({ length: 129 }, (_, index) => ({
+      path: `Payload/Fixture.app/${escapedDirectory}/script-${String(index).padStart(3, "0")}.js`,
+      format: "javascript-bundle",
+    }));
+    const native = Array.from({ length: 128 }, (_, index) =>
+      macho(
+        `Payload/Fixture.app/${escapedDirectory}/lib${String(index).padStart(3, "0")}.dylib`,
+      ),
+    );
+    const result = project(
+      inventoryEvidence("zip", "Fixture.zip", [...scripts, ...native]),
+    );
+
+    expect(result.components.javascript).toHaveLength(129);
+    expect(result.components.native_libraries).toHaveLength(128);
+    expect(result.bridge_candidate_coverage).toMatchObject({
+      status: "partial",
+      total_candidates: 129 * 128,
+      emitted_candidates: result.bridge_candidates.length,
+      omitted_candidates: 129 * 128 - result.bridge_candidates.length,
+    });
+    expect(result.bridge_candidates.length).toBeGreaterThan(0);
+    expect(result.bridge_candidates.length).toBeLessThan(129 * 128);
+    expect(
+      Buffer.byteLength(JSON.stringify(result.bridge_candidates)),
+    ).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(result.coverage).toMatchObject({
+      status: "partial",
+      inventory_complete: true,
+    });
+    expect(result.limitations).toContain(
+      `Bridge candidate pairs exceeded the projection safety budget; ${result.bridge_candidate_coverage.omitted_candidates} hypotheses are omitted. Component arrays still include every component from the supplied inventory pages.`,
+    );
+  });
+
+  it("preserves candidate pairing for components without an application root", () => {
+    const result = project(
+      inventoryEvidence("ipa", "Fixture.ipa", [
+        { path: "Payload/Fixture.app/Info.plist" },
+        {
+          path: "Payload/Fixture.app/Resources/app.js",
+          format: "javascript-bundle",
+        },
+        { path: "SwiftSupport/outside.js", format: "javascript-bundle" },
+        { path: "SwiftSupport/liboutside.dylib", format: "mach-o" },
+      ]),
+    );
+
+    expect(result.bridge_candidates).toContainEqual({
+      source_path: "SwiftSupport/outside.js",
+      native_path: "SwiftSupport/liboutside.dylib",
+      basis: "javascript-and-native-content",
+    });
+    expect(result.bridge_candidate_coverage).toMatchObject({
+      status: "complete",
+    });
   });
 });

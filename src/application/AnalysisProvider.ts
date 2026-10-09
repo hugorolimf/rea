@@ -14,6 +14,7 @@ import { jsonValueSchema } from "../domain/jsonValue.js";
 import type { ProgressReporter } from "./ProgressReporter.js";
 import type { ProviderRejectionCode } from "../contracts/providerSelection.js";
 import type { ProcessLineageObservation } from "../process/ProcessOwnership.js";
+import type { ProviderOperationHealth } from "../domain/providerOperationHealth.js";
 
 export interface ExecutionOptions {
   readonly signal?: AbortSignal;
@@ -99,13 +100,14 @@ export interface AnalysisClient extends AnalysisOperationPort {
   runtimeLineageSnapshots?(): readonly ProviderRuntimeLineageSnapshot[];
   /** Current provider work that may outlive a timed-out or cancelled caller. */
   requestActivitySnapshots?(): readonly ProviderRequestActivitySnapshot[];
-  /** Close with a typed result when the provider can verify cleanup. */
-  closeWithOutcome?(
+  /** Current operational health for the active provider bridge. */
+  operationHealthSnapshot?(): ProviderOperationHealth | undefined;
+  /** Close owned resources and retain failed cleanup for a later retry. */
+  close(
     options?: Pick<ExecutionOptions, "progress"> & {
       readonly retainDocument?: boolean;
     },
   ): Promise<Result<null, AnalysisError>>;
-  close(): Promise<void>;
 }
 
 /** Per-client identity allocated before any provider side effect starts. */
@@ -113,22 +115,15 @@ export interface AnalysisClientContext {
   readonly runId: string;
 }
 
-export type AnalysisClientFactory = (
-  target: BinaryTarget,
-  profile?: AnalysisProfileCommitment,
-  context?: AnalysisClientContext,
-) => AnalysisClient;
-
 export interface ProviderIdentity {
   readonly id: string;
   readonly name: string;
   readonly version: string | null;
 }
 
-/** Profile plus opaque compatibility output resolved before provider startup. */
+/** Typed analysis profile resolved before provider startup; null means unresolved. */
 export interface AnalysisProfileResolution {
   readonly profile: AnalysisProfileCommitment | null;
-  readonly compatibility: Readonly<Record<string, JsonValue>>;
 }
 
 /** Cancellation context for side-effect-free provider profile resolution. */
@@ -159,7 +154,12 @@ type CapabilityAvailability =
     };
 
 export type CapabilityDescriptor = CapabilityAvailability & {
-  /** Live external state must be re-observed, including after snapshot import. */
+  /**
+   * Snapshot opts immutable, profile-bound reads into replay despite incidental
+   * private filesystem writes. Live state must always be re-observed. Omitting
+   * this policy retains conservative effect checks; mutation and UI-state
+   * exclusions apply to every policy.
+   */
   readonly cachePolicy?: "snapshot" | "live";
   readonly provider: ProviderIdentity;
   readonly operation: Exclude<AnalysisOperation, "health">;

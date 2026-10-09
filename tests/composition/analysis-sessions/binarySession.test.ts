@@ -26,75 +26,9 @@ import { copyFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const nonHopperProvider = (operations: string[]): AnalysisProvider => {
-  const provider: AnalysisProvider = {
-    identity: () => ({ id: "fixture", name: "Fixture", version: "1" }),
-    capabilities: () => [
-      {
-        provider: { id: "fixture", name: "Fixture", version: "1" },
-        operation: "address_name",
-        available: true,
-        reason: null,
-        effects: {
-          mutatesArtifact: false,
-          launchesProcess: false,
-          mayShowUi: false,
-          mayAccessNetwork: false,
-          mayWriteFilesystem: false,
-          changesPermissions: false,
-          requiresRoot: false,
-        },
-        limitations: [],
-      },
-    ],
-    createClient: (_target, _profile, context) => {
-      if (context === undefined)
-        throw new Error("missing analysis run context");
-      return {
-        execute: (operation) => {
-          operations.push(operation);
-          return Promise.resolve(ok(operation));
-        },
-        runtimeLineageSnapshots: () => [
-          {
-            provider: provider.identity(),
-            observation: {
-              status: "verified",
-              observedAt: "2026-07-22T10:00:00.000Z",
-              lineage: {
-                runId: context.runId,
-                launcherPid: 100,
-                launcherParentPid: 1,
-                processGroupId: 100,
-                descendants: [
-                  { pid: 101, parentPid: 100, processGroupId: 100 },
-                ],
-              },
-            },
-          },
-        ],
-        requestActivitySnapshots: () => [
-          {
-            provider: provider.identity(),
-            active: {
-              requestId: 7,
-              operation: "analyze_function",
-              elapsedMs: 31_000,
-              callerState: "cancelled",
-            },
-            queuedRequests: 2,
-          },
-        ],
-        close: () => Promise.resolve(),
-      };
-    },
-  };
-  return provider;
-};
-
 const client = (fail = false): AnalysisClient => ({
   execute: () => Promise.resolve(fail ? err(new HopperStartError()) : ok(null)),
-  close: () => Promise.resolve(),
+  close: () => Promise.resolve(resultOk(null)),
 });
 
 /** Open a target and run one address_name query, asserting both succeed. */
@@ -158,6 +92,76 @@ describe("detached provider and target metadata", () => {
 
     await session.close();
   });
+
+  it("exposes provider operational health in session status", async () => {
+    const [first] = await createBinarySessionTargets();
+    let healthState: "idle" | "busy" | "exited" = "busy";
+    const provider: AnalysisProvider = {
+      identity: () => ({ id: "fixture", name: "Fixture", version: "1" }),
+      capabilities: () => [],
+      createClient: () => ({
+        execute: () => Promise.resolve(ok("ok")),
+        operationHealthSnapshot: () => ({
+          state: healthState,
+          stage: "analysis",
+          retryAction: healthState === "exited" ? "restart_provider" : "wait",
+          exitCode: healthState === "exited" ? 7 : null,
+          requests: [
+            {
+              requestId: 1,
+              operation: "find_code_for_string",
+              stage: "analysis",
+            },
+          ],
+        }),
+        close: () => Promise.resolve(resultOk(null)),
+      }),
+    };
+    const session = createTestBinarySession(provider);
+    expect(session.status()).toMatchObject({
+      open: false,
+      provider_operation_health: null,
+    });
+    expect((await session.open(first)).ok).toBe(true);
+    expect(session.status()).toMatchObject({
+      open: true,
+      provider_operation_health: {
+        state: "busy",
+        stage: "analysis",
+        retry_action: "wait",
+        exit_code: null,
+        requests: [
+          {
+            request_id: 1,
+            operation: "find_code_for_string",
+            stage: "analysis",
+          },
+        ],
+      },
+    });
+    healthState = "exited";
+    expect(session.status()).toMatchObject({
+      open: true,
+      provider_operation_health: {
+        state: "exited",
+        stage: "analysis",
+        retry_action: "restart_provider",
+        exit_code: 7,
+        requests: [
+          {
+            request_id: 1,
+            operation: "find_code_for_string",
+            stage: "analysis",
+          },
+        ],
+      },
+    });
+    await session.close();
+    expect(session.status()).toMatchObject({
+      open: false,
+      provider_operation_health: null,
+    });
+  });
 });
 
 describe("opening previewed targets", () => {
@@ -175,7 +179,7 @@ describe("opening previewed targets", () => {
       expect((await session.open(second)).ok).toBe(true);
       expect((await session.openResolvedTarget(preview.value)).ok).toBe(true);
       expect(session.activeTarget()?.path).toBe(first);
-      expect(calls).toEqual(["health", "health", "health"]);
+      expect(calls).toEqual([]);
     } finally {
       await session.close();
     }
@@ -219,92 +223,6 @@ describe("opening previewed targets", () => {
   });
 });
 
-describe("non-hopper provider dispatch", () => {
-  it("runs through a non-Hopper analysis provider", async () => {
-    const [first] = await createBinarySessionTargets();
-    const operations: string[] = [];
-    const provider = nonHopperProvider(operations);
-    const session = createTestBinarySession(provider);
-    expect((await session.open(first)).ok).toBe(true);
-    expect(await session.execute("address_name", {})).toEqual({
-      ok: true,
-      value: {
-        result: "address_name",
-        rawResult: "address_name",
-        provider: {
-          id: "fixture",
-          name: "Fixture analysis provider",
-          version: "1",
-        },
-        limitations: [],
-        locations: [],
-        subject: {
-          format: "analysis-database",
-          path: first,
-          sha256: expect.any(String),
-        },
-      },
-    });
-    expect(provider.identity().id).toBe("fixture");
-    expect(provider.capabilities()[0]?.operation).toBe("address_name");
-    expect(session.status()).toMatchObject({
-      provider: { id: "fixture", name: "Fixture", version: "1" },
-      providers: [{ id: "fixture", name: "Fixture", version: "1" }],
-      capabilities: [
-        {
-          operation: "address_name",
-          available: true,
-          reason: null,
-          effects: {
-            mutates_artifact: false,
-            launches_process: false,
-          },
-        },
-      ],
-      analysis_run: {
-        run_id: expect.stringMatching(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
-        ),
-        process_lineage: {
-          status: "snapshots",
-          snapshots: [
-            {
-              provider: { id: "fixture", name: "Fixture", version: "1" },
-              observation: {
-                status: "verified",
-                observed_at: "2026-07-22T10:00:00.000Z",
-                launcher_pid: 100,
-                launcher_parent_pid: 1,
-                process_group_id: 100,
-                descendants: [
-                  { pid: 101, parent_pid: 100, process_group_id: 100 },
-                ],
-              },
-            },
-          ],
-        },
-      },
-      analysis_activity: {
-        status: "busy",
-        providers: [
-          {
-            provider: { id: "fixture", name: "Fixture", version: "1" },
-            active: {
-              request_id: 7,
-              operation: "analyze_function",
-              elapsed_ms: 31_000,
-              caller_state: "cancelled",
-            },
-            queued_requests: 2,
-          },
-        ],
-      },
-    });
-    expect(operations).toEqual(["health", "address_name"]);
-    await session.close();
-  });
-});
-
 describe("fresh run identity", () => {
   it("allocates one fresh run identity per provider client lifetime", async () => {
     const [first, second] = await createBinarySessionTargets();
@@ -320,8 +238,24 @@ describe("fresh run identity", () => {
     const session = createTestBinarySession(provider);
 
     expect((await session.open(first)).ok).toBe(true);
+    expect(
+      (
+        await session.execute("address_name", {
+          address: "0x1000",
+          document: "first",
+        })
+      ).ok,
+    ).toBe(true);
     expect((await session.open(first)).ok).toBe(true);
     expect((await session.open(second)).ok).toBe(true);
+    expect(
+      (
+        await session.execute("address_name", {
+          address: "0x1000",
+          document: "second",
+        })
+      ).ok,
+    ).toBe(true);
 
     expect(runIds).toHaveLength(2);
     expect(new Set(runIds).size).toBe(2);
@@ -344,17 +278,10 @@ describe("evidence metadata imports and snapshot cache", () => {
       ).ok,
     ).toBe(true);
     const before = session.exportAnalysisSnapshot();
-    expect(before.ok).toBe(true);
-    if (!before.ok) {
-      await session.close();
-      return;
-    }
+    if (!before.ok) throw before.error;
     const existing = session.exportEvidenceBundle().records[0];
-    expect(existing?.subject).not.toBeNull();
-    if (existing?.subject === null || existing === undefined) {
-      await session.close();
-      return;
-    }
+    if (existing === undefined || existing.subject === null)
+      throw new Error("Expected artifact-bound Evidence");
     const addition = createEvidence(
       {
         path: existing.subject.local_path,
@@ -375,6 +302,9 @@ describe("evidence metadata imports and snapshot cache", () => {
     expect(
       session.importEvidenceBundle(createEvidenceBundle([addition])),
     ).toEqual({ ok: true, value: 1 });
+    expect(
+      session.importEvidenceBundle(createEvidenceBundle([addition])),
+    ).toEqual({ ok: true, value: 0 });
     expect(session.exportAnalysisSnapshot()).toMatchObject({
       ok: true,
       value: {
@@ -396,7 +326,7 @@ describe("evidence metadata imports and snapshot cache", () => {
     await session.close();
   });
 
-  it("invalidates cached analysis when an import changes evidence path metadata", async () => {
+  it("keeps changed evidence metadata out of snapshots until the session is recreated", async () => {
     const [target] = await createBinarySessionTargets();
     const calls: string[] = [];
     const session = createTestBinarySession(createCacheProvider(calls));
@@ -409,30 +339,15 @@ describe("evidence metadata imports and snapshot cache", () => {
         })
       ).ok,
     ).toBe(true);
-    expect(session.exportAnalysisSnapshot().ok).toBe(true);
+    const baseline = session.exportAnalysisSnapshot();
+    if (!baseline.ok) throw baseline.error;
 
     const evidence = session
       .exportEvidenceBundle()
       .records.find(({ operation }) => operation === "address_name");
-    expect(evidence?.subject).not.toBeNull();
-    if (evidence?.subject === null || evidence === undefined) {
-      await session.close();
-      return;
-    }
-    expect(
-      session.importEvidenceBundle(createEvidenceBundle([evidence])),
-    ).toEqual({ ok: true, value: 0 });
-    expect(session.exportAnalysisSnapshot().ok).toBe(true);
+    if (evidence === undefined || evidence.subject === null)
+      throw new Error("Expected artifact-bound Evidence");
     const callsAfterInitialRead = [...calls];
-    expect(
-      (
-        await session.execute("address_name", {
-          address: "0x1000",
-          document: "first",
-        })
-      ).ok,
-    ).toBe(true);
-    expect(calls).toEqual(callsAfterInitialRead);
 
     const relocated = {
       ...evidence,
@@ -463,6 +378,32 @@ describe("evidence metadata imports and snapshot cache", () => {
         ),
       },
     });
+    expect((await session.open(target)).ok).toBe(true);
+    expect(session.exportAnalysisSnapshot().ok).toBe(false);
+    expect(session.importAnalysisSnapshot(baseline.value)).toMatchObject({
+      ok: false,
+      error: {
+        userMessage: expect.stringContaining(
+          "Close the active target without saving a snapshot",
+        ),
+      },
+    });
+    expect(session.exportEvidenceBundle().records).toContainEqual(relocated);
+    const callsAfterInvalidation = calls.length;
+    expect(
+      (
+        await session.execute("address_name", {
+          address: "0x1000",
+          document: "first",
+        })
+      ).ok,
+    ).toBe(true);
+    expect(calls).toHaveLength(callsAfterInvalidation + 1);
+    await session.close();
+    expect((await session.open(target, { snapshot: baseline.value })).ok).toBe(
+      true,
+    );
+    expect(session.exportAnalysisSnapshot().ok).toBe(true);
     await session.close();
   });
 });
@@ -482,8 +423,7 @@ describe("replay of exact immutable calls", () => {
       ).ok,
     ).toBe(true);
     const snapshot = initial.exportAnalysisSnapshot();
-    expect(snapshot.ok).toBe(true);
-    if (!snapshot.ok) return;
+    if (!snapshot.ok) throw snapshot.error;
     expect(snapshot.value.entries).toHaveLength(1);
     await initial.close();
 
@@ -520,13 +460,8 @@ describe("replay of exact immutable calls", () => {
         })
       ).ok,
     ).toBe(true);
-    expect(replayCalls).toEqual(["health", "set_address_name", "address_name"]);
+    expect(replayCalls).toEqual(["set_address_name", "address_name"]);
     expect(replay.exportAnalysisSnapshot().ok).toBe(false);
-    expect((await replay.open(first)).ok).toBe(true);
-    expect(replay.exportAnalysisSnapshot()).toMatchObject({
-      ok: true,
-      value: { entries: [{ operation: "address_name" }] },
-    });
     await replay.close();
 
     const mismatch = createTestBinarySession(createCacheProvider([]));
@@ -550,7 +485,6 @@ describe("replay of exact immutable calls", () => {
             },
             { fixture: "different-profile" },
           ),
-          compatibility: {},
         }),
       );
     const profileMismatch = createTestBinarySession(profileMismatchProvider);
@@ -619,7 +553,7 @@ describe("snapshot switch rollback", () => {
         })
       ).ok,
     ).toBe(true);
-    expect(calls).toEqual(["health", "address_name", "health", "health"]);
+    expect(calls).toEqual(["address_name"]);
     await session.close();
   });
 });
@@ -631,7 +565,7 @@ describe("snapshot cache eligibility", () => {
     const session = createTestBinarySession(createCacheProvider(calls));
     await openAndExecuteAddressName(session, first, {});
     expect((await session.execute("address_name", {})).ok).toBe(true);
-    expect(calls).toEqual(["health", "address_name", "address_name"]);
+    expect(calls).toEqual(["address_name", "address_name"]);
     expect(session.exportAnalysisSnapshot()).toMatchObject({
       ok: true,
       value: { entries: [] },
@@ -651,7 +585,7 @@ describe("provider health and availability", () => {
             ? ok(null)
             : err(new ProviderAdapterError("fixture", operation)),
         ),
-      close: () => Promise.resolve(),
+      close: () => Promise.resolve(resultOk(null)),
     });
     const session = createTestBinarySession(provider);
     let changes = 0;
@@ -698,7 +632,7 @@ describe("provider health and availability", () => {
             : ok(operation),
         );
       },
-      close: () => Promise.resolve(),
+      close: () => Promise.resolve(resultOk(null)),
     });
     const session = createTestBinarySession(provider);
     expect((await session.open(first)).ok).toBe(true);
@@ -741,7 +675,7 @@ describe("provider health and availability", () => {
     const input = { address: "0x1000", document: "first" };
     expect((await session.execute("address_name", input)).ok).toBe(true);
     expect((await session.execute("address_name", input)).ok).toBe(true);
-    expect(calls).toEqual(["health", "address_name", "address_name"]);
+    expect(calls).toEqual(["address_name", "address_name"]);
     await session.close();
   });
 });
@@ -775,7 +709,7 @@ describe("typed unavailability without dispatching", () => {
           operations.push(operation);
           return Promise.resolve(ok(operation));
         },
-        close: () => Promise.resolve(),
+        close: () => Promise.resolve(resultOk(null)),
       }),
     };
     const session = createTestBinarySession(provider);
@@ -794,9 +728,16 @@ describe("typed unavailability without dispatching", () => {
     await session.close();
   });
 
-  it("requires an open binary and closes idempotently", async () => {
+  it("drains an admitted call before closing and closes idempotently", async () => {
+    const [first] = await createBinarySessionTargets();
     const session = createTestBinarySession(() => client());
     expect((await session.execute("binary_overview", {})).ok).toBe(false);
+    expect((await session.open(first)).ok).toBe(true);
+    // The call has been admitted but has not resumed after the transition wait.
+    const admitted = session.execute("binary_overview", {});
+    const closing = session.close();
+    expect((await admitted).ok).toBe(true);
+    expect(await closing).toEqual({ ok: true, value: null });
     expect(await session.close()).toEqual({ ok: true, value: null });
     expect(await session.close()).toEqual({ ok: true, value: null });
   });
@@ -817,7 +758,7 @@ describe("typed unavailability without dispatching", () => {
     expect(created).toBe(3);
   });
 
-  it("serializes concurrent opens and leaves the last target active", async () => {
+  it("orders calls between queued transitions without deadlocking", async () => {
     const [first, second] = await createBinarySessionTargets();
     const clients: ControllableAnalysisClient[] = [];
     const session = createTestBinarySession(() => {
@@ -826,12 +767,31 @@ describe("typed unavailability without dispatching", () => {
       return value;
     });
     const one = session.open(first);
+    const firstCall = session.execute("binary_overview", {});
+    const controller = new AbortController();
+    const cancelled = session.execute(
+      "binary_overview",
+      {},
+      { signal: controller.signal },
+    );
+    controller.abort();
     const two = session.open(second);
+    const secondCall = session.execute("binary_overview", {});
+    const closing = session.close();
+    const afterClose = session.execute("binary_overview", {});
     expect((await one).ok).toBe(true);
+    expect((await firstCall).ok).toBe(true);
+    expect(await cancelled).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisCancelledError" },
+    });
     expect((await two).ok).toBe(true);
-    expect(session.status()).toMatchObject({ open: true });
-    expect(JSON.stringify(session.status())).toContain("second.hop");
+    expect((await secondCall).ok).toBe(true);
+    expect((await closing).ok).toBe(true);
+    expect((await afterClose).ok).toBe(false);
+    expect(session.status()).toMatchObject({ open: false });
     expect(clients[0]?.closed).toBe(1);
+    expect(clients[1]?.closed).toBe(1);
   });
 });
 
@@ -861,7 +821,7 @@ describe("active client replacement", () => {
         },
         close: () => {
           state.closed += 1;
-          return Promise.resolve();
+          return Promise.resolve(resultOk(null));
         },
       };
     });
@@ -908,12 +868,27 @@ describe("active client replacement", () => {
       return value;
     });
     expect((await session.open(first)).ok).toBe(true);
+    const current = session.activeTarget();
+    if (current === undefined) throw new Error("Missing active target");
+    const preview = await session.previewTarget(current);
+    if (!preview.ok) throw preview.error;
     const call = session.execute("procedure_pseudo_code", {});
+    const controller = new AbortController();
+    const reopening = session.openResolvedTarget(preview.value, {
+      signal: controller.signal,
+    });
+    // The resolved route needs no I/O; one event-loop turn lets it reach the drain.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    controller.abort();
     const switching = session.open(second);
     await Promise.resolve();
     expect(clients[0]?.closed).toBe(0);
     active.resolve(ok(null));
     expect((await call).ok).toBe(true);
+    expect(await reopening).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisCancelledError", operation: "open_binary" },
+    });
     expect((await switching).ok).toBe(true);
     expect(clients[0]?.closed).toBe(1);
   });
@@ -966,7 +941,7 @@ describe("cancellation during profile resolution", () => {
     }
   });
 
-  it("cancels legacy profile resolution even when the provider ignores its signal", async () => {
+  it("cancels profile resolution even when the provider ignores its signal", async () => {
     const [first] = await createBinarySessionTargets();
     const provider = createCacheProvider([]);
     let observedSignal: AbortSignal | undefined;
@@ -1053,7 +1028,7 @@ describe("cancellation during profile resolution", () => {
       },
       close: () => {
         liveClients -= 1;
-        return Promise.resolve();
+        return Promise.resolve(resultOk(null));
       },
     }));
     expect((await session.open(first)).ok).toBe(true);
@@ -1073,8 +1048,7 @@ describe("cancellation during profile resolution", () => {
     );
     const session = createTestBinarySession(() => ({
       execute: () => Promise.resolve(ok(null)),
-      closeWithOutcome: () => Promise.resolve(err(cleanupError)),
-      close: () => Promise.resolve(),
+      close: () => Promise.resolve(err(cleanupError)),
     }));
     expect((await session.open(first)).ok).toBe(true);
 
@@ -1099,8 +1073,7 @@ describe("no replacement start", () => {
       created += 1;
       return {
         execute: () => Promise.resolve(ok(null)),
-        closeWithOutcome: () => Promise.resolve(err(cleanupError)),
-        close: () => Promise.resolve(),
+        close: () => Promise.resolve(err(cleanupError)),
       };
     });
     expect((await session.open(first)).ok).toBe(true);

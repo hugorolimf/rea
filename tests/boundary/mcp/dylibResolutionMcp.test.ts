@@ -1,4 +1,4 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
@@ -9,7 +9,9 @@ import { ArtifactProvider } from "../../../src/artifacts/ArtifactProvider.js";
 import {
   FILE_TYPE,
   LC,
+  buildVersionCommand,
   dylibCommand,
+  dyldEnvironmentCommand,
   machoImage,
   rpathCommand,
 } from "../../../src/artifacts/apple/MachoImage.fixture.js";
@@ -21,7 +23,7 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 const withClient = async (
   verify: (client: Client) => Promise<void>,
 ): Promise<void> => {
-  const session = createTestBinarySession(new ArtifactProvider());
+  const session = createTestBinarySession(new ArtifactProvider(process.env));
   const server = createServer(session, session);
   const client = new Client({ name: "dylib-mcp-test", version: "1" });
   const [clientTransport, serverTransport] =
@@ -37,7 +39,7 @@ const withClient = async (
 };
 
 const structuredResult = (value: unknown): unknown =>
-  z.object({ result: z.unknown() }).parse(value).result;
+  z.object({ normalized_result: z.unknown() }).parse(value).normalized_result;
 
 it("traces dylib resolution for an opened app bundle and rejects a changed target", async () => {
   const app = join(
@@ -55,6 +57,7 @@ it("traces dylib resolution for an opened app bundle and rejects a changed targe
     executable,
     machoImage({
       commands: [
+        buildVersionCommand(1),
         rpathCommand("@executable_path/../Frameworks"),
         dylibCommand(LC.LOAD_DYLIB, "@rpath/libcore.dylib"),
       ],
@@ -62,7 +65,10 @@ it("traces dylib resolution for an opened app bundle and rejects a changed targe
   );
   await writeFile(
     join(app, "Contents/Frameworks/libcore.dylib"),
-    machoImage({ fileType: FILE_TYPE.dylib }),
+    machoImage({
+      fileType: FILE_TYPE.dylib,
+      commands: [buildVersionCommand(1)],
+    }),
   );
   await withClient(async (client) => {
     const opened = await client.callTool({
@@ -120,7 +126,41 @@ it("rejects targets that are not Mach-O", async () => {
       arguments: {},
     });
     expect(called.isError).toBe(true);
-    expect(JSON.stringify(called.structuredContent)).toContain("unavailable");
+    expect(called.structuredContent).toMatchObject({
+      error: { code: "unsupported_target", category: "unsupported_target" },
+    });
+  });
+});
+
+it("reports target kinds that artifact operations cannot inspect as unsupported", async () => {
+  const directory = await createTestTempDirectory("rea-artifact-target-");
+  const plist = join(directory, "Info.plist");
+  await writeFile(plist, "<plist><dict/></plist>");
+  const tool = join(directory, "tool");
+  await writeFile(tool, machoImage({ commands: [buildVersionCommand(1)] }));
+  await withClient(async (client) => {
+    for (const [path, operation, requirement] of [
+      [plist, "decode_interface_builder", "requires an active .app bundle"],
+      // Elsewhere the session reports asset catalogs as unavailable on the
+      // host before the provider checks the target kind.
+      ...(process.platform === "darwin"
+        ? ([
+            [plist, "inspect_asset_catalog", "requires an active .app bundle"],
+          ] as const)
+        : []),
+      [tool, "inspect_keyed_archive", "requires an active plist or .app"],
+    ] as const) {
+      const open = { name: "open_binary", arguments: { path } };
+      expect((await client.callTool(open)).isError, path).not.toBe(true);
+      const called = await client.callTool({ name: operation, arguments: {} });
+      expect(called.structuredContent, operation).toMatchObject({
+        error: {
+          code: "unsupported_target",
+          message: expect.stringContaining(`${operation} at ${path}`),
+          details: { reason: expect.stringContaining(requirement) },
+        },
+      });
+    }
   });
 });
 
@@ -129,12 +169,18 @@ it("traces a standalone Mach-O file whose name ends in .app", async () => {
   await writeFile(
     join(directory, "Tool.app"),
     machoImage({
-      commands: [dylibCommand(LC.LOAD_DYLIB, "@loader_path/libcore.dylib")],
+      commands: [
+        buildVersionCommand(1),
+        dylibCommand(LC.LOAD_DYLIB, "@loader_path/libcore.dylib"),
+      ],
     }),
   );
   await writeFile(
     join(directory, "libcore.dylib"),
-    machoImage({ fileType: FILE_TYPE.dylib }),
+    machoImage({
+      fileType: FILE_TYPE.dylib,
+      commands: [buildVersionCommand(1)],
+    }),
   );
   await withClient(async (client) => {
     const opened = await client.callTool({
@@ -193,3 +239,223 @@ it.skipIf(process.getuid?.() === 0)(
     });
   },
 );
+
+it.each([
+  "DYLD_LIBRARY_PATH=/external",
+  "DYLD_PRINT_RPATHS=1",
+  "DYLD_FALLBACK_LIBRARY_PATH=/external",
+  "DYLD_FRAMEWORK_PATH=/external",
+  "DYLD_ROOT_PATH=/external",
+  "DYLD_OVERLAY_PATH=/external",
+])("preserves %s and its resolution semantics through MCP", async (setting) => {
+  const root = await createTestTempDirectory("rea-dylib-environment-mcp-");
+  const program = join(root, "program");
+  await writeFile(
+    program,
+    machoImage({
+      commands: [
+        dyldEnvironmentCommand(setting),
+        buildVersionCommand(1),
+        dylibCommand(LC.LOAD_DYLIB, "@loader_path/child.dylib"),
+      ],
+    }),
+  );
+  await writeFile(
+    join(root, "child.dylib"),
+    machoImage({
+      fileType: FILE_TYPE.dylib,
+      commands: [buildVersionCommand(1)],
+    }),
+  );
+  await withClient(async (client) => {
+    const opened = await client.callTool({
+      name: "open_binary",
+      arguments: { path: program },
+    });
+    expect(opened.isError).not.toBe(true);
+    const result = await client.callTool({
+      name: "trace_dylib_resolution",
+      arguments: {},
+    });
+    expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(
+      true,
+    );
+    const trace = dylibResolutionResultSchema.parse(
+      structuredResult(result.structuredContent),
+    );
+    const overrides = setting.startsWith("DYLD_LIBRARY_PATH=");
+    expect(trace.edges[0]?.resolution.status).toBe(
+      overrides ? "conditional" : "resolved",
+    );
+    expect(trace.coverage.status).toBe(overrides ? "partial" : "complete");
+    expect(
+      trace.images.find(({ path }) => path === "program")?.slices[0]
+        ?.dyld_environment,
+    ).toEqual([setting]);
+  });
+});
+
+it("ignores process settings on an explicitly selected library root through MCP", async () => {
+  const root = await createTestTempDirectory("rea-dylib-root-mcp-");
+  const path = join(root, "library.dylib");
+  const settings = [
+    "DYLD_LIBRARY_PATH=/external",
+    "DYLD_INSERT_LIBRARIES=/external/injected.dylib",
+  ];
+  await writeFile(
+    path,
+    machoImage({
+      fileType: FILE_TYPE.dylib,
+      commands: [
+        buildVersionCommand(1),
+        ...settings.map(dyldEnvironmentCommand),
+        dylibCommand(LC.LOAD_DYLIB, "@loader_path/child.dylib"),
+        dylibCommand(LC.LOAD_DYLIB, "@loader_path/missing.dylib"),
+      ],
+    }),
+  );
+  await writeFile(
+    join(root, "child.dylib"),
+    machoImage({
+      fileType: FILE_TYPE.dylib,
+      commands: [buildVersionCommand(1)],
+    }),
+  );
+  await withClient(async (client) => {
+    const opened = await client.callTool({
+      name: "open_binary",
+      arguments: { path },
+    });
+    expect(opened.isError, JSON.stringify(opened.structuredContent)).not.toBe(
+      true,
+    );
+    const result = await client.callTool({
+      name: "trace_dylib_resolution",
+      arguments: { roots: ["library.dylib"] },
+    });
+    expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(
+      true,
+    );
+    const trace = dylibResolutionResultSchema.parse(
+      structuredResult(result.structuredContent),
+    );
+    expect(trace.edges.map(({ resolution }) => resolution.status)).toEqual([
+      "resolved",
+      "unresolved",
+    ]);
+    expect(trace.coverage.status).toBe("complete");
+    expect(trace.findings.map(({ kind }) => kind)).toContain(
+      "required-load-unresolved",
+    );
+    expect(
+      trace.images.find(({ path }) => path === "library.dylib")?.slices[0]
+        ?.dyld_environment,
+    ).toEqual(settings);
+    expect(
+      trace.findings.find(({ kind }) => kind === "dyld-environment-present")
+        ?.explanation,
+    ).toContain("entries in this non-executable root are observations");
+  });
+});
+
+it.each([
+  ["DYLD_FALLBACK_LIBRARY_PATH=", "undetermined"],
+  ["DYLD_VERSIONED_LIBRARY_PATH=", "unresolved"],
+  ["DYLD_IMAGE_SUFFIX=:", "unresolved"],
+] as const)(
+  "retains the missing-dependency semantics of %s through MCP",
+  async (setting, status) => {
+    const root = await createTestTempDirectory("rea-dyld-empty-mcp-");
+    const path = join(root, "program");
+    await writeFile(
+      path,
+      machoImage({
+        commands: [
+          buildVersionCommand(1),
+          dyldEnvironmentCommand(setting),
+          dylibCommand(LC.LOAD_DYLIB, "@loader_path/missing.dylib"),
+        ],
+      }),
+    );
+    await withClient(async (client) => {
+      const opened = await client.callTool({
+        name: "open_binary",
+        arguments: { path },
+      });
+      expect(opened.isError, JSON.stringify(opened.structuredContent)).not.toBe(
+        true,
+      );
+      const result = await client.callTool({
+        name: "trace_dylib_resolution",
+        arguments: {},
+      });
+      expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(
+        true,
+      );
+      const trace = dylibResolutionResultSchema.parse(
+        structuredResult(result.structuredContent),
+      );
+      expect(trace.edges[0]?.resolution.status).toBe(status);
+      expect(trace.coverage.status).toBe(
+        status === "undetermined" ? "partial" : "complete",
+      );
+      expect(
+        trace.images.find(({ path }) => path === "program")?.slices[0]
+          ?.dyld_environment,
+      ).toEqual([setting]);
+      expect(
+        trace.findings.some(({ kind }) => kind === "required-load-unresolved"),
+      ).toBe(status === "unresolved");
+    });
+  },
+);
+
+it("reports caller-selected roots that cannot be traced as invalid input", async () => {
+  const app = join(
+    await createTestTempDirectory("rea-dylib-roots-"),
+    "Fixture.app",
+  );
+  await mkdir(join(app, "Contents/MacOS"), { recursive: true });
+  await writeFile(
+    join(app, "Contents/Info.plist"),
+    "<plist><dict><key>CFBundleExecutable</key><string>App</string></dict></plist>",
+  );
+  await writeFile(
+    join(app, "Contents/MacOS/App"),
+    machoImage({ commands: [buildVersionCommand(1)] }),
+  );
+  await symlink("/bin/ls", join(app, "Contents/MacOS/outside"));
+  await withClient(async (client) => {
+    const opened = await client.callTool({
+      name: "open_binary",
+      arguments: { path: app },
+    });
+    expect(opened.isError, JSON.stringify(opened)).not.toBe(true);
+    for (const [root, message] of [
+      ["Contents/MacOS/Missing", "is not a regular file"],
+      ["Contents/MacOS", "is not a regular file"],
+      ["Contents/Info.plist", "is not a Mach-O image"],
+      ["Contents/MacOS/outside", "resolves outside the analyzed root"],
+    ] as const) {
+      const called = await client.callTool({
+        name: "trace_dylib_resolution",
+        arguments: { roots: ["Contents/MacOS/App", root] },
+      });
+      expect(called.isError, root).toBe(true);
+      expect(called.structuredContent, root).toMatchObject({
+        error: {
+          code: "invalid_request",
+          details: {
+            issues: [
+              {
+                path: ["roots", 1],
+                reason: "invalid_value",
+                message: expect.stringContaining(`Root ${root} ${message}`),
+              },
+            ],
+          },
+        },
+      });
+    }
+  });
+});

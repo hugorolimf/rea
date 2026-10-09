@@ -1,33 +1,33 @@
+import type { ToolResultDelivery } from "./toolResult.js";
+import type { EvidenceMcpServer } from "./EvidenceMcpServer.js";
 import type {
   EvidenceWriter,
   UnknownRegistryPort,
 } from "../application/investigation/InvestigationRecordPort.js";
 import type {
   CallToolResult,
-  McpServer,
   ServerContext,
 } from "@modelcontextprotocol/server";
 
 import type { AnalysisOperationPort } from "../application/AnalysisProvider.js";
+import type { BinarySessionPort } from "../application/binary/BinarySessionPort.js";
 import {
   EnhancedTools,
   type ValidatedEnhancedCall,
 } from "../application/EnhancedTools.js";
 import {
-  REA_WORKFLOW_PROVIDER,
-  workflowAnalysisProfile,
-} from "../application/InvestigationProviders.js";
+  createWorkflowEvidence,
+  workflowSnapshotRecord,
+  recordWorkflowUnknowns,
+} from "../application/WorkflowEvidence.js";
 import { toolContract, type ToolContract } from "../contracts/toolContracts.js";
 import type { AnalysisProfileCommitment } from "../domain/analysisProfile.js";
 import type { BinaryTarget } from "../domain/binaryTarget.js";
-import { UnknownRegistryError } from "../domain/unknownRegistryError.js";
-import { createEvidence } from "../domain/evidence.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import type { Logger } from "../logger.js";
 import { mcpProgressReporter } from "./mcpProgress.js";
 import { logToolExecution } from "./toolLogging.js";
 import { toolRegistrationOptions } from "./toolRegistrationOptions.js";
-import { toCallToolResult } from "./toolResult.js";
 import { executeFunctionAnalysisEvidence } from "../application/FunctionAnalysisEvidence.js";
 
 /** Optional session services used by enhanced tool registration. */
@@ -39,15 +39,24 @@ export interface EnhancedToolRegistration {
     | undefined;
   readonly recordEvidence: EvidenceWriter["recordEvidence"] | undefined;
   readonly recordUnknown: UnknownRegistryPort["recordUnknown"] | undefined;
+  readonly allowsSnapshotReplay:
+    | ((operation: ValidatedEnhancedCall["name"]) => boolean)
+    | undefined;
+  readonly recordWorkflowSnapshot:
+    | ((
+        input: Parameters<BinarySessionPort["recordWorkflowSnapshot"]>[0],
+      ) => ReturnType<BinarySessionPort["recordWorkflowSnapshot"]>)
+    | undefined;
 }
 
 /** Register composed workflows against the same port as direct bridge tools. */
 // oxlint-disable-next-line max-lines-per-function -- direct SDK calls retain each schema-handler type correlation.
 export const registerEnhancedTools = (
-  server: McpServer,
+  server: EvidenceMcpServer,
   analysis: AnalysisOperationPort,
   options: EnhancedToolRegistration,
 ): void => {
+  const registration = { ...options, delivery: server.delivery };
   const nativeDispatchMetadata = toolContract(
     "inspect_native_dispatch_metadata",
   );
@@ -68,7 +77,7 @@ export const registerEnhancedTools = (
     traceNativeValues.name,
     toolRegistrationOptions(traceNativeValues),
     (input, context) =>
-      executeEnhancedTool(analysis, options, traceNativeValues, {
+      executeEnhancedTool(analysis, registration, traceNativeValues, {
         validatedCall: { name: "trace_native_values", input },
         context,
       }),
@@ -77,7 +86,7 @@ export const registerEnhancedTools = (
     nativeDispatchMetadata.name,
     toolRegistrationOptions(nativeDispatchMetadata),
     (input, context) =>
-      executeEnhancedTool(analysis, options, nativeDispatchMetadata, {
+      executeEnhancedTool(analysis, registration, nativeDispatchMetadata, {
         validatedCall: { name: "inspect_native_dispatch_metadata", input },
         context,
       }),
@@ -86,7 +95,7 @@ export const registerEnhancedTools = (
     objcClasses.name,
     toolRegistrationOptions(objcClasses),
     (input, context) =>
-      executeEnhancedTool(analysis, options, objcClasses, {
+      executeEnhancedTool(analysis, registration, objcClasses, {
         validatedCall: { name: "get_objc_classes", input },
         context,
       }),
@@ -95,7 +104,7 @@ export const registerEnhancedTools = (
     objcProtocols.name,
     toolRegistrationOptions(objcProtocols),
     (input, context) =>
-      executeEnhancedTool(analysis, options, objcProtocols, {
+      executeEnhancedTool(analysis, registration, objcProtocols, {
         validatedCall: { name: "get_objc_protocols", input },
         context,
       }),
@@ -104,7 +113,7 @@ export const registerEnhancedTools = (
     batchDecompile.name,
     toolRegistrationOptions(batchDecompile),
     (input, context) =>
-      executeEnhancedTool(analysis, options, batchDecompile, {
+      executeEnhancedTool(analysis, registration, batchDecompile, {
         validatedCall: { name: "batch_decompile", input },
         context,
       }),
@@ -113,7 +122,7 @@ export const registerEnhancedTools = (
     callGraph.name,
     toolRegistrationOptions(callGraph),
     (input, context) =>
-      executeEnhancedTool(analysis, options, callGraph, {
+      executeEnhancedTool(analysis, registration, callGraph, {
         validatedCall: { name: "get_call_graph", input },
         context,
       }),
@@ -122,7 +131,7 @@ export const registerEnhancedTools = (
     swiftTypes.name,
     toolRegistrationOptions(swiftTypes),
     (input, context) =>
-      executeEnhancedTool(analysis, options, swiftTypes, {
+      executeEnhancedTool(analysis, registration, swiftTypes, {
         validatedCall: { name: "analyze_swift_types", input },
         context,
       }),
@@ -131,7 +140,7 @@ export const registerEnhancedTools = (
     xrefsToName.name,
     toolRegistrationOptions(xrefsToName),
     (input, context) =>
-      executeEnhancedTool(analysis, options, xrefsToName, {
+      executeEnhancedTool(analysis, registration, xrefsToName, {
         validatedCall: { name: "find_xrefs_to_name", input },
         context,
       }),
@@ -140,7 +149,7 @@ export const registerEnhancedTools = (
     binaryOverview.name,
     toolRegistrationOptions(binaryOverview),
     (input, context) =>
-      executeEnhancedTool(analysis, options, binaryOverview, {
+      executeEnhancedTool(analysis, registration, binaryOverview, {
         validatedCall: { name: "binary_overview", input },
         context,
       }),
@@ -149,7 +158,7 @@ export const registerEnhancedTools = (
     analyzeFunction.name,
     toolRegistrationOptions(analyzeFunction),
     (input, context) =>
-      executeEnhancedTool(analysis, options, analyzeFunction, {
+      executeEnhancedTool(analysis, registration, analyzeFunction, {
         validatedCall: { name: "analyze_function", input },
         context,
       }),
@@ -158,7 +167,7 @@ export const registerEnhancedTools = (
     inspectNativeApi.name,
     toolRegistrationOptions(inspectNativeApi),
     (input, context) =>
-      executeEnhancedTool(analysis, options, inspectNativeApi, {
+      executeEnhancedTool(analysis, registration, inspectNativeApi, {
         validatedCall: { name: "inspect_native_api", input },
         context,
       }),
@@ -167,7 +176,7 @@ export const registerEnhancedTools = (
     traceFeature.name,
     toolRegistrationOptions(traceFeature),
     (input, context) =>
-      executeEnhancedTool(analysis, options, traceFeature, {
+      executeEnhancedTool(analysis, registration, traceFeature, {
         validatedCall: { name: "trace_feature", input },
         context,
       }),
@@ -176,7 +185,7 @@ export const registerEnhancedTools = (
     traceCallPath.name,
     toolRegistrationOptions(traceCallPath),
     (input, context) =>
-      executeEnhancedTool(analysis, options, traceCallPath, {
+      executeEnhancedTool(analysis, registration, traceCallPath, {
         validatedCall: { name: "trace_call_path", input },
         context,
       }),
@@ -185,7 +194,7 @@ export const registerEnhancedTools = (
     traceNativeUiAction.name,
     toolRegistrationOptions(traceNativeUiAction),
     (input, context) =>
-      executeEnhancedTool(analysis, options, traceNativeUiAction, {
+      executeEnhancedTool(analysis, registration, traceNativeUiAction, {
         validatedCall: { name: "trace_native_ui_action", input },
         context,
       }),
@@ -194,7 +203,9 @@ export const registerEnhancedTools = (
 
 const executeEnhancedTool = async (
   analysis: AnalysisOperationPort,
-  registration: EnhancedToolRegistration,
+  registration: EnhancedToolRegistration & {
+    readonly delivery: ToolResultDelivery;
+  },
   contract: ToolContract,
   request: {
     readonly validatedCall: ValidatedEnhancedCall;
@@ -235,43 +246,49 @@ const executeEnhancedTool = async (
     terminal: true,
   });
   if (result.ok) {
-    const upstreamProfile = registration.analysisProfile?.();
-    const evidence = createEvidence(
-      registration.activeTarget?.(),
-      REA_WORKFLOW_PROVIDER,
-      {
-        operation: name,
-        parameters,
-        result: result.value,
-        ...(upstreamProfile === undefined
-          ? {}
-          : {
-              analysisProfile: workflowAnalysisProfile(upstreamProfile),
-            }),
-        confidence: "derived",
-        limitations: [
-          "Derived by an REA workflow from one or more provider observations.",
-        ],
-      },
-    );
+    const evidence = createWorkflowEvidence({
+      target: registration.activeTarget?.(),
+      operation: name,
+      parameters,
+      result: result.value,
+      upstreamProfile: registration.analysisProfile?.(),
+    });
     const recorded = registration.recordEvidence?.(evidence);
     if (recorded !== undefined && !recorded.ok)
-      return toCallToolResult(recorded, contract);
+      return registration.delivery.toCallToolResult(recorded, contract);
+    if (
+      name !== "trace_native_ui_action" &&
+      registration.allowsSnapshotReplay?.(name) === true
+    ) {
+      const workflowRecord = workflowSnapshotRecord(evidence, name);
+      if (workflowRecord !== undefined) {
+        const snapshot = registration.recordWorkflowSnapshot?.(workflowRecord);
+        if (snapshot !== undefined && !snapshot.ok)
+          return registration.delivery.toCallToolResult(snapshot, contract);
+      }
+    }
     const unknowns = recordWorkflowUnknowns({
       name,
       result: result.value,
       evidenceId: evidence.evidence_id,
       recordUnknown: registration.recordUnknown,
     });
-    if (!unknowns.ok) return toCallToolResult(unknowns, contract);
-    return toCallToolResult({ ok: true, value: evidence }, contract);
+    if (!unknowns.ok)
+      return registration.delivery.toCallToolResult(unknowns, contract);
+    return registration.delivery.toEvidenceToolResult(
+      evidence,
+      contract,
+      recorded,
+    );
   }
-  return toCallToolResult(result, contract);
+  return registration.delivery.toCallToolResult(result, contract);
 };
 
 const executeFunctionTool = async (
   analysis: AnalysisOperationPort,
-  registration: EnhancedToolRegistration,
+  registration: EnhancedToolRegistration & {
+    readonly delivery: ToolResultDelivery;
+  },
   contract: ToolContract,
   request: {
     readonly context: ServerContext;
@@ -301,12 +318,13 @@ const executeFunctionTool = async (
     message: result.ok ? "completed" : "failed",
     terminal: true,
   });
-  if (result.ok) {
-    const recorded = registration.recordEvidence?.(result.value);
-    if (recorded !== undefined && !recorded.ok)
-      return toCallToolResult(recorded, contract);
-  }
-  return toCallToolResult(result, contract);
+  if (!result.ok)
+    return registration.delivery.toCallToolResult(result, contract);
+  return registration.delivery.toEvidenceToolResult(
+    result.value,
+    contract,
+    registration.recordEvidence?.(result.value),
+  );
 };
 
 const jsonParameters = (
@@ -317,63 +335,3 @@ const jsonParameters = (
       (entry): entry is [string, JsonValue] => entry[1] !== undefined,
     ),
   );
-
-interface WorkflowUnknownInput {
-  readonly name: string;
-  readonly result: JsonValue;
-  readonly evidenceId: string;
-  readonly recordUnknown: UnknownRegistryPort["recordUnknown"] | undefined;
-}
-
-const recordWorkflowUnknowns = ({
-  name,
-  result,
-  evidenceId,
-  recordUnknown,
-}: WorkflowUnknownInput):
-  | ReturnType<UnknownRegistryPort["recordUnknown"]>
-  | { readonly ok: true; readonly value: null } => {
-  if (
-    !["trace_feature", "trace_call_path", "inspect_native_api"].includes(
-      name,
-    ) ||
-    recordUnknown === undefined ||
-    typeof result !== "object" ||
-    result === null ||
-    Array.isArray(result) ||
-    !Array.isArray(result.residual_unknowns)
-  )
-    return { ok: true, value: null };
-  for (const question of result.residual_unknowns) {
-    if (typeof question !== "string") continue;
-    const recorded = recordUnknown({
-      question,
-      severity: "medium",
-      domain: name === "inspect_native_api" ? "native-api" : "control-flow",
-      supporting_evidence_ids: [evidenceId],
-      contradicting_evidence_ids: [],
-      required_authority: "shipped-artifact",
-      required_confidence: "observed",
-      required_environment: null,
-      recommended_probes: [
-        {
-          operation: name,
-          rationale:
-            name === "inspect_native_api"
-              ? "Confirm the unsupported boundary with a capable provider or ABI probe."
-              : "Continue with a focused query or another available provider.",
-        },
-      ],
-      relationships: [],
-    });
-    if (
-      !recorded.ok &&
-      !(
-        recorded.error instanceof UnknownRegistryError &&
-        recorded.error.reason === "already-exists"
-      )
-    )
-      return recorded;
-  }
-  return { ok: true, value: null };
-};

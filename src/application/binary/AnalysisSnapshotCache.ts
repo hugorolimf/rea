@@ -2,7 +2,10 @@ import type { BinaryTarget } from "../../domain/binaryTarget.js";
 import type { AnalysisProfileCommitment } from "../../domain/analysisProfile.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 import type { EvidenceBundle } from "../../domain/evidenceBundle.js";
-import { EvidenceIntegrityError } from "../../domain/evidenceErrors.js";
+import {
+  EvidenceIntegrityError,
+  AnalysisSnapshotMismatchError,
+} from "../../domain/evidenceErrors.js";
 import { NoBinaryOpenError } from "../../domain/configurationErrors.js";
 import { type AnalysisError } from "../../domain/analysisErrorBase.js";
 import { err, ok, type Result } from "../../domain/result.js";
@@ -35,7 +38,6 @@ const STATEFUL_OPERATIONS: ReadonlySet<AnalysisOperation> = new Set([
   "current_document",
   "goto_address",
   "list_documents",
-  "set_current_document",
 ]);
 
 const CURSOR_DEFAULT_OPERATIONS: ReadonlySet<AnalysisOperation> = new Set([
@@ -49,10 +51,7 @@ const CURSOR_DEFAULT_OPERATIONS: ReadonlySet<AnalysisOperation> = new Set([
 
 const DOCUMENT_SCOPED_OPERATIONS: ReadonlySet<string> = new Set(
   OFFICIAL_TOOL_CONTRACTS.map(({ name }) => name).filter(
-    (name) =>
-      name !== "current_document" &&
-      name !== "list_documents" &&
-      name !== "set_current_document",
+    (name) => name !== "current_document" && name !== "list_documents",
   ),
 );
 
@@ -72,7 +71,8 @@ export const isSnapshotCacheable = (
     typeof parameters.address === "string") &&
   descriptor?.effects.mutatesArtifact === false &&
   descriptor.cachePolicy !== "live" &&
-  descriptor.effects.mayWriteFilesystem === false &&
+  (descriptor.cachePolicy === "snapshot" ||
+    descriptor.effects.mayWriteFilesystem === false) &&
   descriptor.effects.changesPermissions === false;
 
 /** Bounded in-memory cache for one immutable binary identity. */
@@ -124,7 +124,7 @@ export class AnalysisSnapshotCache {
       if (!this.#entries.has(entry.query_id)) imported += 1;
       this.#entries.set(entry.query_id, structuredClone(entry));
     }
-    for (const entry of snapshot.workflow_entries ?? []) {
+    for (const entry of snapshot.workflow_entries) {
       if (!this.#workflowEntries.has(entry.query_id) && !this.#hasCapacity())
         continue;
       this.#workflowEntries.set(entry.query_id, structuredClone(entry));
@@ -143,16 +143,21 @@ export class AnalysisSnapshotCache {
     try {
       const snapshotTargetIdentity = snapshotTarget(target);
       const binding = snapshotBinding(profile);
-      const retainedEvidence = structuredClone(evidenceBundle);
+      const entries = [...this.#entries.values()].sort((left, right) =>
+        left.query_id.localeCompare(right.query_id),
+      );
+      const workflows = [...this.#workflowEntries.values()].sort(
+        (left, right) => left.query_id.localeCompare(right.query_id),
+      );
+      // Parsing owns the returned JSON and metadata; pre-cloning the same
+      // payloads here only adds another full materialization.
       return ok(
         parseAnalysisSnapshot({
           target: snapshotTargetIdentity,
           binding,
-          entries: this.entries(),
-          ...(this.workflowEntries().length === 0
-            ? {}
-            : { workflow_entries: this.workflowEntries() }),
-          evidence_bundle: retainedEvidence,
+          entries,
+          workflow_entries: workflows,
+          evidence_bundle: evidenceBundle,
         }),
       );
     } catch (cause: unknown) {
@@ -193,7 +198,7 @@ export class AnalysisSnapshotCache {
         !snapshotMatchesProfile(validated.binding, active.profile))
     )
       return err(
-        new EvidenceIntegrityError(
+        new AnalysisSnapshotMismatchError(
           "Analysis snapshot profile_mismatch: target, provider, or analysis profile does not match the active binary",
         ),
       );

@@ -73,10 +73,8 @@ const expectIsolatedEnvironment = (
     JAVA_HOME: javaHome,
     REA_PROCESS_RUN_ID: "d6fcbb66-e829-4ff6-a535-0035aec63139",
   });
-  expect(environment.PATH).toMatch(
-    process.platform === "win32"
-      ? /^C:\\Java\\jdk-21\\bin;/u
-      : /^\/opt\/jdk-21\/bin:/u,
+  expect(environment.PATH).toBe(
+    `${join(javaHome, "bin")}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
   );
 };
 
@@ -160,6 +158,7 @@ describe("Ghidra headless launcher", () => {
 
   it("wraps the Windows batch launcher without enabling a Node shell", () => {
     const command = ghidraHeadlessCommand({
+      environment: {},
       platform: "win32",
       analyzeHeadlessPath:
         "C:\\Program Files\\Ghidra 12.1.4\\support\\analyzeHeadless.bat",
@@ -192,6 +191,7 @@ describe("Ghidra headless launcher", () => {
   ])("rejects a Windows command-interpreter path: %s", (targetPath) => {
     expect(() =>
       ghidraHeadlessCommand({
+        environment: {},
         platform: "win32",
         analyzeHeadlessPath: "C:\\Ghidra\\support\\analyzeHeadless.bat",
         arguments: ["-import", targetPath],
@@ -200,62 +200,67 @@ describe("Ghidra headless launcher", () => {
     ).toThrow(/metacharacters/u);
   });
 
-  it("keeps authority in a private descriptor and isolates Ghidra state", async () => {
-    vi.stubEnv("GHIDRA_JAVA_OPTIONS", "-javaagent:/unapproved/agent.jar");
-    vi.stubEnv("JAVA_TOOL_OPTIONS", "-Duser.home=/unapproved/home");
-    vi.stubEnv("JDK_JAVA_OPTIONS", "-XX:MaxRAMPercentage=99");
-    vi.stubEnv("_JAVA_OPTIONS", "-Xmx99G");
-    const parent = await createTestTempDirectory("rea-launcher-test-");
-    const runtime = await createGhidraTestRuntime(parent);
-    runtimes.push(runtime);
-    const runtimeRoot = runtime.path;
-    const token = "secret-token-that-must-not-leak";
-    const javaHome =
-      process.platform === "win32" ? "C:\\Java\\jdk-21" : "/opt/jdk-21";
-    const launcher = new GhidraHeadlessLauncher({
-      analyzeHeadlessPath: fixturePath,
-      javaHome,
-      bridgeScriptPath: "/package/bridge/ReaGhidraBridge.java",
-    });
-    const launched = await launcher.launch({
-      runtimeRoot,
-      transport: "unix-socket",
-      endpointPath: join(runtimeRoot, "bridge.sock"),
-      token,
-      runId: "d6fcbb66-e829-4ff6-a535-0035aec63139",
-      targetPath: "/tmp/fixture",
-      targetSha256: "b".repeat(64),
-      providerVersion: "12.1.4",
-      profileDigest: "a".repeat(64),
-    });
-    expect(launched.ok).toBe(true);
-    if (!launched.ok) return;
-    const capturePath = join(runtimeRoot, "launch-capture.json");
-    await vi.waitFor(() => access(`${capturePath}.ready`), { timeout: 10_000 });
-    const capture = launchCaptureSchema.parse(
-      JSON.parse(await readFile(capturePath, "utf8")),
-    );
-    const encodedArguments = JSON.stringify(capture.arguments);
-    const encodedEnvironment = JSON.stringify(capture.environment);
-    expect(encodedArguments).not.toContain(token);
-    expect(encodedEnvironment).not.toContain(token);
-    expect(capture).toMatchObject({
-      ...(process.platform === "win32" ? {} : { descriptor_mode: 0o600 }),
-      descriptor_has_token: true,
-    });
-    expectIsolatedEnvironment(capture.environment, runtimeRoot, javaHome);
-    expect(capture.environment.GHIDRA_HEADLESS_JAVA_OPTIONS).toBe(
-      process.platform === "win32"
-        ? ""
-        : `-Duser.home=${join(runtimeRoot, "home")} -Djava.io.tmpdir=${join(runtimeRoot, "tmp")}`,
-    );
-    if (process.platform !== "win32")
-      expect(
-        (await stat(join(runtimeRoot, "ownership.json"))).mode & 0o777,
-      ).toBe(0o600);
+  it.skipIf(process.platform !== "win32")(
+    "keeps authority in a private descriptor and isolates Ghidra state through the batch launcher",
+    async () => {
+      vi.stubEnv("GHIDRA_JAVA_OPTIONS", "-javaagent:/unapproved/agent.jar");
+      vi.stubEnv("JAVA_TOOL_OPTIONS", "-Duser.home=/unapproved/home");
+      vi.stubEnv("JDK_JAVA_OPTIONS", "-XX:MaxRAMPercentage=99");
+      vi.stubEnv("_JAVA_OPTIONS", "-Xmx99G");
+      const parent = await createTestTempDirectory("rea-launcher-test-");
+      const runtime = await createGhidraTestRuntime(parent);
+      runtimes.push(runtime);
+      const runtimeRoot = runtime.path;
+      const token = "secret-token-that-must-not-leak";
+      const javaHome = "C:\\Java\\jdk-21";
+      const launcher = new GhidraHeadlessLauncher({
+        environment: {},
+        analyzeHeadlessPath: fixturePath,
+        // POSIX follows the real inspected-JVM route; Windows uses the official
+        // batch script because its launcher contract differs.
+        platform: "win32",
+        javaHome,
+        bridgeScriptPath: "/package/bridge/ReaGhidraBridge.java",
+      });
+      const launched = await launcher.launch({
+        runtimeRoot,
+        transport: "unix-socket",
+        endpointPath: join(runtimeRoot, "bridge.sock"),
+        token,
+        runId: "d6fcbb66-e829-4ff6-a535-0035aec63139",
+        targetPath: "/tmp/fixture",
+        targetSha256: "b".repeat(64),
+        providerVersion: "12.1.4",
+        profileDigest: "a".repeat(64),
+      });
+      if (!launched.ok) throw launched.error;
+      const capturePath = join(runtimeRoot, "launch-capture.json");
+      await vi.waitFor(() => access(`${capturePath}.ready`), {
+        timeout: 10_000,
+      });
+      const capture = launchCaptureSchema.parse(
+        JSON.parse(await readFile(capturePath, "utf8")),
+      );
+      const encodedArguments = JSON.stringify(capture.arguments);
+      const encodedEnvironment = JSON.stringify(capture.environment);
+      expect(encodedArguments).not.toContain(token);
+      expect(encodedEnvironment).not.toContain(token);
+      expect(capture).toMatchObject({
+        ...(process.platform === "win32" ? {} : { descriptor_mode: 0o600 }),
+        descriptor_has_token: true,
+      });
+      expectIsolatedEnvironment(capture.environment, runtimeRoot, javaHome);
+      expect(capture.environment.GHIDRA_HEADLESS_JAVA_OPTIONS).toBe("");
+      if (process.platform !== "win32")
+        expect(
+          (await stat(join(runtimeRoot, "ownership.json"))).mode & 0o777,
+        ).toBe(0o600);
 
-    const cleaned = await launched.value.cleanup?.();
-    expect(cleaned).toMatchObject({ cleaned: true });
-    await expect(access(join(runtimeRoot, "project"))).resolves.toBeUndefined();
-  });
+      const cleaned = await launched.value.cleanup?.();
+      expect(cleaned).toMatchObject({ cleaned: true });
+      await expect(
+        access(join(runtimeRoot, "project")),
+      ).resolves.toBeUndefined();
+    },
+  );
 });

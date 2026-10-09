@@ -150,7 +150,7 @@ export function assertBundleAnalysis(result) {
   )
     throw new Error("Real Chrome static bundle findings were missing");
   if (
-    result.observations.source_maps.status !== "included" ||
+    result.observations.source_maps.status !== "partial" ||
     !result.observations.source_maps.items.some(
       ({ status, original_sources, original_module_edges, mappings }) =>
         status === "included" &&
@@ -165,6 +165,41 @@ export function assertBundleAnalysis(result) {
   )
     throw new Error(
       `Real Chrome approved source-map reconstruction was missing: ${JSON.stringify(sourceMapSummary(result.observations.source_maps))}`,
+    );
+  if (
+    !result.observations.source_maps.items.some(
+      ({ declared_url, status, artifact, mappings }) =>
+        declared_url.endsWith("/bad.js.map") &&
+        status === "invalid" &&
+        artifact === null &&
+        mappings.length === 0,
+    )
+  )
+    throw new Error(
+      `Real Chrome malformed-map isolation was missing: ${JSON.stringify(sourceMapSummary(result.observations.source_maps))}`,
+    );
+  if (
+    !result.observations.source_maps.items.some(
+      ({ declared_url, status, limitation, mappings }) =>
+        declared_url.endsWith("/expanded.js.map") &&
+        status === "fetch_failed" &&
+        limitation.includes("Expanded source-map evidence") &&
+        mappings.length === 0,
+    )
+  )
+    throw new Error(
+      `Real Chrome expanded-map omission was missing: ${JSON.stringify(sourceMapSummary(result.observations.source_maps))}`,
+    );
+  if (
+    !result.observations.source_maps.items.some(
+      ({ declared_url, status, mappings }) =>
+        declared_url.endsWith("/overflow.js.map") &&
+        status === "invalid" &&
+        mappings.length === 0,
+    )
+  )
+    throw new Error(
+      `Real Chrome overflowing-map isolation was missing: ${JSON.stringify(sourceMapSummary(result.observations.source_maps))}`,
     );
 }
 
@@ -182,6 +217,19 @@ export function assertSensitiveShapes(result) {
   );
   if (request === undefined)
     throw new Error("Real Chrome JSON request/response shapes were missing");
+  if (
+    !result.network.requests.some(
+      (item) =>
+        item.url.endsWith("/slow-json") &&
+        item.body_shapes.status === "partial" &&
+        item.body_shapes.request !== null &&
+        item.body_shapes.response === null,
+    ) ||
+    !result.completeness.unavailable_sections.includes("json_body_shapes")
+  )
+    throw new Error(
+      "Real Chrome unfinished JSON bodies were not reported as unavailable",
+    );
   const consoleText = result.console.events.flatMap(
     (event) => event.text_capture.values,
   );

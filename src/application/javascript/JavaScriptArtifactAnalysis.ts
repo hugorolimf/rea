@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 
+import { resolveJavaScriptSourceMapReference } from "../../domain/javascript/javascriptSourceMapPaths.js";
 import { analyzeParsedJavaScriptStaticSource } from "../../domain/javascript/javascriptStaticAnalysis.js";
-import { analyzeParsedJavaScriptSemantics } from "../../domain/javascript/javascriptSemanticAnalysis.js";
+import {
+  analyzeParsedJavaScriptSemantics,
+  classifyParsedJavaScriptOpenReceivers,
+} from "../../domain/javascript/javascriptSemanticAnalysis.js";
 import type { JavaScriptSemanticIr } from "../../domain/javascript/javascriptSemanticIr.js";
 import { parseJavaScriptSource } from "../../domain/javascript/javascriptSourceParser.js";
 import { hasValidSourceMapContents } from "../../domain/sourceMapContents.js";
@@ -163,14 +167,19 @@ const analyzeArtifactFile = <SemanticIr extends JavaScriptModuleSemanticIr>(
     state.files.push({ file, javascript: null, semantic: null });
     return;
   }
-  const parsed = parseJavaScriptSource(file.text.value);
+  const parsed = parseJavaScriptSource(file.text.value, file.path);
   if (parsed === null) {
     const analysis = failedJavaScriptStaticAnalysis();
     state.files.push({ file, javascript: analysis, semantic: null });
     state.parseFailures += 1;
     return;
   }
-  const analysis = analyzeParsedJavaScriptStaticSource(file.text.value, parsed);
+  const openReceiverFacts = classifyParsedJavaScriptOpenReceivers(parsed);
+  const analysis = analyzeParsedJavaScriptStaticSource(
+    file.text.value,
+    parsed,
+    openReceiverFacts,
+  );
   const staticFindings = findingCount(analysis);
   const semantics =
     analysis.parse_status === "complete" || analysis.parse_status === "partial"
@@ -323,7 +332,12 @@ const collectSourceMapOriginals = (
         file,
         "Source map sourcesContent must contain one string or null entry per source.",
       );
-    const root = typeof map.sourceRoot === "string" ? map.sourceRoot : "";
+    if (map.sourceRoot != null && typeof map.sourceRoot !== "string")
+      return invalidSourceMap(
+        file,
+        "Source map sourceRoot must be a string or null.",
+      );
+    const root = typeof map.sourceRoot === "string" ? map.sourceRoot : null;
     for (const [index, raw] of names.entries()) {
       if (typeof raw !== "string")
         return invalidSourceMap(
@@ -333,7 +347,7 @@ const collectSourceMapOriginals = (
       const rawContent = Array.isArray(contents) ? contents[index] : undefined;
       const content = typeof rawContent === "string" ? rawContent : null;
       sources.push({
-        source: resolveSourceName(root, raw),
+        reference: resolveJavaScriptSourceMapReference(raw, root, file.path),
         content,
         content_sha256: content === null ? null : sha256(content),
       });
@@ -407,12 +421,9 @@ const pointForOffset = (
   text: string,
   offset: number,
 ): JavaScriptSourcePoint => {
-  const lines = text.slice(0, offset).split("\n");
+  const lines = text.slice(0, offset).split(/\r\n|\r|\n/u);
   return { line: lines.length, column: lines.at(-1)?.length ?? 0 };
 };
-
-const resolveSourceName = (root: string, source: string): string =>
-  `${root}${root !== "" && !root.endsWith("/") ? "/" : ""}${source}`;
 
 const optionalString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;

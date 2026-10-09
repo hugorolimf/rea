@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseConfig } from "./config.js";
+import { projectAnalysisError } from "./domain/analysisErrorProjection.js";
 
 describe("runtime configuration", () => {
   it("allows target-free startup and applies runtime defaults", () => {
@@ -82,7 +83,6 @@ describe("runtime configuration", () => {
 describe("runtime target configuration", () => {
   it("rejects invalid target kinds with actionable environment diagnostics", () => {
     const result = parseConfig({ HOPPER_TARGET_KIND: "archive" });
-    expect(result.ok).toBe(false);
     if (result.ok) throw new Error("Expected invalid target kind");
     expect(result.error.message).toContain("Invalid REA environment");
   });
@@ -114,6 +114,18 @@ describe("runtime target configuration", () => {
 });
 
 describe("runtime collection configuration", () => {
+  it("preserves empty loader arguments and rejects empty exclusion patterns", () => {
+    expect(
+      parseConfig({ HOPPER_LOADER_ARGS_JSON: '["", " ", "--option"]' }),
+    ).toMatchObject({
+      ok: true,
+      value: { hopperLoaderArgs: ["", " ", "--option"] },
+    });
+    expect(parseConfig({ REA_REFERENCE_SECRET_PATTERNS_JSON: '[""]' }).ok).toBe(
+      false,
+    );
+  });
+
   it.each(["not-json", "{}", '"just a string"', '["ok",1]'])(
     "rejects invalid loader args: %s",
     (encoded) => {
@@ -121,7 +133,6 @@ describe("runtime collection configuration", () => {
         HOPPER_TARGET_PATH: "/tmp/a",
         HOPPER_LOADER_ARGS_JSON: encoded,
       });
-      expect(result.ok).toBe(false);
       if (result.ok)
         throw new Error("expected malformed loader arguments to fail");
       expect(result.error.message).toContain(
@@ -156,4 +167,76 @@ describe("runtime collection configuration", () => {
       ).toBe(false);
     },
   );
+});
+
+describe("configuration failure diagnostics", () => {
+  it.each([
+    "",
+    " ",
+    "0",
+    "-5",
+    "abc",
+    "1.5",
+    "1e3",
+    "0x100",
+    "2147483648",
+    "9007199254740991",
+  ])(
+    "rejects malformed Ghidra startup deadline %j with its setting and constraint",
+    (value) => {
+      const result = parseConfig({ REA_GHIDRA_STARTUP_TIMEOUT_MS: value });
+      if (result.ok) throw new Error("Expected invalid startup deadline");
+      expect(projectAnalysisError(result.error)).toMatchObject({
+        code: "configuration_invalid",
+        details: {
+          settings: [
+            {
+              setting: "REA_GHIDRA_STARTUP_TIMEOUT_MS",
+              constraint: expect.any(String),
+            },
+          ],
+        },
+      });
+    },
+  );
+
+  it.each([
+    ["GHIDRA_INSTALL_DIR", "./fixture"],
+    ["JAVA_HOME", "./jdk"],
+    ["REA_GHIDRA_NATIVEAOT_JAR", "./missing.jar"],
+  ])(
+    "names the rejected %s and its absolute-path constraint",
+    (setting, value) => {
+      const result = parseConfig({ [setting]: value });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      const constraint = `${setting} must be absolute`;
+      expect(projectAnalysisError(result.error)).toMatchObject({
+        code: "configuration_invalid",
+        message: `REA configuration is invalid: ${constraint}.`,
+        remediation: { action: expect.stringContaining(`Correct ${setting} `) },
+        details: { settings: [{ setting, constraint }] },
+      });
+      // The rejected value itself is not echoed.
+      expect(JSON.stringify(projectAnalysisError(result.error))).not.toContain(
+        value,
+      );
+    },
+  );
+
+  it("names settings rejected by their own parsers", () => {
+    const result = parseConfig({ HOPPER_LOADER_ARGS_JSON: "not-json" });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(projectAnalysisError(result.error)).toMatchObject({
+        details: {
+          settings: [
+            {
+              setting: "HOPPER_LOADER_ARGS_JSON",
+              constraint: "HOPPER_LOADER_ARGS_JSON must be valid JSON",
+            },
+          ],
+        },
+      });
+  });
 });

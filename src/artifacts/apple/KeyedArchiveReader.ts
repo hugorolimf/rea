@@ -1,20 +1,32 @@
 import { createHash } from "node:crypto";
-import { TextDecoder } from "node:util";
+import { join } from "node:path";
 import { parseBinary } from "plist";
 import { z } from "zod";
+import {
+  AnalysisInputError,
+  AnalysisUnsupportedTargetError,
+} from "../../domain/analysisErrorCore.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 import { projectPlistValue } from "../../domain/apple/plistValue.js";
+import { createPlistNumberProjection } from "../../domain/apple/plistNumbers.js";
+import {
+  binaryPlistNumberLiterals,
+  xmlPlistNumberLiterals,
+} from "./PlistNumberLiterals.js";
 import {
   omittedPrototypeKeysLimitation,
   parseXmlPropertyList,
 } from "../../domain/propertyListKeys.js";
 import {
+  KeyedArchiveKindError,
   keyedArchiveInputSchema,
   keyedArchiveResultSchema,
   projectKeyedArchive,
 } from "../../domain/apple/keyedArchive.js";
 import { DirectoryArtifactReader } from "../DirectoryArtifactReader.js";
 import { ArtifactReaderFailure } from "../ArtifactReader.js";
+
+import { decodeXmlPlistText } from "../../domain/propertyListXmlText.js";
 
 const MAX_BYTES = 64 * 1024 * 1024;
 
@@ -25,41 +37,47 @@ export const decodeKeyedArchiveBytes = (
 ) => {
   if (bytes.length > MAX_BYTES)
     throw new RangeError("Keyed archive exceeds 64 MiB");
+  if (bytes.subarray(0, 10).toString("ascii") === "NIBArchive")
+    throw new KeyedArchiveKindError(
+      "Selected file is a compiled NIBArchive, not a Foundation plist archive; decode it with decode_interface_builder",
+      "nib-archive",
+    );
   const binary = bytes.subarray(0, 8).toString("ascii") === "bplist00";
+  const xmlText = binary ? undefined : decodeXmlPlistText(bytes);
   const parsed = binary
     ? { value: parseBinary(bytes), omittedPrototypeKeys: 0 }
-    : parseXmlPropertyList(decodeXmlPlistText(bytes));
+    : parseXmlPropertyList(xmlText ?? "");
   const graph = projectKeyedArchive(normalizePlist(parsed.value), selection);
+  const numbers = createPlistNumberProjection(
+    binary
+      ? binaryPlistNumberLiterals(bytes)
+      : xmlPlistNumberLiterals(xmlText ?? ""),
+  );
+  // Classify the serialized graph before projecting values to typed decimals.
+  // Numeric IDs, node kinds, references and pagination retain their original meaning.
+  const roots = Object.fromEntries(
+    Object.entries(graph.roots).map(([name, value]) => [
+      name,
+      numbers.project(value),
+    ]),
+  );
+  const objects = graph.objects.map((object) => ({
+    ...object,
+    value: numbers.project(object.value),
+  }));
   return {
     archive_format: binary ? ("binary-plist" as const) : ("xml-plist" as const),
     ...graph,
+    roots,
+    objects,
     limitations: [
       ...graph.limitations,
+      ...numbers.limitations(),
       ...(parsed.omittedPrototypeKeys === 0
         ? []
         : [omittedPrototypeKeysLimitation(parsed.omittedPrototypeKeys)]),
     ],
   };
-};
-
-const decodeXmlPlistText = (bytes: Buffer): string => {
-  const encoding =
-    bytes[0] === 0xff && bytes[1] === 0xfe
-      ? "utf-16le"
-      : bytes[0] === 0xfe && bytes[1] === 0xff
-        ? "utf-16be"
-        : "utf-8";
-  const text = new TextDecoder(encoding, { fatal: true }).decode(bytes);
-  const declared = /^<\?xml\s[^?]*\bencoding\s*=\s*["']([^"']+)["']/u
-    .exec(text)?.[1]
-    ?.toLowerCase();
-  if (
-    declared !== undefined &&
-    ((encoding !== "utf-8" && declared !== encoding && declared !== "utf-16") ||
-      (encoding === "utf-8" && declared.startsWith("utf-16")))
-  )
-    throw new TypeError("XML encoding declaration disagrees with its bytes");
-  return text;
 };
 
 const normalizePlist = (value: unknown): JsonValue => {
@@ -69,12 +87,29 @@ const normalizePlist = (value: unknown): JsonValue => {
   return projected.value;
 };
 
+/**
+ * Point to the workflow that reads the selected kind of file on this host.
+ * decode_interface_builder is portable; inspect_plist requires macOS.
+ */
+const keyedArchiveKindRemediation = (
+  kind: KeyedArchiveKindError["kind"],
+  platform: NodeJS.Platform,
+): string => {
+  if (kind === "nib-archive")
+    return "Decode compiled NIBArchive files with decode_interface_builder on the app bundle.";
+  return platform === "darwin"
+    ? "Inspect an ordinary property list with inspect_plist; inspect_keyed_archive decodes NSKeyedArchiver archives only."
+    : "Select an NSKeyedArchiver archive; inspect_keyed_archive decodes only those. inspect_plist, which reads ordinary property lists, requires a macOS host.";
+};
+
 /** Read exactly one regular, contained bundle entry without following symlinks. */
 export const inspectBundleKeyedArchive = async (input: {
   bundlePath: string;
   targetSha256: string;
   parameters: unknown;
   signal?: AbortSignal;
+  /** Host whose available workflows the remediation names. */
+  platform?: NodeJS.Platform;
 }) => {
   const selected = keyedArchiveInputSchema.parse(input.parameters);
   if (
@@ -83,18 +118,20 @@ export const inspectBundleKeyedArchive = async (input: {
       .split("/")
       .some((part) => part === ".." || part === "." || part.length === 0)
   )
-    throw new ArtifactReaderFailure(
-      "path",
-      "Archive path must be a canonical relative bundle path",
+    throw archivePathError(
+      "invalid_format",
+      selected.path === "."
+        ? "Select a keyed archive path relative to the active app bundle."
+        : `Archive path must be a canonical relative bundle path without empty, '.', or '..' segments: ${selected.path}`,
     );
   const reader = new DirectoryArtifactReader(input.bundlePath);
   try {
     for await (const entry of reader.entries(input.signal)) {
       if (entry.path !== selected.path) continue;
       if (entry.kind !== "file")
-        throw new ArtifactReaderFailure(
-          "path",
-          "Archive must be a regular file, not a symlink or directory",
+        throw archivePathError(
+          "invalid_value",
+          `Archive path selects a ${entry.kind}, not a regular file: ${selected.path}`,
         );
       if ((entry.declaredSize ?? 0) > MAX_BYTES)
         throw new ArtifactReaderFailure(
@@ -132,18 +169,42 @@ export const inspectBundleKeyedArchive = async (input: {
           ...decodeKeyedArchiveBytes(bytes, selected),
         });
       } catch (cause) {
+        if (cause instanceof AnalysisInputError) throw cause;
+        // An intact file of another kind is not a damaged archive.
+        if (cause instanceof KeyedArchiveKindError)
+          throw new AnalysisUnsupportedTargetError(
+            "inspect_keyed_archive",
+            join(input.bundlePath, entry.path),
+            cause.message,
+            {
+              cause,
+              remediationAction: keyedArchiveKindRemediation(
+                cause.kind,
+                input.platform ?? process.platform,
+              ),
+            },
+          );
         throw new ArtifactReaderFailure(
           cause instanceof RangeError ? "limit" : "format",
-          "Cannot decode selected Foundation keyed archive",
+          `Cannot decode selected Foundation keyed archive: ${cause instanceof Error ? cause.message : String(cause)}`,
           { cause },
         );
       }
     }
-    throw new ArtifactReaderFailure(
-      "path",
-      `Archive not found in bundle: ${selected.path}`,
+    throw archivePathError(
+      "invalid_value",
+      `No regular file exists at ${selected.path} in the active app bundle.`,
     );
   } finally {
     await reader.close();
   }
 };
+
+/** A caller-selected archive path, not the artifact, failed its constraint. */
+const archivePathError = (
+  reason: "invalid_format" | "invalid_value",
+  message: string,
+) =>
+  new AnalysisInputError("inspect_keyed_archive", undefined, [
+    { path: ["path"], reason, message },
+  ]);

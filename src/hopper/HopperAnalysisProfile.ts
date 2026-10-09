@@ -10,10 +10,19 @@ import type {
   BinaryArchitecture,
   BinaryTarget,
 } from "../domain/binaryTarget.js";
-import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import {
+  AnalysisCancelledError,
+  AnalysisCapabilityUnavailableError,
+} from "../domain/analysisErrorCore.js";
+import { BinaryTargetError } from "../domain/configurationErrors.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { type AnalysisError } from "../domain/analysisErrorBase.js";
 import { err, ok, type Result } from "../domain/result.js";
+
+import {
+  resolveHopperMachOImage,
+  type HopperMachOImage,
+} from "./HopperMachOImage.js";
 
 interface HopperProfileOptions {
   readonly launcherPath: string;
@@ -28,18 +37,39 @@ export const resolveHopperAnalysisProfile = async (
   options: HopperProfileOptions,
 ): Promise<Result<AnalysisProfileResolution, AnalysisError>> => {
   if (target.kind !== "executable" && target.kind !== "database")
-    return ok({ profile: null, compatibility: {} });
-  const derived = hopperLoaderArgsForTarget(target);
+    return ok({ profile: null });
+  let machoContainer: "thin" | "fat32" | "fat64" | undefined;
+  if (target.kind === "executable" && target.format === "mach-o") {
+    const header = await readMachoMagic(target.path, options.signal);
+    if (!header.ok) return header;
+    machoContainer = [0xcafebabf, 0xbfbafeca].includes(header.value)
+      ? "fat64"
+      : [0xcafebabe, 0xbebafeca].includes(header.value)
+        ? "fat32"
+        : "thin";
+  }
+  let preparedImage: HopperMachOImage | undefined;
+  if (
+    target.kind === "executable" &&
+    machoContainer === "fat64" &&
+    options.loaderArgsOverride.length === 0
+  ) {
+    const resolved = await resolveHopperMachOImage(target, options.signal);
+    if (!resolved.ok) return resolved;
+    preparedImage = resolved.value;
+  }
+  const derived = hopperLoaderArgsForTarget(
+    target,
+    preparedImage === undefined ? machoContainer : "thin",
+  );
   if (!derived.ok) return derived;
   const loaderArgs =
     options.loaderArgsOverride.length === 0
       ? derived.value
       : [...options.loaderArgsOverride];
-  const compatibility = { loaderArgs: [...loaderArgs] };
   const launcherDigest = await sha256File(options.launcherPath, options.signal);
   if (!launcherDigest.ok) return launcherDigest;
-  if (launcherDigest.value === undefined)
-    return ok({ profile: null, compatibility });
+  if (launcherDigest.value === undefined) return ok({ profile: null });
   const provider = {
     id: options.provider.id,
     name: options.provider.name,
@@ -53,25 +83,31 @@ export const resolveHopperAnalysisProfile = async (
       available_architectures: [
         ...(target.availableArchitectures ?? []),
       ].sort(),
+      ...(machoContainer === undefined
+        ? {}
+        : { macho_container: machoContainer }),
+      ...(preparedImage === undefined
+        ? {}
+        : { prepared_image: { ...preparedImage } }),
       loader: {
         source:
           options.loaderArgsOverride.length === 0
             ? "derived"
             : "configured_override",
-        argument_count: loaderArgs.length,
-        arguments_sha256: createHash("sha256")
-          .update(JSON.stringify(loaderArgs))
-          .digest("hex"),
+        arguments: [...loaderArgs],
       },
     }),
-    compatibility,
   });
 };
 
 /** Derive Hopper's complete non-interactive CLI loader selection. */
 export const hopperLoaderArgsForTarget = (
   target: BinaryTarget,
-): Result<readonly string[], ProviderAdapterError> => {
+  machoContainer?: "thin" | "fat32" | "fat64",
+): Result<
+  readonly string[],
+  ProviderAdapterError | AnalysisCapabilityUnavailableError
+> => {
   if (target.kind === "database") return ok([]);
   if (target.kind !== "executable")
     return err(new ProviderAdapterError("hopper", "resolve_analysis_profile"));
@@ -79,8 +115,16 @@ export const hopperLoaderArgsForTarget = (
   const flag = hopperArchitectureFlag(architecture);
   switch (target.format) {
     case "mach-o":
+      if (machoContainer === undefined)
+        return err(
+          new AnalysisCapabilityUnavailableError(
+            "hopper",
+            "resolve_analysis_profile",
+            "Mach-O container kind is unknown; resolve the Hopper analysis profile before starting its client.",
+          ),
+        );
       return ok(
-        (target.availableArchitectures?.length ?? 0) > 1
+        machoContainer === "fat32" || machoContainer === "fat64"
           ? ["-l", "FAT", flag, "-l", "Mach-O"]
           : ["-l", "Mach-O", flag],
       );
@@ -106,6 +150,46 @@ const hopperArchitectureFlag = (architecture: BinaryArchitecture): string => {
       return "--armv7";
     case "arm64":
       return "--aarch64";
+  }
+};
+
+const readMachoMagic = async (
+  path: string,
+  signal?: AbortSignal,
+): Promise<Result<number, AnalysisError>> => {
+  if (signalIsAborted(signal))
+    return err(new AnalysisCancelledError("open_binary"));
+  const stream = createReadStream(path, { start: 0, end: 3 });
+  const onAbort = (): void => {
+    stream.destroy();
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    if (signalIsAborted(signal))
+      return err(new AnalysisCancelledError("open_binary"));
+    const bytes = Buffer.concat(chunks);
+    return bytes.length === 4
+      ? ok(bytes.readUInt32BE(0))
+      : err(
+          new BinaryTargetError(
+            path,
+            "Mach-O header became truncated before Hopper loader selection",
+          ),
+        );
+  } catch (cause: unknown) {
+    return signalIsAborted(signal)
+      ? err(new AnalysisCancelledError("open_binary"))
+      : err(
+          new BinaryTargetError(
+            path,
+            `Cannot read the Mach-O container header: ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          ),
+        );
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
 };
 
