@@ -1,6 +1,6 @@
 {
   "source": "https://api-hc.metatft.com/tft-comps-api/comps_data + comps_stats",
-  "fetchedAt": "2026-10-09T17:30:02.710Z",
+  "fetchedAt": "2026-10-09T17:46:30.758Z",
   "set": "TFTSet18",
   "patch": null,
   "comps": [
@@ -48,9 +48,9 @@
           "DA_IonicSpark"
         ]
       },
-      "games": 11611,
+      "games": 11762,
       "avg": 4.1,
-      "top4": 57.9,
+      "top4": 58,
       "win": 14.4
     },
     {
@@ -90,10 +90,10 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 18773,
+      "games": 18984,
       "avg": 4.27,
-      "top4": 55.8,
-      "win": 9.8
+      "top4": 55.7,
+      "win": 9.7
     },
     {
       "id": "426002",
@@ -129,7 +129,7 @@
         ],
         "DA_18_Hecarim": ["DA_Evenshroud", "DA_SpiritVisage", "DA_SunfireCape"]
       },
-      "games": 56511,
+      "games": 57215,
       "avg": 4.19,
       "top4": 55.1,
       "win": 14.9
@@ -177,8 +177,8 @@
           "DA_SunfireCape"
         ]
       },
-      "games": 193325,
-      "avg": 4.13,
+      "games": 195768,
+      "avg": 4.12,
       "top4": 56.8,
       "win": 15.3
     },
@@ -225,7 +225,7 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 203738,
+      "games": 206063,
       "avg": 4.18,
       "top4": 58.4,
       "win": 8.6
@@ -263,7 +263,7 @@
           "DA_SpearOfShojin"
         ]
       },
-      "games": 46665,
+      "games": 47249,
       "avg": 4.34,
       "top4": 54.1,
       "win": 9.5
@@ -315,9 +315,9 @@
           "DA_SpiritVisage"
         ]
       },
-      "games": 15100,
+      "games": 15313,
       "avg": 4.3,
-      "top4": 56.4,
+      "top4": 56.3,
       "win": 6.7
     },
     {
@@ -368,7 +368,7 @@
           "DA_SpearOfShojin"
         ]
       },
-      "games": 222926,
+      "games": 225782,
       "avg": 4.16,
       "top4": 56.6,
       "win": 14.3
@@ -411,10 +411,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 37421,
+      "games": 38034,
       "avg": 4.19,
       "top4": 54.2,
-      "win": 19.7
+      "win": 19.6
     },
     {
       "id": "426009",
@@ -454,9 +454,9 @@
           "DA_Quicksilver"
         ]
       },
-      "games": 32685,
+      "games": 32976,
       "avg": 4.43,
-      "top4": 51.3,
+      "top4": 51.4,
       "win": 12.4
     },
     {
@@ -496,7 +496,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 142480,
+      "games": 144165,
       "avg": 4.33,
       "top4": 53.8,
       "win": 11.8
@@ -539,10 +539,10 @@
           "DA_StrikersFlail"
         ]
       },
-      "games": 155338,
+      "games": 157242,
       "avg": 4.39,
       "top4": 50,
-      "win": 19
+      "win": 19.1
     },
     {
       "id": "426012",
@@ -586,10 +586,10 @@
           "DA_IonicSpark"
         ]
       },
-      "games": 103699,
+      "games": 104919,
       "avg": 4.36,
-      "top4": 52.8,
-      "win": 13.6
+      "top4": 52.7,
+      "win": 13.5
     },
     {
       "id": "426013",
@@ -639,7 +639,7 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 13712,
+      "games": 13876,
       "avg": 4.38,
       "top4": 53.7,
       "win": 7.6
@@ -691,7 +691,7 @@
           "DA_JeweledGauntlet"
         ]
       },
-      "games": 107878,
+      "games": 109149,
       "avg": 4.34,
       "top4": 53.1,
       "win": 13.9
@@ -733,7 +733,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 37633,
+      "games": 38040,
       "avg": 4.58,
       "top4": 48.4,
       "win": 9.7
@@ -771,7 +771,7 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 24343,
+      "games": 24641,
       "avg": 4.48,
       "top4": 51.7,
       "win": 8.5
@@ -813,7 +813,7 @@
           "DA_KrakensFury"
         ]
       },
-      "games": 26570,
+      "games": 26865,
       "avg": 4.51,
       "top4": 50.6,
       "win": 8.1
@@ -860,10 +860,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 56885,
+      "games": 57640,
       "avg": 4.49,
       "top4": 50.7,
-      "win": 8.1
+      "win": 8.2
     },
     {
       "id": "426019",
@@ -909,7 +909,7 @@
           "DA_StrikersFlail"
         ]
       },
-      "games": 10368,
+      "games": 10469,
       "avg": 4.55,
       "top4": 50.3,
       "win": 9.7
@@ -951,10 +951,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 24394,
+      "games": 24657,
       "avg": 4.55,
       "top4": 49.5,
-      "win": 9.2
+      "win": 9.3
     },
     {
       "id": "426021",
@@ -1008,7 +1008,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 90397,
+      "games": 91572,
       "avg": 4.33,
       "top4": 53.4,
       "win": 14
@@ -1056,7 +1056,7 @@
           "DA_SteraksGage"
         ]
       },
-      "games": 34195,
+      "games": 34600,
       "avg": 4.5,
       "top4": 50.3,
       "win": 10.3
@@ -1110,9 +1110,9 @@
           "DA_InfinityEdge"
         ]
       },
-      "games": 24914,
+      "games": 25224,
       "avg": 4.39,
-      "top4": 53.5,
+      "top4": 53.6,
       "win": 7.3
     },
     {
@@ -1153,7 +1153,7 @@
         ],
         "DA_18_Diana": ["DA_SunfireCape"]
       },
-      "games": 30666,
+      "games": 31083,
       "avg": 4.68,
       "top4": 46.8,
       "win": 9.8
@@ -1203,9 +1203,9 @@
         ],
         "DA_18_Varus": ["DA_InfinityEdge", "DA_LastWhisper", "DA_SpearOfShojin"]
       },
-      "games": 39221,
-      "avg": 4.58,
-      "top4": 49.9,
+      "games": 39691,
+      "avg": 4.59,
+      "top4": 49.8,
       "win": 9
     },
     {
@@ -1242,9 +1242,9 @@
         ],
         "DA_18_Diana": ["DA_TacticiansCape"]
       },
-      "games": 13485,
+      "games": 13651,
       "avg": 4.71,
-      "top4": 45.9,
+      "top4": 45.8,
       "win": 10.2
     },
     {
@@ -1284,7 +1284,7 @@
           "DA_NashorsTooth"
         ]
       },
-      "games": 39496,
+      "games": 39998,
       "avg": 4.28,
       "top4": 52.7,
       "win": 19
@@ -1332,7 +1332,7 @@
           "DA_RabadonsDeathcap"
         ]
       },
-      "games": 96097,
+      "games": 97194,
       "avg": 4.55,
       "top4": 49.5,
       "win": 9.1
@@ -1378,9 +1378,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 18290,
-      "avg": 4.52,
-      "top4": 50.9,
+      "games": 18521,
+      "avg": 4.53,
+      "top4": 50.8,
       "win": 6.8
     },
     {
@@ -1420,7 +1420,7 @@
           "DA_JeweledGauntlet"
         ]
       },
-      "games": 312150,
+      "games": 315752,
       "avg": 4.52,
       "top4": 48.7,
       "win": 19
@@ -1477,7 +1477,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 75536,
+      "games": 76436,
       "avg": 4.74,
       "top4": 45.8,
       "win": 11.6
@@ -1522,7 +1522,7 @@
         ],
         "DA_18_Sivir": ["DA_InfinityEdge", "DA_LastWhisper", "DA_RedBuff"]
       },
-      "games": 78901,
+      "games": 79771,
       "avg": 4.63,
       "top4": 47,
       "win": 10.9
@@ -1572,7 +1572,7 @@
           "DA_Quicksilver"
         ]
       },
-      "games": 8500,
+      "games": 8589,
       "avg": 4.77,
       "top4": 45,
       "win": 10.4
@@ -1623,7 +1623,7 @@
           "DA_SunfireCape"
         ]
       },
-      "games": 18476,
+      "games": 18681,
       "avg": 4.62,
       "top4": 48.4,
       "win": 9.2
@@ -1674,8 +1674,8 @@
           "DA_RabadonsDeathcap"
         ]
       },
-      "games": 20455,
-      "avg": 4.93,
+      "games": 20725,
+      "avg": 4.94,
       "top4": 42.9,
       "win": 9.9
     },
@@ -1709,7 +1709,7 @@
           "DA_TitansResolve"
         ]
       },
-      "games": 76319,
+      "games": 77306,
       "avg": 4.5,
       "top4": 49.1,
       "win": 13.4
@@ -1758,10 +1758,10 @@
           "DA_JeweledGauntlet"
         ]
       },
-      "games": 6536,
-      "avg": 4.34,
+      "games": 6630,
+      "avg": 4.33,
       "top4": 55,
-      "win": 7.7
+      "win": 7.8
     },
     {
       "id": "426038",
@@ -1797,7 +1797,7 @@
           "DA_SpearOfShojin"
         ]
       },
-      "games": 65558,
+      "games": 66423,
       "avg": 4.71,
       "top4": 45.3,
       "win": 11
@@ -1841,7 +1841,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 25583,
+      "games": 25880,
       "avg": 4.98,
       "top4": 41.5,
       "win": 5.5
@@ -1876,7 +1876,7 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 100280,
+      "games": 101422,
       "avg": 4.62,
       "top4": 46.4,
       "win": 13.3
@@ -1914,9 +1914,9 @@
         ],
         "DA_KogMaw18_AD": ["DA_Component_BFSword"]
       },
-      "games": 12602,
-      "avg": 4.77,
-      "top4": 45.6,
+      "games": 12735,
+      "avg": 4.76,
+      "top4": 45.7,
       "win": 6.9
     },
     {
@@ -1964,8 +1964,8 @@
           "DA_SpiritVisage"
         ]
       },
-      "games": 19754,
-      "avg": 5.08,
+      "games": 19994,
+      "avg": 5.07,
       "top4": 39.2,
       "win": 11.7
     },
@@ -2006,10 +2006,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 18717,
+      "games": 18939,
       "avg": 5,
       "top4": 40.4,
-      "win": 6.4
+      "win": 6.3
     },
     {
       "id": "426044",
@@ -2056,9 +2056,9 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 25817,
+      "games": 26158,
       "avg": 4.87,
-      "top4": 43.6,
+      "top4": 43.5,
       "win": 5.1
     },
     {
@@ -2090,9 +2090,9 @@
         ],
         "DA_18_Ashe": ["DA_18_EmblemPrimal", "DA_RedBuff", "DA_SpearOfShojin"]
       },
-      "games": 13266,
+      "games": 13440,
       "avg": 4.92,
-      "top4": 41.9,
+      "top4": 42,
       "win": 6.4
     },
     {
@@ -2124,9 +2124,9 @@
         ],
         "DA_18_GnarSmall": ["DA_Bloodthirster", "DA_TitansResolve"]
       },
-      "games": 17062,
-      "avg": 4.74,
-      "top4": 45.1,
+      "games": 17230,
+      "avg": 4.75,
+      "top4": 45,
       "win": 10
     },
     {
@@ -2174,7 +2174,7 @@
           "DA_SteraksGage"
         ]
       },
-      "games": 13738,
+      "games": 13913,
       "avg": 5.02,
       "top4": 40.1,
       "win": 4.1
@@ -2212,7 +2212,7 @@
           "DA_ProtectorsVow"
         ]
       },
-      "games": 30189,
+      "games": 30561,
       "avg": 4.84,
       "top4": 43.3,
       "win": 8.8
@@ -2262,7 +2262,7 @@
           "DA_VoidStaff"
         ]
       },
-      "games": 10414,
+      "games": 10563,
       "avg": 4.95,
       "top4": 42,
       "win": 8.1
@@ -2297,9 +2297,9 @@
         ],
         "DA_18_Kennen": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_VoidStaff"]
       },
-      "games": 10748,
-      "avg": 5,
-      "top4": 39.9,
+      "games": 10897,
+      "avg": 4.99,
+      "top4": 40,
       "win": 7.7
     },
     {
@@ -2354,10 +2354,10 @@
           "DA_HextechGunblade"
         ]
       },
-      "games": 17351,
+      "games": 17540,
       "avg": 5.09,
       "top4": 39.6,
-      "win": 5.4
+      "win": 5.5
     },
     {
       "id": "426052",
@@ -2396,10 +2396,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 12764,
+      "games": 12930,
       "avg": 4.97,
-      "top4": 41.5,
-      "win": 7.2
+      "top4": 41.6,
+      "win": 7.3
     },
     {
       "id": "426053",
@@ -2435,10 +2435,10 @@
           "DA_SpiritVisage"
         ]
       },
-      "games": 22811,
+      "games": 23134,
       "avg": 4.78,
       "top4": 44.8,
-      "win": 10.5
+      "win": 10.6
     },
     {
       "id": "426054",
@@ -2488,10 +2488,10 @@
           "DA_WarmogsArmor"
         ]
       },
-      "games": 120988,
+      "games": 122544,
       "avg": 5.35,
       "top4": 33.1,
-      "win": 10.3
+      "win": 10.4
     },
     {
       "id": "426055",
@@ -2531,9 +2531,9 @@
           "DA_StrikersFlail"
         ]
       },
-      "games": 13324,
+      "games": 13503,
       "avg": 5.25,
-      "top4": 35.8,
+      "top4": 35.9,
       "win": 7.1
     },
     {
@@ -2569,9 +2569,9 @@
         ],
         "DA_Lux18_Base": ["DA_RedBuff", "DA_SpearOfShojin", "DA_VoidStaff"]
       },
-      "games": 15637,
+      "games": 15833,
       "avg": 5.24,
-      "top4": 36.3,
+      "top4": 36.2,
       "win": 6.5
     },
     {
@@ -2611,9 +2611,9 @@
         ],
         "DA_18_Varus": ["DA_Deathblade", "DA_InfinityEdge", "DA_SpearOfShojin"]
       },
-      "games": 11018,
+      "games": 11153,
       "avg": 5.79,
-      "top4": 27.4,
+      "top4": 27.3,
       "win": 4.2
     },
     {
@@ -2658,7 +2658,7 @@
           "DA_HextechGunblade"
         ]
       },
-      "games": 13067,
+      "games": 13241,
       "avg": 6.09,
       "top4": 21.2,
       "win": 2.8
