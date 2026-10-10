@@ -11,26 +11,32 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 const IN_GAME = new Set(["InProgress", "Reconnect"]);
+// Fases que dizem explicitamente que a partida terminou: encerram na hora.
+const GAME_OVER = new Set(["WaitingForStats", "PreEndOfGame", "EndOfGame"]);
 // Encerrada pelo cliente sem colocação: espera o jogo gravar o tabuleiro final antes de registrar sem ela.
 const FINAL_WAIT_MS = 3 * 60 * 1000;
 
 function readHistory(file) {
+  let lines;
   try {
-    return fs
-      .readFileSync(file, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .flatMap((line) => {
-        try {
-          const r = JSON.parse(line);
-          return r && r.gameId != null ? [r] : [];
-        } catch {
-          return []; // linha truncada não invalida o restante
-        }
-      });
+    lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
+  // Mesma partida gravada mais de uma vez (dois processos, versões antigas): vale o último registro, o mais completo.
+  const byGame = new Map();
+  for (const line of lines) {
+    try {
+      const r = JSON.parse(line);
+      if (!r || r.gameId == null) continue;
+      const key = String(r.gameId);
+      byGame.delete(key); // reposiciona no lugar da última ocorrência
+      byGame.set(key, r);
+    } catch {
+      // linha truncada não invalida o restante
+    }
+  }
+  return [...byGame.values()];
 }
 
 /** Colocação definitiva do Hero neste snapshot, ou null enquanto a partida dele continua. */
@@ -44,14 +50,18 @@ export function finalPlacement(snapshot, heroId) {
 
 /**
  * Cria o rastreador. `observe(snapshot, stat, session)` é idempotente e pode ser chamado a cada leitura;
- * `onChange({kind})` avisa "start", "end" e "saved".
+ * `onChange({kind})` avisa "start" (partida nova), "resume" (reabre a mesma), "end" e "saved".
  */
 export function matchTracker(file, heroId, { onChange = () => {} } = {}) {
   const records = readHistory(file),
     recorded = new Set(records.map((r) => String(r.gameId))),
     started = new Set(); // partidas já iniciadas neste processo: um snapshot antigo nunca volta a abrir uma delas
   let match = null,
-    boardGameId = null;
+    boardGameId = null,
+    // Leituras seguidas do cliente fora da partida: uma só pode ser soluço do cliente com o jogo pesado.
+    outside = 0,
+    // Carimbo (session.at) da última leitura contada: a mesma leitura em cache não conta duas vezes.
+    outsideAt = null;
 
   const heroOf = (snapshot) =>
     snapshot?.statsBlock?.players?.find((p) => String(p.playerId) === heroId);
@@ -68,20 +78,29 @@ export function matchTracker(file, heroId, { onChange = () => {} } = {}) {
       durationSeconds: m.board.seconds,
       placement: m.placement,
       units: m.board.units,
+      // Aprimoramentos marcados na tela durante a partida (o arquivo do jogo não os informa).
+      augments: m.augments ?? [],
     };
     records.push(record);
     recorded.add(String(m.id));
     fsp
       .mkdir(path.dirname(file), { recursive: true })
       .then(() => fsp.appendFile(file, JSON.stringify(record) + "\n"))
-      .catch((e) =>
-        console.log("Histórico de partidas não gravado: " + e.message),
-      );
+      .catch((e) => {
+        // Desfaz a marcação: a partida volta a ser gravada no próximo save() ou begin().
+        const i = records.lastIndexOf(record);
+        if (i >= 0) records.splice(i, 1);
+        recorded.delete(String(m.id));
+        m.saved = false;
+        console.log("Histórico de partidas não gravado: " + e.message);
+      });
     onChange({ kind: "saved", record });
   }
   function begin(id) {
     if (match?.status === "ended") save();
     started.add(String(id));
+    outside = 0;
+    outsideAt = null;
     match = {
       id,
       status: "live",
@@ -105,12 +124,48 @@ export function matchTracker(file, heroId, { onChange = () => {} } = {}) {
     /** Atualiza o estado com a leitura atual; snapshot/stat/session podem ser null (fonte indisponível). */
     observe(snapshot, stat, session) {
       const phase = typeof session?.phase === "string" ? session.phase : null,
-        clientGame =
-          IN_GAME.has(phase) && session?.gameId ? session.gameId : null,
+        inGame = IN_GAME.has(phase),
+        // Em partida sem o ID (a consulta da sessão estourou o tempo): é a mesma partida que já está aberta.
+        clientGame = inGame
+          ? session?.gameId ||
+            (match && match.placement === null ? match.id : null)
+          : null,
         id = snapshot?.gameId ?? null;
+      // Encerrada por engano (sem colocação) e o cliente mostra a mesma partida em andamento: reabre.
+      if (
+        clientGame &&
+        match?.status === "ended" &&
+        !match.saved &&
+        match.placement === null &&
+        String(clientGame) === String(match.id)
+      ) {
+        match.status = "live";
+        match.endedAt = null;
+        onChange({ kind: "resume" }); // mesma partida: não é início (não zera o que é dela)
+      }
       boardGameId = id;
-      if (clientGame && clientGame !== match?.id) begin(clientGame);
-      else if (
+      if (clientGame && clientGame !== match?.id) {
+        if (recorded.has(String(clientGame))) {
+          // Já registrada (ex.: servidor reiniciado com o Hero eliminado assistindo): reaproveita o registro sem
+          // emitir "start", que zeraria o plano e pararia o leitor.
+          if (match?.status === "ended") save();
+          const r = records.findLast(
+            (x) => String(x.gameId) === String(clientGame),
+          );
+          match = {
+            id: clientGame,
+            status: "ended",
+            startedAt: null,
+            endedAt: r?.endedAt ?? null,
+            placement: r?.placement ?? null,
+            queue: r?.queue ?? null,
+            set: r?.set ?? null,
+            board: null,
+            saved: true,
+          };
+          started.add(String(clientGame));
+        } else begin(clientGame);
+      } else if (
         !clientGame &&
         id &&
         id !== match?.id &&
@@ -142,7 +197,19 @@ export function matchTracker(file, heroId, { onChange = () => {} } = {}) {
           save();
         }
       }
-      if (match?.status === "live" && phase && !clientGame) end();
+      // Fim pelo cliente: fase de fim de partida encerra na hora; outra fase fora da partida precisa aparecer em
+      // duas leituras seguidas (~10 s). ID ausente ou consulta falha nunca encerram a partida.
+      // Sessão sem carimbo (testes, chamadores antigos) conta por chamada.
+      if (match?.status === "live" && phase && !inGame) {
+        if (GAME_OVER.has(phase)) end();
+        else if (session?.at == null || session.at !== outsideAt) {
+          outsideAt = session?.at ?? null;
+          if (++outside >= 2) end();
+        }
+      } else {
+        outside = 0;
+        outsideAt = null;
+      }
       if (
         match?.status === "ended" &&
         !match.saved &&
@@ -150,6 +217,16 @@ export function matchTracker(file, heroId, { onChange = () => {} } = {}) {
       )
         save();
       return this.status();
+    },
+    /** Guarda os aprimoramentos marcados na tela para a partida `id` (vale só para a partida em andamento). */
+    augments(id, list) {
+      if (
+        match &&
+        String(match.id) === String(id) &&
+        !match.saved &&
+        Array.isArray(list)
+      )
+        match.augments = list.map((a) => ({ id: a.id, name: a.name }));
     },
     /** Estado para a interface. `boardReady` diz se o tabuleiro lido já é desta partida. */
     status() {

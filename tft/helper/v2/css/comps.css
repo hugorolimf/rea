@@ -5,7 +5,8 @@
     & .notice,
     & .deck,
     & .skeleton,
-    & .waiting {
+    & .waiting,
+    & .contest {
       display: none !important;
     }
   }
@@ -107,17 +108,6 @@
         color: var(--text);
         box-shadow: inset 0 0 0 1px var(--line);
       }
-    }
-  }
-  .seg-tier button {
-    padding: 3px 5px;
-    & .tier {
-      opacity: 0.45;
-      transition: opacity 0.2s;
-    }
-    &[aria-pressed="true"] .tier,
-    &:hover .tier {
-      opacity: 1;
     }
   }
   .comps-sort {
@@ -249,6 +239,76 @@
       color: var(--faint);
     }
   }
+  /* Itens do banco que combinam com o carry: build do carry, emblemas e o que falta. */
+  .comp-bank {
+    display: grid;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 12px;
+  }
+  .cb-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    & .i {
+      width: 14px;
+      height: 14px;
+    }
+  }
+  .cb-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    & li {
+      display: grid;
+      grid-template-columns: auto auto;
+      align-items: center;
+      justify-content: start;
+      gap: 2px 8px;
+    }
+    & small,
+    & em {
+      grid-column: 1 / -1;
+      color: var(--faint);
+      font-size: 10px;
+      font-style: normal;
+    }
+    & li[data-state="on"] small {
+      color: var(--muted);
+    }
+    & li[data-state="ready"] small,
+    & li[data-state="radiant"] small,
+    & li[data-state="craft"] small {
+      color: var(--go);
+      font-weight: 700;
+    }
+    & li[data-state="half"] small {
+      color: var(--amber);
+    }
+    & li[data-state="missing"] > .pt {
+      opacity: 0.5;
+    }
+    & li.cb-emblem em {
+      color: var(--gold);
+      font-weight: 700;
+    }
+  }
+  .cb-recipe {
+    display: inline-flex;
+    gap: 2px;
+    & .miss {
+      opacity: 0.4;
+    }
+  }
+  .cb-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    color: var(--faint);
+    font-size: 11px;
+  }
   .dispute {
     &[data-level="baixa"] {
       color: var(--go);
@@ -322,14 +382,7 @@
     }
   }
 
-  /* Itens: tier ajustado pelos itens que você tem e builds com a variação publicada. */
-  .tier-up {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--faint);
-    font-size: 11px;
-  }
+  /* Itens: média ajustada pelos itens que você tem e builds com a variação publicada. */
   .comp-edge {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);

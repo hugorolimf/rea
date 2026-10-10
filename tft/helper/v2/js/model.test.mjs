@@ -2,7 +2,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildCurve, buildEconomy, buildModel } from "./model.js";
+import {
+  buildCurve,
+  buildModel,
+  findStrip,
+  gepNote,
+  pickRows,
+  rollPill,
+  starTag,
+} from "./model.js";
+import { strategy } from "../../strategy.mjs";
+import { makeState } from "../../tests/fixtures.mjs";
 import { binomialTail } from "./math.js";
 
 const { state, rec } = JSON.parse(
@@ -114,7 +124,7 @@ test("trocas: classificação ready/hold/slot e passos agrupados sem duplicar", 
   assert.equal(m.plan.dock[0].held, 2);
   assert.equal(m.plan.dock[1].need, 3);
   assert.equal(m.plan.dock[1].have, 1);
-  assert.deepEqual(m.plan.counts, { ready: 1, hold: 1 });
+  assert.deepEqual(m.plan.counts, { ready: 1, hold: 2 });
   const byId = Object.fromEntries(m.plan.steps.map((s) => [s.id, s]));
   assert.equal(byId.swap.rows.length, 1);
   assert.equal(byId.hold.rows.length, 2, "hold inclui as bloqueadas");
@@ -161,7 +171,11 @@ test("trilho de nível marca nível atual, próximo (quando sobe) e níveis de r
   assert.equal(byN[8].next, true);
   assert.equal(byN[8].roll, true);
   assert.equal(byN[9].final, true);
-  assert.equal(panel.tone, "subirnvel");
+  assert.deepEqual(
+    panel.economy,
+    { keep: 10, interest: 4 },
+    "o medidor de ouro do HUD lê piso e juros",
+  );
 });
 
 test("curva de chance sem dados do servidor: binomial por loja, eixo em ouro, quantil 80%", () => {
@@ -219,78 +233,6 @@ test("curva de chance do servidor: usa a curva exata e a chance desta rolagem", 
   assert.equal(c.plannedValue, 0.4321);
 });
 
-test("economia: fluxo agora → depois → rodadas, renda decomposta e sequência", () => {
-  const e = buildEconomy(
-    {
-      gold: 54,
-      after: 24,
-      interest: 5,
-      next: null,
-      keep: 24,
-      shopSpend: 4,
-      income: { base: 5, interest: 2, streak: 1, total: 8 },
-      projection: [
-        { label: "4-3", gold: 32, income: 8 },
-        { label: "4-4", gold: 41, income: 9 },
-        { label: "4-5", gold: 51, income: 10 },
-      ],
-      streak: { kind: "loss", length: 3, gold: 1 },
-      sellable: { gold: 0, units: [] },
-    },
-    true,
-    "ROLAR",
-  );
-  assert.equal(e.spend, 30);
-  assert.equal(e.afterInterest, 2);
-  assert.deepEqual(
-    e.incomeParts.map((p) => [p.kind, p.value]),
-    [
-      ["base", 5],
-      ["interest", 2],
-      ["loss", 1],
-    ],
-  );
-  assert.deepEqual(
-    e.projection.map((r) => [r.label, r.capped, r.reach]),
-    [
-      ["4-3", false, false],
-      ["4-4", false, false],
-      ["4-5", true, true],
-    ],
-  );
-  assert.equal(e.reach50, "4-5");
-  assert.equal(e.top, 60, "teto em degraus de 10g, sempre acima de 50g");
-  assert.equal(e.streak.length, 3);
-  assert.equal(e.sellable, null, "banco sem valor não aparece");
-});
-
-test("economia fora do ao vivo: sem ação, projeta do ouro atual com as contas do servidor", () => {
-  const e = buildEconomy(
-    { gold: 44, after: 14, projection: [{ label: "x", gold: 1 }] },
-    false,
-    "ROLAR",
-    { stage: 4, round: 2 },
-  );
-  assert.equal(e.spend, 0);
-  assert.equal(e.after, 44);
-  assert.equal(e.shopSpend, 0);
-  assert.deepEqual(
-    e.projection.map((r) => [r.label, r.gold]),
-    [
-      ["4-3", 53],
-      ["4-4", 63],
-      ["4-5", 73],
-      ["4-6", 83],
-    ],
-  );
-  assert.equal(e.reach50, "4-3");
-  assert.equal(e.top, 90);
-  assert.equal(e.income.total, 9);
-  const unread = buildEconomy({ gold: null }, false, "ROLAR");
-  assert.equal(unread.income, null);
-  assert.deepEqual(unread.projection, []);
-});
-
 test("sem recomendação o modelo ainda devolve HUD e status", () => {
   const m = buildModel({
     state,
@@ -298,4 +240,325 @@ test("sem recomendação o modelo ainda devolve HUD e status", () => {
   });
   assert.equal(m.plan, null);
   assert.equal(m.hero.hp, 10);
+});
+
+/* ----- Roll do time inteiro: o servidor decide, o modelo só organiza ----- */
+
+const withStrategy = (opts, tweak) => {
+  const input = live(),
+    s = makeState(opts);
+  tweak?.(s);
+  input.rec.recommendations[0].strategy = strategy(
+    s.plan,
+    s.analysis,
+    s.options,
+  );
+  return buildModel(input).plan.panel.roll;
+};
+const rivals = { count: 7, cost: 2, stars: 1, size: 6 };
+
+test("roll: veredito do servidor vira selo, orçamento e curva do time", () => {
+  const go = withStrategy({
+    gold: 75,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    extra: { Aphelios: 1 },
+    rivals,
+  });
+  assert.equal(go.go, true);
+  assert.deepEqual(go.pill, { text: "rolar", tone: "go" });
+  assert.equal(go.call.kind, "go");
+  assert.equal(go.curve.team, true, "curva de 'pelo menos uma peça evolui'");
+  assert.equal(go.curve.planned, go.spend);
+  assert.ok(
+    Math.abs(go.curve.plannedValue - go.call.any) < 0.02,
+    "a curva acende a chance do veredito",
+  );
+  assert.equal(go.interest, null);
+  const hold = withStrategy({
+    gold: 75,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    rivals,
+  });
+  assert.equal(hold.go, false);
+  assert.deepEqual(hold.pill, { text: "não rolar", tone: "wait" });
+  assert.equal(hold.curve.planned, null);
+  const danger = withStrategy({
+    gold: 24,
+    hp: 25,
+    level: 8,
+    stage: "4-2",
+    rivals,
+  });
+  assert.deepEqual(danger.pill, { text: "estabilizar", tone: "danger" });
+});
+
+test("roll: linha por peça com estrela alvo, cópias, motivo de inviável e peça da loja", () => {
+  const r = withStrategy({
+    gold: 75,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    enemy: { Rakan: 16 },
+    rivals,
+    shop: [
+      {
+        slot: 2,
+        id: "TFT_Sentinel",
+        name: "Sentinel",
+        cost: 2,
+        action: "comprar",
+        reason: "peça da meta",
+      },
+    ],
+  });
+  const by = Object.fromEntries(r.targets.map((t) => [t.name, t]));
+  assert.equal(by.Aphelios.tag, "1→2★");
+  assert.equal(by.Aphelios.pips, true);
+  assert.match(by.Aphelios.title, /Aphelios 2★ · 1\/3 cópias \(faltam 2\)/);
+  assert.equal(by.Rakan.status, "inviavel");
+  assert.match(by.Rakan.title, /inviável: faltam 2 cópias e só 1/);
+  assert.equal(by.Sentinel.shop.buy, 1);
+  assert.match(by.Sentinel.title, /na loja \(slot 2\): compre 1/);
+  assert.deepEqual(
+    r.shop.map((s) => s.name),
+    ["Sentinel"],
+  );
+  // Inviáveis ficam no fim da lista; a 3★ distante (Amumu 3/9) mostra a fração, não nove pips.
+  assert.equal(r.targets.at(-1).status, "inviavel");
+  assert.equal(r.blocked, 1);
+});
+
+test("roll: o painel não rola — mostra as melhores peças, até duas inviáveis e conta o resto", () => {
+  const row = (name, status = "ok") => ({ name, status });
+  const rows = [
+    ...["a", "b", "c", "d", "e", "f", "g"].map((n) => row(n)),
+    row("x", "inviavel"),
+    row("y", "inviavel"),
+    row("z", "inviavel"),
+  ];
+  assert.deepEqual(
+    pickRows(rows).map((r) => r.name),
+    ["a", "b", "c", "d", "x", "y"],
+  );
+  assert.deepEqual(
+    pickRows(rows.slice(0, 3)).map((r) => r.name),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    pickRows([row("a"), row("x", "inviavel")]).map((r) => r.name),
+    ["a", "x"],
+  );
+  const r = withStrategy({
+    gold: 75,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    rivals,
+    reserve: [
+      ["Poppy", 1, 1],
+      ["Zed", 2, 1],
+      ["Jinx", 3, 1],
+    ],
+  });
+  assert.equal(r.targets.length, 6);
+  assert.ok(r.more >= 3, `${r.more} fora da lista`);
+});
+
+test("roll: selo e etiquetas dos estados sem ouro, esperar o nível e peça nova", () => {
+  assert.deepEqual(
+    rollPill({ call: { kind: "wait", at: { level: 9 } }, at: 9 }, true),
+    { text: "no nível 9", tone: "wait" },
+  );
+  assert.deepEqual(rollPill({ call: { kind: "unknown" } }, true), {
+    text: "ouro ?",
+    tone: "wait",
+  });
+  assert.deepEqual(
+    rollPill({ call: { kind: "go" } }, false),
+    { text: "", tone: "wait" },
+    "fora de partida não há veredito",
+  );
+  assert.equal(starTag({ kind: "nova", stars: 0, goalStars: 1 }), "nova");
+  assert.equal(starTag({ kind: "upgrade", stars: 2, goalStars: 3 }), "2→3★");
+});
+
+test("roll: nota de juros só aparece quando rolar derruba o patamar", () => {
+  const drop = withStrategy({ gold: 53, hp: 25, level: 8, stage: "4-2" });
+  assert.equal(drop.interest.from, 5);
+  assert.ok(drop.interest.to < 5);
+  const keep = withStrategy({
+    gold: 75,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    extra: { Aphelios: 1 },
+    rivals,
+  });
+  assert.equal(keep.interest, null);
+});
+
+test("nível: lido, derivado (piso) e estimado pelo tabuleiro são distinguidos", () => {
+  const read = buildModel(live());
+  assert.equal(read.hero.levelSource, "tela");
+  const derived = live();
+  derived.state.screen = {
+    ...derived.state.screen,
+    level: 5,
+    sources: { level: "derived" },
+  };
+  assert.equal(buildModel(derived).hero.levelSource, "derivado");
+  const estimated = live();
+  estimated.state.screen = { ...estimated.state.screen, level: null };
+  estimated.state.estimatedLevel = 6;
+  const m = buildModel(estimated);
+  assert.equal(m.hero.level, 6);
+  assert.equal(m.hero.levelSource, "estimado");
+  // Leitura em conflito com o XP ou velha avisa; o nível usado pela análise aparece à parte.
+  const stale = live();
+  stale.state.screen.stale = { level: true };
+  stale.rec.currentLevel = 7;
+  const s = buildModel(stale);
+  assert.equal(s.hero.levelStale, true);
+  assert.equal(s.hero.levelUsed, 7);
+});
+
+test("plano ao vivo: score e chance vêm do ranking de comps (melhor comp) ou do próprio plano", () => {
+  const input = live();
+  input.rec.recommendations[0].meta = {
+    ...input.rec.recommendations[0].meta,
+    id: "c1",
+  };
+  input.rec.compRanking = [
+    {
+      id: "c1",
+      score: 71.6,
+      chance: 0.42,
+      chancePlan: 0.8,
+      best: true,
+      level: 6,
+    },
+  ];
+  const s = buildModel(input).plan.score;
+  assert.deepEqual(s, {
+    value: 72,
+    chance: 0.42,
+    chancePlan: 0.8,
+    best: true,
+    level: 6,
+  });
+  const own = live();
+  own.rec.recommendations[0].compScore = {
+    score: 30,
+    chance: 0.1,
+    chancePlan: null,
+  };
+  assert.deepEqual(buildModel(own).plan.score, {
+    value: 30,
+    chance: 0.1,
+    chancePlan: null,
+    best: false,
+    level: 8,
+  });
+  assert.equal(buildModel(live()).plan.score, null);
+});
+
+test("achar rolando: peças viáveis, verde a partir de 50%, com a subida de nível; inviáveis ficam de fora", () => {
+  const find = (now, over = {}) => ({
+    go: now >= 0.5,
+    levelUp: false,
+    levelDown: false,
+    now,
+    next: now,
+    shops: 5,
+    ...over,
+  });
+  const strip = findStrip([
+    {
+      id: "a",
+      name: "A",
+      cost: 2,
+      own: 2,
+      status: "ok",
+      find: find(0.3, { levelUp: true }),
+    },
+    {
+      id: "b",
+      name: "B",
+      cost: 4,
+      own: 0,
+      status: "ok",
+      find: find(0.7),
+      hidden: 2.4,
+    },
+    { id: "c", name: "C", cost: 5, own: 0, status: "inviavel", find: find(0) },
+    {
+      id: "d",
+      name: "D",
+      cost: 1,
+      own: 1,
+      status: "ok",
+      find: find(0.6, { levelDown: true }),
+      inBench: true,
+    },
+  ]);
+  assert.deepEqual(
+    strip.map((f) => f.id),
+    ["d", "b", "a"],
+    "verdes primeiro, depois as suas",
+  );
+  assert.ok(
+    strip[0].go &&
+      strip[0].levelDown &&
+      strip[0].title.includes("no seu banco"),
+  );
+  assert.ok(strip[1].title.includes("estimativa, não leitura"));
+  assert.equal(strip[2].levelUp, true);
+});
+
+test("fonte GEP: o modelo traz a origem de ouro/nível e o estado da fonte para o tooltip", () => {
+  const s = structuredClone(state);
+  s.screen = {
+    stage: "1-3",
+    gold: 0,
+    level: 2,
+    xp: "0/2",
+    items: [],
+    sources: { gold: "gep", level: "gep" },
+  };
+  s.gepStatus = { state: "ativo", reason: null, lastEventAgeMs: 4200 };
+  const { hero, status } = buildModel({ state: s, rec: null });
+  assert.equal(hero.goldFrom, "gep");
+  assert.equal(hero.levelFrom, "gep");
+  assert.equal(hero.levelSource, "tela");
+  assert.equal(status.gep.label, "GEP ativo · último evento há 4s");
+  s.screen.sources = { gold: "screen", level: "screen" };
+  assert.equal(buildModel({ state: s, rec: null }).hero.goldFrom, null);
+  assert.equal(
+    buildModel({ state: { ...s, gepStatus: undefined }, rec: null }).status.gep,
+    null,
+  );
+});
+
+test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assumiu", () => {
+  assert.match(
+    gepNote({
+      state: "obsoleto",
+      reason: "sem-eventos-recentes",
+      lastEventAgeMs: 90000,
+    }).label,
+    /obsoleto.*90s.*leitura de tela/,
+  );
+  assert.match(
+    gepNote({ state: "ausente", reason: "banco-ausente" }).label,
+    /ausente: banco do TFTAcademy não encontrado.*leitura de tela/,
+  );
+  assert.match(
+    gepNote({ state: "esquema-desconhecido", detail: "events: key" }).label,
+    /esquema.*events: key/,
+  );
+  assert.equal(gepNote(null), null);
 });

@@ -6,6 +6,8 @@
 // central do carry parece fraco). A variação publicada por build (`place_change`) compara a build com
 // qualquer outra build de 3 itens no mesmo campeão daquela comp: a quantidade de itens fica controlada.
 
+import { baseItemId } from "./item-tiers.mjs";
+
 // Encolhimento forte: a fonte publica só a melhor build de cada campeão, então a variação vem inflada
 // (escolher a melhor entre várias exagera o efeito; 235 de 236 builds aparecem como ganho, mediana −1,07
 // em ~100 partidas). Com K = 1500, a build do Rengar (2127 partidas, −0,24) fica em −0,14 e uma build
@@ -47,10 +49,20 @@ export const shrunk = (b) =>
  * quadrado (1 de 3 vale 1/9, a build completa vale tudo — um item solto é pouca evidência) vezes o peso do
  * campeão (`weightOf(unit)`: o motor dá 1 ao carry, 0,5 a outras unidades de dano e 0 a tanques, porque três
  * itens de tanque mostram mais "partida rica" do que item certo).
- * `have` = {completed: ids, components: ids}; `recipes` = Map id→[componente, componente].
+ * `have` = {completed: ids (radiantes aceitos), components: ids}; `recipes` = Map id→[componente, componente].
+ * `resolved` (opcional) = Map campeão → [{id, kind, value, available}] da comp (item-holdings.mjs): cada item da
+ * build já vem localizado e gasto uma só vez (banco, peça que sai, peça que fica, montando), com o valor que o custo
+ * de mover/montar deixa; nesse caso `have` e `recipes` não são consultados para as builds que ele cobre.
  */
-export function itemEdge(comp, have, recipes = new Map(), weightOf = () => 1) {
-  const completed = [...(have?.completed ?? [])],
+export function itemEdge(
+  comp,
+  have,
+  recipes = new Map(),
+  weightOf = () => 1,
+  resolved = null,
+) {
+  // Radiante conta como o item base: os buildName publicados usam só o id comum.
+  const completed = (have?.completed ?? []).map(baseItemId),
     components = [...(have?.components ?? [])];
   const take = (list, id) => {
     const at = list.indexOf(id);
@@ -65,21 +77,33 @@ export function itemEdge(comp, have, recipes = new Map(), weightOf = () => 1) {
   const gains = [];
   for (const [unit, b, weighted] of candidates) {
     const ready = [],
-      craft = [];
-    for (const id of b.items) {
-      if (take(completed, id)) ready.push(id);
-      else {
-        const parts = recipes.get(id) ?? [];
-        const spare = [...components];
-        if (parts.length === 2 && parts.every((p) => take(spare, p))) {
-          components.splice(0, components.length, ...spare);
-          craft.push(id);
+      craft = [],
+      given = resolved ? (resolved.get(unit) ?? []) : null;
+    let value = 0;
+    if (given) {
+      const left = [...given];
+      for (const id of b.items) {
+        const at = left.findIndex((e) => e.id === id),
+          e = at >= 0 ? left.splice(at, 1)[0] : null;
+        if (!e?.available) continue;
+        (/craft/i.test(e.kind) ? craft : ready).push(id);
+        value += e.value;
+      }
+    } else
+      for (const id of b.items) {
+        if (take(completed, id)) ready.push(id);
+        else {
+          const parts = recipes.get(id) ?? [];
+          const spare = [...components];
+          if (parts.length === 2 && parts.every((p) => take(spare, p))) {
+            components.splice(0, components.length, ...spare);
+            craft.push(id);
+          }
         }
       }
-    }
     const hits = ready.length + craft.length;
     if (!hits) continue;
-    const share = hits / b.items.length;
+    const share = (given ? value : hits) / b.items.length;
     gains.push({
       unit,
       items: b.items,

@@ -24,8 +24,9 @@ const isAlive = (pid) => {
 };
 
 /**
- * Instala o log e os handlers de processo. Devolve `{ write }` para registrar eventos.
- * `runFile` guarda o PID da execução atual; na próxima partida ele revela encerramentos anormais.
+ * Instala o log e os handlers de processo. Devolve `{ write, markRunning }`: `write` registra eventos e
+ * `markRunning` grava em `runFile` o PID da execução atual (chamar ao pegar a porta); na próxima partida ele
+ * revela encerramentos anormais.
  */
 export function installDiagnostics(logFile, runFile, { port } = {}) {
   const write = (level, message) => {
@@ -53,18 +54,23 @@ export function installDiagnostics(logFile, runFile, { port } = {}) {
       // Arquivo de execução ilegível: ignora.
     }
   }
-  try {
-    writeFileSync(
-      runFile,
-      JSON.stringify({
-        pid: process.pid,
-        port,
-        startedAt: new Date().toISOString(),
-      }),
-    );
-  } catch {
-    // Sem permissão para gravar: segue sem a detecção.
-  }
+  // Registro da execução só depois de pegar a porta: uma instância que falhou não sobrescreve o da que serve.
+  let running = false;
+  const markRunning = () => {
+    try {
+      writeFileSync(
+        runFile,
+        JSON.stringify({
+          pid: process.pid,
+          port,
+          startedAt: new Date().toISOString(),
+        }),
+      );
+      running = true;
+    } catch {
+      // Sem permissão para gravar: segue sem a detecção.
+    }
+  };
   write("INFO", `iniciado (PID ${process.pid}, porta ${port})`);
 
   const burst = [];
@@ -95,11 +101,14 @@ export function installDiagnostics(logFile, runFile, { port } = {}) {
     });
   process.on("exit", (code) => {
     write("INFO", `encerrado (código ${code})`);
+    if (!running) return; // o registro, se houver, é de outra instância
     try {
-      unlinkSync(runFile);
+      // Só apaga se o registro ainda for deste processo (outra instância pode tê-lo sobrescrito).
+      if (JSON.parse(readFileSync(runFile, "utf8")).pid === process.pid)
+        unlinkSync(runFile);
     } catch {
-      // Já removido.
+      // Já removido ou ilegível.
     }
   });
-  return { write };
+  return { write, markRunning };
 }

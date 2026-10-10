@@ -20,8 +20,8 @@ export const STYLES = [
   { key: "fast9", label: "Fast 9" },
   { key: "standard", label: "Padrão" },
 ];
-export const TIERS = ["S", "A", "B", "C"];
 export const SORTS = [
+  { key: "score", label: "Score (melhor para você)" },
   { key: "fit", label: "Encaixe na partida" },
   { key: "items", label: "Com seus itens" },
   { key: "avg", label: "Colocação média" },
@@ -30,16 +30,29 @@ export const SORTS = [
 
 /** Ganho mínimo (em colocações) para anunciar "com seus itens": abaixo disso é ruído de fronteira. */
 export const ITEM_EDGE_MIN = 0.05;
-/** Comp que melhora de forma relevante com os seus itens: {from, to, avg, gain, tierUp} ou null. */
+/** Comp que melhora de forma relevante com os seus itens: {avg, gain} (colocação média com os itens e o ganho) ou null. */
 export function itemUpgrade(comp) {
   const f = comp.fit;
   if (!f || !(f.itemGain >= ITEM_EDGE_MIN)) return null;
+  return { avg: f.adjustedAvg, gain: f.itemGain };
+}
+
+/**
+ * Score da comp para a partida (0 a 100, do motor: itens, o que você tem, força, chance de montar no seu nível, loja e
+ * disputa) e a chance de montar em %. null sem encaixe calculado. `band` agrupa só para a cor: alto ≥ 60, médio ≥ 40.
+ */
+export function scoreOf(comp) {
+  const f = comp.fit;
+  if (!f || !Number.isFinite(f.score)) return null;
   return {
-    from: comp.tier,
-    to: f.itemTier,
-    avg: f.adjustedAvg,
-    gain: f.itemGain,
-    tierUp: f.itemTier !== comp.tier,
+    score: Math.round(f.score),
+    chance: Number.isFinite(f.chance) ? Math.round(f.chance * 100) : null,
+    chancePlan: Number.isFinite(f.chancePlan)
+      ? Math.round(f.chancePlan * 100)
+      : null,
+    level: f.level ?? null,
+    best: f.best === true,
+    band: f.score >= 60 ? "high" : f.score >= 40 ? "mid" : "low",
   };
 }
 
@@ -63,32 +76,59 @@ const fold = (s) =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 
-/** Filtra por texto (título, campeões e sinergias), estilo e tiers. `champions` é Map id→{name,traits}. */
-export function filterComps(
-  list,
-  { query = "", style = "", tiers = [] },
-  champions,
-) {
-  const q = fold(query).trim();
-  return list.filter((c) => {
-    if (style && c.style.key !== style) return false;
-    if (tiers.length && !tiers.includes(c.tier)) return false;
-    if (!q) return true;
-    const words = [
-      c.title,
-      ...c.units.flatMap((id) => {
-        const ch = champions.get(id);
-        return [ch?.name ?? id, ...(ch?.traits ?? [])];
-      }),
-    ];
-    return words.some((w) => fold(w).includes(q));
-  });
+/**
+ * Sinergias da comp que estão de fato ativas: conta os campeões da comp com cada sinergia e só vale quem chega ao
+ * primeiro patamar (`breakpoints`: Map nome → patamares; sem o patamar conhecido, 2 campeões). Devolve
+ * [{name, count}] com a maior contagem primeiro. Um campeão solto com a sinergia não a ativa.
+ */
+export function activeTraits(comp, champions, breakpoints = new Map()) {
+  const counts = new Map();
+  for (const id of new Set(comp.units))
+    for (const t of new Set(champions.get(id)?.traits ?? []))
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+  return [...counts]
+    .filter(
+      ([name, n]) =>
+        n >=
+        Math.min(
+          ...(breakpoints.get(name)?.length ? breakpoints.get(name) : [2]),
+        ),
+    )
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
-/** Ordena: encaixe (posição no ranking do motor), colocação média ou top 4; empates pela colocação média. */
-export function sortComps(list, by = "fit") {
+/**
+ * Filtra por texto e estilo. O texto casa o nome de um campeão da comp ou uma SINERGIA ATIVA dela ("carrasco" traz as
+ * comps que de fato têm Carrasco ativo, não as que só têm a palavra no título nem as com um campeão solto da sinergia).
+ * Quando o texto é uma sinergia, a comp ganha `match: {name, count}` (a contagem para exibir). `champions` é Map
+ * id→{name,traits}; `breakpoints`, Map sinergia→patamares (catálogo).
+ */
+export function filterComps(
+  list,
+  { query = "", style = "" },
+  champions,
+  breakpoints = new Map(),
+) {
+  const q = fold(query).trim();
+  return list.reduce((out, c) => {
+    if (style && c.style.key !== style) return out;
+    if (!q) return (out.push(c), out);
+    const trait = activeTraits(c, champions, breakpoints).find((t) =>
+      fold(t.name).includes(q),
+    );
+    if (trait) return (out.push({ ...c, match: trait }), out);
+    if (c.units.some((id) => fold(champions.get(id)?.name ?? id).includes(q)))
+      out.push({ ...c, match: null });
+    return out;
+  }, []);
+}
+
+/** Ordena: score, encaixe (ordem final de escolha do motor), colocação média ou top 4; empates pela colocação média. */
+export function sortComps(list, by = "score") {
   const key =
     {
+      score: (c) => (Number.isFinite(c.fit?.score) ? -c.fit.score : Infinity),
       fit: (c) => c.fit?.rank ?? Infinity,
       items: (c) => c.fit?.adjustedAvg ?? c.avg,
       avg: (c) => c.avg,
@@ -98,9 +138,49 @@ export function sortComps(list, by = "fit") {
 }
 
 /**
+ * Substituições no automático, por partida: {idDaComp: [{out, in}]}. Valem quando aquela comp é a sugerida,
+ * sem fixá-la.
+ */
+export function swapStore(storage, name = "tft-compass-swaps") {
+  const read = () => {
+    try {
+      const v = JSON.parse(storage.getItem(name) ?? "null");
+      return v &&
+        typeof v.match === "string" &&
+        v.comps &&
+        typeof v.comps === "object"
+        ? v
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    all(matchKey) {
+      const v = read();
+      return matchKey !== "lobby" && v?.match === matchKey ? v.comps : {};
+    },
+    get(matchKey, compId) {
+      return this.all(matchKey)[compId] ?? [];
+    },
+    set(matchKey, compId, swaps) {
+      if (matchKey === "lobby") return;
+      // A comp editada vai para o fim (ordem = recência); o servidor aceita no máximo 10 comps.
+      const comps = { ...this.all(matchKey) };
+      delete comps[compId];
+      if (swaps.length) comps[compId] = swaps;
+      const kept = Object.fromEntries(Object.entries(comps).slice(-10));
+      try {
+        storage.setItem(name, JSON.stringify({ match: matchKey, comps: kept }));
+      } catch {}
+    },
+  };
+}
+
+/**
  * Comp fixada, guardada por partida, com as substituições aplicadas sobre ela (`swaps`: [{out, in}]).
- * Escolhida fora de partida ("lobby") vale para a próxima que começar; escolhida numa partida some quando
- * ela termina. `storage` segue a interface de localStorage.
+ * Vale só na partida em que foi escolhida: escolhida fora de partida ("lobby"), é descartada quando uma
+ * partida começa; escolhida numa partida, some quando ela termina. `storage` segue a interface de localStorage.
  */
 export function goalStore(storage, name = "tft-compass-goal") {
   const read = () => {
@@ -129,12 +209,10 @@ export function goalStore(storage, name = "tft-compass-goal") {
     get(matchKey) {
       const v = read();
       if (!v) return null;
+      // Vale só na partida (ou no lobby) em que foi escolhida: o automático volta na partida seguinte.
       if (v.match !== matchKey) {
-        if (v.match !== "lobby" || matchKey === "lobby") {
-          write(null);
-          return null;
-        }
-        write({ ...v, match: matchKey });
+        write(null);
+        return null;
       }
       return { id: v.id, swaps: v.swaps };
     },

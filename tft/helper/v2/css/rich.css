@@ -1,0 +1,146 @@
+@layer components {
+  /* Texto só para leitores de tela: o nome de campeão/item vira imagem e continua acessível. */
+  .sr {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Texto rico: imagem de campeão/item no lugar do nome, dentro de uma frase. */
+  .rt {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: -0.38em;
+    /* Sem altura própria: a imagem tem width/height definidos e não desloca a linha. */
+    & .pt {
+      --s: 18px;
+    }
+    /* Com a imagem, o nome só existe para leitor de tela; legenda e fallback mostram o texto. */
+    &:not(.has-legend):not(.is-text) .rt-name {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    &.has-legend .rt-name {
+      font-size: 0.92em;
+      font-weight: 600;
+    }
+    /* Sem ícone no catálogo, ou a imagem falhou ao carregar: marcador neutro com o nome em texto. */
+    &.is-text {
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+      vertical-align: baseline;
+      & .pt {
+        display: none;
+      }
+    }
+  }
+  .rt[data-kind="item"] .pt {
+    border-radius: 6px;
+  }
+
+  /* Próximo item: item principal = base = componentes, cada um com a situação. */
+  .nx-item {
+    display: inline-flex;
+    &[data-complete="1"] .pt {
+      box-shadow: inset 0 0 0 1px var(--go);
+    }
+  }
+  .nx-recipe {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    & .op {
+      color: var(--faint);
+      font-size: 11px;
+    }
+  }
+  .row > .op {
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .nx-part {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    border-radius: 8px;
+    /* Foco por teclado nas peças que forem botões no futuro; hoje são só leitura. */
+    &:focus-visible {
+      outline: 2px solid var(--text);
+      outline-offset: 2px;
+    }
+    & .pt {
+      border-radius: 8px;
+      box-shadow: none;
+    }
+    &[data-state="bank"] .pt {
+      outline: 2px solid var(--go);
+      outline-offset: 0;
+    }
+    &[data-state="equipped"] .pt {
+      outline: 2px solid var(--blue);
+      outline-offset: 0;
+    }
+    &[data-state="missing"] .pt {
+      opacity: 0.55;
+      outline: 2px dashed var(--amber);
+      outline-offset: 0;
+    }
+    &[data-state="unknown"] .pt {
+      opacity: 0.8;
+      outline: 1.5px dashed var(--muted);
+      outline-offset: 0;
+    }
+  }
+  .nx-mark {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--muted);
+    & .i {
+      width: 9px;
+      height: 9px;
+    }
+    .nx-part[data-state="bank"] & {
+      border-color: var(--go);
+      color: var(--go);
+    }
+    .nx-part[data-state="equipped"] & {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .nx-part[data-state="missing"] & {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+  }
+  .nx-note {
+    color: var(--amber);
+    font-size: 11px;
+    font-weight: 700;
+    &[data-tone="go"] {
+      color: var(--go);
+    }
+  }
+}

@@ -49,7 +49,33 @@
     }
   }
   .sub-others {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
     color: var(--faint) !important;
+  }
+  /* Alternativa de troca: retrato (anel na cor do custo) + nome. */
+  .sub-alt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px 3px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--surface), var(--bg) 20%);
+    color: var(--text, inherit);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    &:hover:not(:disabled) {
+      border-color: var(--blue);
+    }
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
   }
   .link {
     padding: 0;

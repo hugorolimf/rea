@@ -203,6 +203,41 @@ export const kindCounts = (items, kinds) =>
     .map((k) => ({ ...k, count: items.filter((i) => i.kind === k.key).length }))
     .filter((k) => k.count);
 
+/**
+ * Banco de itens lido da tela, como o painel o mostra: `bank` com todo espaço reconhecido (repetidos e consumíveis
+ * incluídos, na ordem do banco), `items` só o que a análise usa e `unknown` os espaços ocupados sem ícone
+ * reconhecido. Null enquanto a tela não foi lida (ou é uma partida revista, sem leitura).
+ */
+export function bankReading(screen) {
+  if (!screen || !Array.isArray(screen.items)) return null;
+  const bank = Array.isArray(screen.bank) ? screen.bank : screen.items,
+    unknown = Number.isInteger(screen.unknownItems) ? screen.unknownItems : 0;
+  return { bank, items: screen.items, unknown };
+}
+
+/**
+ * Texto sobre os espaços ocupados do banco que o leitor não reconheceu (null se não há). Eles NÃO entram na análise e nada é
+ * adivinhado; a chance de serem componentes é só a proporção de componentes entre os espaços reconhecidos (estimativa,
+ * dada quando há ao menos 3 reconhecidos).
+ */
+export function unknownNote(reading) {
+  if (!reading || !(reading.unknown > 0)) return null;
+  const n = reading.unknown,
+    known = reading.bank.filter((id) => typeof id === "string"),
+    components = known.filter((id) => id.startsWith('DA_Component_')).length,
+    head = `${n} ${n === 1 ? "espaço ocupado" : "espaços ocupados"} sem ícone reconhecido: fora da análise (nada é adivinhado).`;
+  return known.length >= 3
+    ? `${head} Estimativa: ${Math.round((components / known.length) * 100)}% dos reconhecidos são componentes.`
+    : head;
+}
+
+/** Mesmos itens, com as mesmas quantidades, em qualquer ordem. */
+export function sameItems(a, b) {
+  if (a.length !== b.length) return false;
+  const sorted = [...b].sort();
+  return [...a].sort().every((id, i) => id === sorted[i]);
+}
+
 /** Posição (0..1) de uma colocação média na régua 1º–8º, para o marcador do detalhe. */
 export const placeScale = (avg, lo = 3, hi = 6) =>
   Math.min(1, Math.max(0, (avg - lo) / (hi - lo)));

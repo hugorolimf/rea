@@ -13,8 +13,11 @@
 <link rel="stylesheet" href="/v2/css/history.css">
 <link rel="stylesheet" href="/v2/css/comps.css">
 <link rel="stylesheet" href="/v2/css/subs.css">
+<link rel="stylesheet" href="/v2/css/plan.css">
 <link rel="stylesheet" href="/v2/css/augs.css">
 <link rel="stylesheet" href="/v2/css/items.css">
+<link rel="stylesheet" href="/v2/css/ended.css">
+<link rel="stylesheet" href="/v2/css/rich.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -22,6 +25,7 @@
     <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 3 20h18L12 4Zm0 6v5m0 3v.01"/></symbol>
     <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8"/></symbol>
     <symbol id="i-roll" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></symbol>
@@ -55,12 +59,18 @@
   <main class="stage" id="stage" tabindex="-1">
     <header class="hud" id="hud" aria-label="Estado da partida"></header>
     <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+    <div class="contest" id="contest" role="status" hidden></div>
     <div class="deck">
       <div class="col">
         <section class="field" aria-labelledby="field-title">
-          <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span></div>
+          <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span><button type="button" class="copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
           <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
+          <div class="champ-items" id="champ-items" hidden></div>
           <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
+        </section>
+        <section class="plan-sec" id="plan-sec" aria-labelledby="plan-title" hidden>
+          <div class="section-head"><h2 id="plan-title">Plano</h2><span class="chips" id="plan-chips"></span></div>
+          <div id="plan-body"></div>
         </section>
         <section class="augs-sec" id="augs-sec" aria-labelledby="augs-title" hidden>
           <div class="section-head"><h2 id="augs-title">Aprimoramentos</h2></div>
@@ -73,6 +83,7 @@
         </section>
         <section class="items-sec" aria-labelledby="items-title">
           <div class="section-head"><h2 id="items-title">Itens</h2></div>
+          <div class="inventory" id="inventory" hidden></div>
           <ol class="steps" id="steps-items"></ol>
         </section>
       </div>
@@ -89,13 +100,13 @@
       <p>Os dados da partida anterior foram descartados. Aguardando o jogo publicar o primeiro tabuleiro, o que costuma levar de 1 a 4 minutos.</p>
       <p class="waiting-last" id="waiting-last"></p>
     </section>
+    <section class="ended" id="ended" aria-labelledby="ended-title"></section>
     <section class="comps" id="comps" aria-labelledby="comps-title" hidden>
       <div class="section-head"><h2 id="comps-title">Escolher comp</h2><span class="chips" id="comps-source"></span></div>
       <div class="comps-goal" id="comps-goal"></div>
       <div class="comps-filters" role="search">
         <input type="search" id="comps-q" placeholder="Campeão, sinergia ou nome" aria-label="Buscar comp por campeão, sinergia ou nome" autocomplete="off">
         <div class="seg" id="comps-style" role="group" aria-label="Estilo de nível"></div>
-        <div class="seg seg-tier" id="comps-tier" role="group" aria-label="Tier"></div>
         <label class="comps-sort">Ordenar <select id="comps-sort"></select></label>
       </div>
       <p class="comps-count" id="comps-count" aria-live="polite"></p>

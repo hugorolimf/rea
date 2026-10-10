@@ -104,3 +104,287 @@ test("peça que já é sua e não está sob pressão não recebe sugestão de tr
     assert.ok(!f?.suggest, `${name} já é sua: sem sugestão`);
   }
 });
+
+// Evidência: o motor escolhe os trunfos, pede ao explorer as tabelas e a colocação de cada tabuleiro candidato, e
+// decide pela colocação esperada. Aqui o "explorer" é sintético e responde a todas as perguntas, sem rede.
+const { filterKey } = await import("./evidence.mjs");
+const stats = {
+  base: [4.47, 1e6],
+  unit: {
+    "DA_18_Ahri|1": [5.52, 148650],
+    "DA_18_Ahri|2": [3.91, 354937],
+    "DA_18_Ahri|3": [1.47, 7826],
+    "DA_18_Ahri|2|3": [3.89, 265908],
+    "DA_18_Leona|2|0": [4.4, 50000],
+    "DA_18_Leona|2": [4.4, 50000],
+    "DA_18_Rammus|2|0": [4.3, 50000],
+    "DA_18_Rammus|2": [4.3, 50000],
+    "DA_18_Rengar|2": [5.59, 66269],
+    "DA_18_Rengar|3": [3.51, 98295],
+    "DA_18_Rengar|2|1": [5.6, 20000],
+    "DA_18_KhaZix|2": [5.16, 145930],
+    "DA_18_KhaZix|3": [3.44, 145551],
+    "DA_18_KhaZix|2|1": [5.2, 20000],
+  },
+  trait: {},
+};
+const baseOptions = (extra = {}) => ({
+  level: 8,
+  targetLevel: 8,
+  gold: 40,
+  bench: [],
+  inventory: [],
+  playerId: String(HERO),
+  metaComps: comps,
+  previewIds: [],
+  stats,
+  baseAvg: 4.47,
+  conditional: new Map(),
+  evidence: new Map(),
+  ...extra,
+});
+// Roda o ciclo do servidor: responde as tabelas condicionais e os totais até o motor não pedir mais nada.
+function settle(
+  snap,
+  opts,
+  { table = () => ({ units: {}, traits: {} }), total },
+) {
+  let a = analyze(snap, catalog, opts);
+  for (
+    let i = 0;
+    i < 6 && (a.conditionalRequests.length || a.evidenceRequests.length);
+    i++
+  ) {
+    for (const f of a.conditionalRequests) opts.conditional.set(f, table(f));
+    for (const f of a.evidenceRequests)
+      opts.evidence.set(filterKey(f), total(f));
+    a = analyze(snap, catalog, opts);
+  }
+  return a;
+}
+const ahriSnap = () =>
+  snapshot(
+    [
+      piece("Ahri", 2, [
+        "DA_JeweledGauntlet",
+        "DA_ArchangelsStaff",
+        "DA_BlueBuff",
+      ]),
+      piece("Leona", 2),
+      piece("Rammus", 2),
+    ],
+    [[piece("Shen", 2)], [piece("Vi", 2)]],
+  );
+
+test("evidência manda: o tabuleiro em volta do trunfo pronto vence quando os dados dizem que rende mais", () => {
+  const a = settle(ahriSnap(), baseOptions(), {
+    table: () => ({
+      units: { DA_18_Leona: [3.2, 20000], DA_18_Rammus: [3.3, 20000] },
+      traits: {},
+    }),
+    // Com a Ahri 2★ de 3 itens (medida exata), 3,0; sem ela, as comps de meta medem 4,2.
+    total: (f) =>
+      f.some((x) => x.includes("DA_18_Ahri-1_2_3") && !x.includes(","))
+        ? { avg: 3.0, games: 5000, top4: 70 }
+        : { avg: 4.2, games: 5000, top4: 55 },
+  });
+  assert.equal(
+    a.assets[0].id,
+    "DA_18_Ahri",
+    "Ahri 2★ com 3 itens é trunfo pronto",
+  );
+  const top = a.recommendations[0];
+  assert.ok(
+    top.board.some((u) => u.name === "Ahri"),
+    `${top.title} tem a Ahri`,
+  );
+  assert.ok(
+    top.evidence.basis[0].startsWith("Ahri 2★ 3 itens"),
+    top.evidence.basis.join(" + "),
+  );
+});
+
+test("evidência: tabuleiro medido melhor mas difícil de montar é aposta e não passa à frente", () => {
+  const owned = ["DA_18_Ahri", "DA_18_Leona", "DA_18_Rammus"];
+  const a = settle(
+    ahriSnap(),
+    baseOptions({ gold: 0, level: 4, targetLevel: 4 }),
+    {
+      // Toda pergunta que exige peça que você não tem mede 2,0 (ótima); só com as suas, 3,5.
+      total: (f) =>
+        f.every(
+          (x) =>
+            !x.startsWith("unit_tier_numitems_unique=") ||
+            owned.some((id) => x.includes(`${id}-1_`)),
+        )
+          ? { avg: 3.5, games: 5000, top4: 60 }
+          : { avg: 2.0, games: 5000, top4: 90 },
+    },
+  );
+  for (const r of a.recommendations)
+    assert.ok(
+      r.evidence.expected >= 2.0 + (1 - r.evidence.chance) * 1.5 - 0.01,
+      `${r.title}: ${r.evidence.expected} × chance ${r.evidence.chance}`,
+    );
+  const top = a.recommendations[0];
+  assert.ok(
+    !top.evidence.bet,
+    `${top.title} (chance ${top.evidence.chance}) não é aposta`,
+  );
+});
+
+test("regra do Rival: sem o aprimoramento os dois rivais não ficam juntos; com Aminimigos, o plano usa os dois", () => {
+  const snap = () =>
+    snapshot(
+      [
+        piece("Rengar", 2, ["DA_Bloodthirster"]),
+        piece("Kha'Zix", 2, ["DA_JeweledGauntlet"]),
+        piece("Amumu", 1),
+        piece("Vi", 1),
+      ],
+      [[piece("Shen", 2)], [piece("Leona", 2)]],
+    );
+  const total = () => ({ avg: 4.0, games: 5000, top4: 55 });
+  const rivals = (r) =>
+    r.board.filter((u) => u.name === "Rengar" || u.name === "Kha'Zix").length;
+  const plain = settle(snap(), baseOptions({ level: 7, targetLevel: 7 }), {
+    total,
+  });
+  // "Seu tabuleiro atual" já tem as duas peças (é o que você montou) e agora sobe pelo que você tem; a regra vale para o que o motor escolhe.
+  for (const r of plain.recommendations.filter(
+    (x) => x.title !== "Seu tabuleiro atual",
+  ))
+    assert.ok(
+      rivals(r) < 2,
+      `${r.title} junta os dois rivais sem o aprimoramento`,
+    );
+  const aug = settle(
+    snap(),
+    baseOptions({ level: 7, targetLevel: 7, augmentTraits: ["Rival"] }),
+    {
+      // Com o Aminimigos, os tabuleiros com Rival 3 (os dois rivais) medem melhor.
+      total: (f) =>
+        f.includes("trait=DA_18_Rival_3")
+          ? { avg: 3.4, games: 5000, top4: 68 }
+          : { avg: 4.0, games: 5000, top4: 55 },
+    },
+  );
+  assert.deepEqual(
+    new Set(aug.assets.map((x) => x.id)),
+    new Set(["DA_18_Rengar", "DA_18_KhaZix"]),
+    "os trunfos são as peças do aprimoramento",
+  );
+  assert.ok(
+    aug.assets.every((x) => x.stars === 3),
+    "Rengar e Kha'Zix miram 3★ (melhor colocação esperada)",
+  );
+  assert.equal(
+    rivals(aug.recommendations[0]),
+    2,
+    `${aug.recommendations[0].title} usa os dois rivais`,
+  );
+});
+
+test("confiança: no estágio 4 o plano em andamento só é trocado por vantagem acima da incerteza + custo de trocar", () => {
+  const sticky = {
+    id: "free:plano",
+    units: ["DA_18_Ahri", "DA_18_Leona", "DA_18_Rammus", "DA_Taric18"],
+    carry: "DA_18_Ahri",
+    title: "Plano em andamento",
+  };
+  const run = (others) =>
+    settle(
+      ahriSnap(),
+      baseOptions({
+        sticky,
+        stickyCompId: sticky.id,
+        stage: { stage: 4, round: 2 },
+      }),
+      {
+        // Pergunta com Taric = o plano em andamento (3,5); qualquer outra = as alternativas.
+        total: (f) =>
+          f.some((x) => x.includes("DA_Taric18-1_"))
+            ? { avg: 3.5, games: 5000, top4: 60 }
+            : { avg: others, games: 5000, top4: 62 },
+      },
+    );
+  const close = run(3.4).recommendations[0];
+  assert.equal(
+    close.title,
+    "Plano em andamento",
+    "0,1 melhor não paga a troca no estágio 4",
+  );
+  assert.equal(close.evidence.switch?.kept, true);
+  const far = run(1.6).recommendations[0];
+  assert.notEqual(
+    far.title,
+    "Plano em andamento",
+    "quase 2 colocações melhor pagam a troca",
+  );
+  assert.equal(far.evidence.switch?.kept, false);
+});
+
+test("score das comps: chance de montar vem do nível de agora; disputa dos rivais e peças suas mexem no score", () => {
+  const total = () => ({ avg: 4.0, games: 5000, top4: 55 });
+  const at = (level) =>
+    settle(ahriSnap(), baseOptions({ level, targetLevel: level }), { total })
+      .compRanking;
+  const low = at(5),
+    high = at(9);
+  assert.ok(
+    low.length > 5 &&
+      low.every(
+        (r) => r.score >= 0 && r.score <= 100 && r.chance >= 0 && r.chance <= 1,
+      ),
+  );
+  assert.equal(low.filter((r) => r.best).length, 1, "só uma é a melhor");
+  assert.equal(low[0].best, true, "a melhor é a primeira do ranking");
+  assert.ok(
+    low.every((r) => r.level === 5) && high.every((r) => r.level === 9),
+    "o nível usado vai no resultado",
+  );
+  // Mais nível, mais chance de achar peças caras: o total das chances sobe.
+  const sum = (list) => list.reduce((n, r) => n + r.chance, 0);
+  assert.ok(
+    sum(high) > sum(low),
+    `chance total no 9 (${sum(high)}) maior que no 5 (${sum(low)})`,
+  );
+});
+
+test("score das comps: disputa alta desconta o score", () => {
+  const total = () => ({ avg: 4.0, games: 5000, top4: 55 });
+  const quiet = settle(ahriSnap(), baseOptions(), { total }).compRanking,
+    // Os rivais passam a jogar as mesmas peças (Ahri, Leona, Rammus) que a comp pede.
+    busy = settle(
+      snapshot(
+        [
+          piece("Ahri", 2, [
+            "DA_JeweledGauntlet",
+            "DA_ArchangelsStaff",
+            "DA_BlueBuff",
+          ]),
+          piece("Leona", 2),
+          piece("Rammus", 2),
+        ],
+        [
+          [
+            piece("Rammus", 2),
+            piece("Leona", 2),
+            piece("Alistar", 2),
+            piece("Morgana", 2),
+          ],
+          [piece("Rammus", 2), piece("Veigar", 2), piece("Teemo", 2)],
+        ],
+      ),
+      baseOptions(),
+      { total },
+    ).compRanking;
+  const byId = new Map(quiet.map((r) => [r.id, r]));
+  const worse = busy.filter((r) => r.dispute > (byId.get(r.id)?.dispute ?? 0));
+  assert.ok(worse.length > 0, "há comps mais disputadas");
+  for (const r of worse)
+    assert.ok(
+      r.contestFactor < (byId.get(r.id)?.contestFactor ?? 1),
+      `${r.id} perde score com mais disputa`,
+    );
+});

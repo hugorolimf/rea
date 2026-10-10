@@ -1,12 +1,13 @@
 import { esc } from "../dom.js";
+import { compItems } from "../comp-items.js";
 import {
   SORTS,
   STYLES,
-  TIERS,
   disputeLevel,
   filterComps,
   itemUpgrade,
   mergeComps,
+  scoreOf,
   sortComps,
 } from "../comps.js";
 import {
@@ -16,6 +17,7 @@ import {
   itemPortrait,
   portrait,
 } from "./glyphs.js";
+import { nameChip, richText } from "./rich-text.js";
 
 const PREFS = "tft-compass-comps-filters";
 const pct = (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : "—");
@@ -29,17 +31,14 @@ function loadPrefs() {
       return {
         query: "",
         style: STYLES.some((s) => s.key === p.style) ? p.style : "",
-        tiers: Array.isArray(p.tiers)
-          ? p.tiers.filter((t) => TIERS.includes(t))
-          : [],
-        sort: SORTS.some((s) => s.key === p.sort) ? p.sort : "fit",
+        sort: SORTS.some((s) => s.key === p.sort) ? p.sort : "score",
       };
   } catch {}
-  return { query: "", style: "", tiers: [], sort: "fit" };
+  return { query: "", style: "", sort: "score" };
 }
-function savePrefs({ style, tiers, sort }) {
+function savePrefs({ style, sort }) {
   try {
-    localStorage.setItem(PREFS, JSON.stringify({ style, tiers, sort }));
+    localStorage.setItem(PREFS, JSON.stringify({ style, sort }));
   } catch {}
 }
 
@@ -81,31 +80,96 @@ function details(c) {
     })
     .join("");
   const stars3 = (c.stars3 ?? [])
-    .map((id) => esc(champions.get(id)?.name ?? id))
-    .join(", ");
+    .map((id) =>
+      nameChip("champion", id, champions.get(id)?.name ?? id, { size: 24 }),
+    )
+    .join(" ");
   return `${rows ? `<ul class="comp-builds">${rows}</ul><p class="comp-build-note">A fonte publica só a melhor build de cada campeão; a variação vem inflada e o motor a usa com desconto.</p>` : '<p class="muted">Sem builds publicadas para esta comp.</p>'}${stars3 ? `<p class="comp-3star"><b>3★:</b> ${stars3}</p>` : ""}`;
 }
 
-function card(c, { goalId, open }) {
+const BANK_TEXT = {
+  on: () => "equipado",
+  ready: () => "pronto no banco",
+  radiant: () => "radiante no banco",
+  craft: () => "monta agora",
+  half: (r) => `falta ${r.missing.map((id) => itemName(id)).join(" + ")}`,
+  missing: (r) => (r.recipe.length ? "falta montar" : "não está no banco"),
+};
+const bankItem = (r, { unit, champions, trait = null }) => {
+  const parts =
+      r.recipe.length && ["craft", "half", "missing"].includes(r.state)
+        ? `<span class="cb-recipe">${r.recipe.map((id) => `<span class="${r.state === "missing" || r.missing.includes(id) ? "miss" : "got"}">${itemPortrait({ id }, { size: 18 })}</span>`).join("")}</span>`
+        : "",
+    text = r.state === "unread" ? "" : BANK_TEXT[r.state](r);
+  return `<li${trait ? ` class="cb-emblem" data-trait="${esc(trait)}"` : ""} data-state="${r.state}" title="${esc(`${itemName(r.want ?? r.id)}${text ? " · " + text : ""}`)}">${unit ? portrait(unit, champions.get(unit)?.name ?? unit, { size: 20 }) : ""}${itemPortrait({ id: r.want ?? r.id }, { size: 30 })}${parts}${text ? `<small>${richText(text, { size: 16 })}</small>` : ""}${trait ? `<em>${esc(trait)}</em>` : ""}</li>`;
+};
+
+/**
+ * Itens do banco que combinam com o carry da comp (ver comp-items.js): a build publicada do carry com o que está pronto,
+ * equipado, monta agora ou falta; emblemas que dão ao carry uma sinergia da comp; peças com algo do banco; e o que ficou de fora.
+ * `r` é o resultado de `compItems`; sem leitura do banco, mostra só a build do carry.
+ */
+export function compItemsBlock(r, champions = getCatalog().champions) {
+  const [carry, ...others] = r.units;
+  if (!carry) return "";
+  const rows = (u) =>
+      u.rows.map((row) =>
+        bankItem(r.read ? row : { ...row, state: "unread" }, {
+          unit: null,
+          champions,
+        }),
+      ),
+    emblems = r.emblems.map((e) =>
+      bankItem(e, { unit: null, champions, trait: e.trait }),
+    ),
+    more = others.filter(
+      (u) => r.read && u.rows.some((x) => x.state !== "missing"),
+    ),
+    unused = r.unused.length
+      ? `<span class="cb-unused" title="${esc(r.unused.map((u) => `${itemName(u.id)}: ${u.reason}`).join("\n"))}">${r.unused.length} do banco sem uso nesta comp</span>`
+      : "",
+    left = r.excluded.length
+      ? `<span class="cb-unused" title="${esc(r.excluded.map(itemName).join(", "))}">${r.excluded.length} consumível${r.excluded.length === 1 ? "" : "is"} fora da lista (não é para montar)</span>`
+      : "";
+  return `<div class="comp-bank" data-read="${r.read}">
+    <p class="cb-head">${glyph("items")}<span>${r.read ? "Seus itens no carry" : "Itens ideais do carry (banco não lido)"}</span>${portrait(carry.unit, champions.get(carry.unit)?.name ?? carry.unit, { size: 22 })}</p>
+    <ul class="cb-list" aria-label="Itens do carry">${rows(carry).join("")}${emblems.join("")}</ul>
+    ${more.map((u) => `<ul class="cb-list cb-other" aria-label="Itens de ${esc(champions.get(u.unit)?.name ?? u.unit)}">${u.rows.map((row) => bankItem(row, { unit: u.unit, champions })).join("")}</ul>`).join("")}
+    ${unused || left ? `<p class="cb-foot">${unused}${left}</p>` : ""}
+  </div>`;
+}
+
+function card(c, { goalId, open, items }) {
   const pinned = c.id === goalId,
     f = c.fit,
     dispute = disputeLevel(f?.dispute),
-    up = itemUpgrade(c);
+    up = itemUpgrade(c),
+    sc = scoreOf(c);
   const { champions } = getCatalog();
+  // Itens do banco que combinam com o carry: sempre que a comp tem build publicada do carry, com ou sem leitura.
+  const bank = compItemsBlock(compItems(c, items), champions);
   // Com seus itens: nova média esperada e de onde vem (campeão e itens da build que você tem ou monta).
   const edge = up
-    ? `<p class="comp-edge">${glyph("items")}<span>Com seus itens: média <b>${num(up.avg)}</b> (${signed(-up.gain)})${up.tierUp ? ` · tier <span class="tier tier-${esc(up.to)}">${esc(up.to)}</span>` : ""}</span><small>${f.itemGains
+    ? `<p class="comp-edge">${glyph("items")}<span>Com seus itens: média <b>${num(up.avg)}</b> (${signed(-up.gain)})</span><small>${f.itemGains
         .map(
           (g) =>
-            `${esc(champions.get(g.unit)?.name ?? g.unit)}: ${[
-              ...g.ready.map((i) => esc(itemName(i))),
-              ...g.craft.map((i) => `${esc(itemName(i))} (montar)`),
-            ].join(", ")}`,
+            `${nameChip("champion", g.unit, champions.get(g.unit)?.name ?? g.unit, { size: 18 })}: ${[
+              ...g.ready.map((i) =>
+                nameChip("item", i, itemName(i), { size: 18 }),
+              ),
+              ...g.craft.map(
+                (i) =>
+                  `${nameChip("item", i, itemName(i), { size: 18 })} (montar)`,
+              ),
+            ].join(" ")}`,
         )
         .join(" · ")}</small></p>`
     : "";
   const fit = f
     ? [
+        sc?.chance != null
+          ? `<span class="chance" title="Chance de achar as peças principais que faltam com o seu nível${sc.level ? " " + sc.level : ""} e as lojas ao alcance${sc.chancePlan != null ? "; no nível alvo: " + sc.chancePlan + "%" : ""}">chance de montar <b>${sc.chance}%</b></span>`
+          : "",
         `<span><b>${f.owned}/${f.size}</b> já em campo</span>`,
         f.carryWanted
           ? `<span>itens do carry <b>${Math.floor(f.carryItems)}/${f.carryWanted}</b></span>`
@@ -119,15 +183,17 @@ function card(c, { goalId, open }) {
     : '<span class="muted">Encaixe indisponível nesta leitura</span>';
   return `<li class="comp" data-id="${esc(c.id)}"${pinned ? ' data-pinned=""' : ""}>
     <header class="comp-head">
-      <span class="tier tier-${esc(c.tier)}" title="Tier ${esc(c.tier)} (faixa deste helper sobre a colocação média)">${esc(c.tier)}</span>${up?.tierUp ? `<span class="tier-up" title="Tier com os seus itens">→ <span class="tier tier-${esc(up.to)}">${esc(up.to)}</span></span>` : ""}
-      <h3>${esc(c.title)}</h3>
+      ${sc ? `<span class="score" data-band="${sc.band}" title="Score 0-100 para a sua partida: itens que você tem, o que já tem em campo (com a chance de subir de estrela), força da comp, chance de montar no seu nível${sc.level ? " " + sc.level : ""}, loja e disputa. Disputa alta reduz o score.">${sc.score}</span>` : '<span class="score" data-band="none" title="O score aparece com uma leitura do tabuleiro">—</span>'}
+      <h3>${richText(c.title, { size: 22 })}</h3>
       <span class="chip">${esc(c.style.label)}</span>
-      ${f?.suggested ? '<span class="chip chip-go" title="Entre as 3 sugeridas para esta partida">Sugerida</span>' : ""}
+      ${c.match ? `<span class="chip" title="Sinergia ativa nesta comp">${esc(c.match.name)} ×${c.match.count}</span>` : ""}
+      ${sc?.best ? '<span class="chip chip-best" title="Maior score para você agora">Melhor comp</span>' : f?.suggested ? '<span class="chip chip-go" title="Entre as 3 sugeridas para esta partida">Sugerida</span>' : ""}
       ${pinned ? `<span class="chip chip-amber">${glyph("flag")} Seguindo</span>` : ""}
     </header>
     <ul class="comp-units">${units(c)}</ul>
     <p class="comp-stats"><span>média <b>${c.avg.toFixed(2)}</b></span><span>top 4 <b>${pct(c.top4)}</b></span><span>1º <b>${pct(c.win)}</b></span><span>${thousands(c.games)} partidas</span></p>
     <p class="comp-fit">${fit}</p>
+    ${bank}
     ${edge}
     <div class="comp-actions">
       ${pinned ? '<button type="button" class="btn" data-release>Liberar</button>' : `<button type="button" class="btn btn-go" data-pick="${esc(c.id)}">Seguir esta comp</button>`}
@@ -138,7 +204,8 @@ function card(c, { goalId, open }) {
 
 /**
  * Tela de seleção de comp. `onPick(id)` fixa uma comp; `onRelease()` volta às sugestões automáticas.
- * `update({comps, ranking, ownedIds, goalId, source})` redesenha só quando algo visível mudou.
+ * `update({comps, ranking, autoTitle, ownedIds, bank, equipped, goalId, source})` redesenha só quando algo visível mudou;
+ * `bank` é o banco de itens lido da tela (null sem leitura) e `equipped`, {campeão: itens} do seu tabuleiro.
  */
 export function mountComps(root, { onPick, onRelease }) {
   const $ = (id) => root.querySelector(`#${id}`),
@@ -150,10 +217,6 @@ export function mountComps(root, { onPick, onRelease }) {
   $("comps-style").innerHTML = STYLES.map(
     (s) =>
       `<button type="button" data-style="${s.key}" aria-pressed="${s.key === prefs.style}">${s.label}</button>`,
-  ).join("");
-  $("comps-tier").innerHTML = TIERS.map(
-    (t) =>
-      `<button type="button" data-tier="${t}" aria-pressed="${prefs.tiers.includes(t)}"><span class="tier tier-${t}">${t}</span></button>`,
   ).join("");
   $("comps-sort").innerHTML = SORTS.map(
     (s) =>
@@ -181,15 +244,6 @@ export function mountComps(root, { onPick, onRelease }) {
       x.setAttribute("aria-pressed", String(x === b));
     changed();
   });
-  $("comps-tier").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-tier]");
-    if (!b) return;
-    const t = b.dataset.tier,
-      on = !prefs.tiers.includes(t);
-    prefs.tiers = on ? [...prefs.tiers, t] : prefs.tiers.filter((x) => x !== t);
-    b.setAttribute("aria-pressed", String(on));
-    changed();
-  });
   $("comps-sort").addEventListener("change", (e) => {
     prefs.sort = e.target.value;
     changed();
@@ -210,20 +264,32 @@ export function mountComps(root, { onPick, onRelease }) {
 
   function draw() {
     if (!data) return;
-    const { champions } = getCatalog(),
+    const { champions, traits, items } = getCatalog(),
+      itemsCtx = {
+        bank: data.bank ?? null,
+        equipped: data.equipped ?? {},
+        items: items ?? new Map(),
+        champions,
+        breakpoints: traits,
+      },
       all = mergeComps(data.comps, data.ranking).map((c) => ({
         ...c,
         ownedIds: data.ownedIds,
       })),
-      list = sortComps(filterComps(all, prefs, champions), prefs.sort),
+      list = sortComps(filterComps(all, prefs, champions, traits), prefs.sort),
       goal = all.find((c) => c.id === data.goalId) ?? null,
-      auto = sortComps(all.filter((c) => c.fit?.suggested))[0] ?? null;
+      // Título do plano que o Ao vivo mostra (vem de main.js), não deduzido do ranking.
+      auto = data.autoTitle ?? null;
     const key = JSON.stringify([
       list.map((c) => [c.id, c.fit]),
       data.goalId,
+      auto,
       data.swapCount,
       data.ownedIds,
+      data.bank,
+      data.equipped,
       data.source,
+      data.lobby,
     ]);
     if (key === drawn) return;
     drawn = key;
@@ -231,14 +297,20 @@ export function mountComps(root, { onPick, onRelease }) {
       ? `<span class="chip" title="Estatísticas de partidas publicadas">${esc(data.source)}</span>`
       : "";
     $("comps-goal").innerHTML = goal
-      ? `${glyph("flag")}<p>Seguindo <b>${esc(goal.title)}</b>${data.swapCount ? ` com ${data.swapCount} substituição(ões)` : ""}. O Ao vivo, as trocas e a economia usam esta comp até você liberar ou a partida acabar.</p><button type="button" class="btn" data-release>Liberar</button>`
-      : `${glyph("roll")}<p>Automático: o Ao vivo segue a melhor sugestão da leitura${auto ? ` (agora <b>${esc(auto.title)}</b>)` : ""}, que pode mudar a cada leitura. Fixe uma comp para manter a direção.</p>`;
+      ? `${glyph("flag")}<p>Seguindo <b>${richText(goal.title)}</b>${data.swapCount ? ` com ${data.swapCount} substituição(ões)` : ""}. O Ao vivo, as trocas e a economia usam esta comp ${data.lobby ? "até você liberar ou a próxima partida começar (a escolha do lobby não passa para a partida)" : "até você liberar ou a partida acabar"}.</p><button type="button" class="btn" data-release>Liberar</button>`
+      : `${glyph("roll")}<p>Automático: o Ao vivo segue a melhor sugestão da leitura${auto ? ` (agora <b>${richText(auto)}</b>)` : ""}, que pode mudar a cada leitura. Fixe uma comp para manter a direção.</p>`;
     $("comps-goal").dataset.pinned = goal ? "1" : "0";
     $("comps-count").textContent =
       `${list.length} de ${all.length} comps${data.ranking.length ? "" : " · encaixe aparece com uma leitura do tabuleiro"}`;
     $("comps-grid").innerHTML = list.length
       ? list
-          .map((c) => card(c, { goalId: data.goalId, open: openIds.has(c.id) }))
+          .map((c) =>
+            card(c, {
+              goalId: data.goalId,
+              open: openIds.has(c.id),
+              items: itemsCtx,
+            }),
+          )
           .join("")
       : '<li class="comps-empty">Nenhuma comp com esses filtros.</li>';
   }

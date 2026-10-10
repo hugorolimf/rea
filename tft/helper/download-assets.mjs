@@ -13,7 +13,8 @@ const items = catalog.items.filter(
     i.icon &&
     (i.apiName.startsWith("DA_Component_") ||
       i.composition?.length === 2 ||
-      /Radiant|ThiefsGloves|Consumable_|Reforger|Artifact|Emblem|Potion/.test(
+      // Tudo o que pode ocupar o banco de itens: o leitor de tela compara cada espaço com estes ícones.
+      /Radiant|ThiefsGloves|Consumable_|Reforger|Artifact|Emblem|Potion|Booster|Masterwork|LuckyItemChest/.test(
         i.apiName,
       )),
 );

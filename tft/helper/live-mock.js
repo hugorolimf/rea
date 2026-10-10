@@ -366,7 +366,8 @@
       rollAt = o.rollAt ?? 8,
       curveAt = rolling ? level : Math.max(level, rollAt);
     // Pool do mock: 12 campeões de custo 4 (~96 cópias livres) e 13 de custo 1 (~360).
-    const target = (ref, cost, own, goal, enemy, free, denom) => {
+    const rollBudget = rolling ? spend : Math.max(0, (cash ?? 0) - 50);
+    const target = (ref, cost, own, goal, enemy, free, denom, extra = {}) => {
       const exact = E.closeCurve({
         level: curveAt,
         cost,
@@ -375,25 +376,65 @@
         free,
         denom,
       });
+      const slot = E.slotChance(curveAt, cost, free, denom),
+        chance =
+          rollBudget >= 2
+            ? exact[Math.min(rollBudget, exact.length - 1)]
+            : null;
       return {
         id: ref.id,
         name: ref.name,
         cost,
+        stars: goal === 9 ? 2 : 1,
         goalStars: goal === 9 ? 3 : 2,
+        kind: "upgrade",
         own,
         goal,
+        need: goal - own,
+        items: 0,
+        carry: false,
+        core: false,
+        inPlan: true,
+        onBoard: true,
+        inBench: false,
         left: free,
+        upper: free,
         enemy,
-        chancePerSlot: E.slotChance(curveAt, cost, free, denom),
-        chancePerShop: 1 - (1 - E.slotChance(curveAt, cost, free, denom)) ** 5,
-        chanceInRoll: rolling ? exact[Math.min(spend, exact.length - 1)] : null,
-        curve:
-          own >= goal
-            ? null
-            : E.curveSummary(exact, curveAt, rolling ? spend : null),
-        done: own >= goal,
+        hidden: 0,
+        contested: false,
+        chancePerSlot: slot,
+        chancePerShop: 1 - (1 - slot) ** 5,
+        chance,
+        gold50: E.goldFor(exact, 0.5),
+        gain: null,
+        value: 1,
+        status: own >= goal ? "longe" : "ok",
+        why: null,
+        whyText: null,
+        substitute: null,
+        shop: null,
+        _curve: exact,
+        ...extra,
       };
     };
+    const rows = [
+      target(APH, 4, 1, 3, 2, 7, 96, { carry: true, core: true, items: 3 }),
+      target(VAR, 1, 3, 9, 0, 24, 360, { status: "longe" }),
+      target({ id: "DA_18_Rakan", name: "Rakan" }, 4, 2, 3, 6, 2, 96, {
+        status: "inviavel",
+        chance: null,
+        gold50: null,
+        left: 0,
+        upper: 2,
+        why: "bancos",
+        whyText:
+          "faltam 1; só ~2 livres (o resto deve estar no banco dos rivais)",
+        substitute: { id: "DA_18_Nami", name: "Nami", cost: 4, owned: false },
+        hidden: 3,
+      }),
+    ];
+    const curve = rows[0]._curve;
+    for (const r of rows) delete r._curve;
     const projection = E.projectGold(keep, { stage, streak, rounds: 4 });
     const max = rolling ? (o.max ?? spend) : null;
     const text = {
@@ -442,7 +483,7 @@
         ...text.steps,
       ],
       reasons: [
-        "Aphelios: 1/3 cópias para 2★, 7 livres na pool, 2 com rivais.",
+        "Aphelios: 1/3 cópias para 2★, 7 fora dos tabuleiros, 2 com rivais.",
         "Força da sua board: 3º de 8 no lobby (41 contra mediana 38).",
         ...(streak
           ? [
@@ -532,10 +573,46 @@
             ? `ROLAR ${spend}g · até ${shops} lojas · parar em ${keep}g`
             : "não rolar agora",
           text: "Este é o nível de rolagem da comp.",
-          targets: [
-            target(APH, 4, 1, 3, 2, 7, 96),
-            target(VAR, 1, 3, 3, 0, 24, 360),
-          ],
+          call: {
+            kind: rolling ? "go" : "hold",
+            title: rolling ? "Vale rolar" : "Não vale rolar agora",
+            go: rolling,
+            reason: rolling
+              ? `${Math.round(rows[0].chance * 100)}% de evoluir alguma peça com ${spend}g; Aphelios 2★ ${Math.round(rows[0].chance * 100)}%.`
+              : "Só 32% de evoluir alguma peça com 24g; passa de 50% com ~40g.",
+            budget: rollBudget,
+            any: rows[0].chance,
+            gain: 3.4,
+            main: { id: APH.id, name: APH.name, stars: 2 },
+            mainChance: rows[0].chance,
+            need: 40,
+            at: null,
+            changed: null,
+          },
+          interest: null,
+          shop: shopSpend
+            ? [
+                {
+                  id: VAR.id,
+                  name: VAR.name,
+                  cost: 1,
+                  slots: [5],
+                  buy: shopSpend,
+                  gold: shopSpend,
+                  action: "comprar",
+                  closes: null,
+                },
+              ]
+            : [],
+          curve: {
+            team: false,
+            name: APH.name,
+            stars: 2,
+            summary: E.curveSummary(curve, curveAt, rolling ? spend : null),
+            at: rolling ? curve[Math.min(spend, curve.length - 1)] : null,
+          },
+          total: rows.length,
+          targets: rows,
         },
       },
     };

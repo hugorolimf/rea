@@ -28,10 +28,10 @@ const chip = (t) => {
 };
 
 function row(r) {
-  const { champions, traits } = getCatalog(),
+  const { champions, traits, emblems } = getCatalog(),
     tone = placeTone(r.placement),
     units = sortUnits(r.units ?? [], champions),
-    syn = activeTraits(units, champions, traits),
+    syn = activeTraits(units, champions, traits, 4, emblems),
     meta = [
       queueLabel(r.queue),
       formatDuration(r.durationSeconds),
@@ -39,10 +39,10 @@ function row(r) {
     ]
       .filter(Boolean)
       .join(" · ");
-  return `<li class="match" data-tone="${tone}">
+  return `<li class="match" data-tone="${tone}" data-game="${esc(r.gameId)}" tabindex="0" role="link" title="Rever esta partida no Ao vivo">
     <span class="place" title="${r.placement >= 1 ? `${r.placement}º lugar` : "Colocação não observada"}">${place(r.placement)}</span>
     <div class="match-body">
-      <div class="match-head"><small>${esc(meta)}</small>${syn.map(chip).join("")}</div>
+      <div class="match-head"><small>${esc(meta)}</small>${(r.augments ?? []).map((a) => `<span class="chip aug" title="Aprimoramento marcado na partida">${esc(a.name)}</span>`).join("")}${syn.map(chip).join("")}</div>
       <div class="match-units">${
         units
           .map((u) => {
@@ -59,6 +59,12 @@ function row(r) {
 export function mountHistory(root) {
   const summary = root.querySelector("#history-summary"),
     list = root.querySelector("#history-list");
+  const open = (e) => {
+    const li = e.target.closest("[data-game]");
+    if (li) location.hash = `#partida/${li.dataset.game}`;
+  };
+  list.addEventListener("click", open);
+  list.addEventListener("keydown", (e) => e.key === "Enter" && open(e));
   return {
     update(records) {
       const s = summarize(records);

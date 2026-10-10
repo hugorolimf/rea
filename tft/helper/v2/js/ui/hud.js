@@ -1,6 +1,7 @@
-import { el, svg, setVars } from "../dom.js";
+import { el, svg, setVars, esc } from "../dom.js";
 import { clamp, polar } from "../math.js";
 import { INTEREST_CAP, INTEREST_STEP } from "../model.js";
+import { nameChip } from "./rich-text.js";
 
 const R = 26,
   GAUGE_START = 135,
@@ -162,6 +163,8 @@ export function mountHud(root) {
               : "";
       });
       stageNode.dataset.live = status.live ? "1" : "0";
+      // Estado da fonte GEP, discreto: só no tooltip do indicador (ativo/obsoleto/ausente/esquema desconhecido).
+      liveText.title = status.gep?.label ?? "";
       liveText.textContent = status.live
         ? "ao vivo"
         : status.waiting
@@ -172,11 +175,22 @@ export function mountHud(root) {
               : "encerrada"
             : "snapshot";
       /* Vida */
-      setNum(hpNum, hero.hp);
+      // O jogo grava vida negativa de quem foi eliminado; na tela, eliminado é 0.
+      setNum(hpNum, hero.hp == null ? null : Math.max(0, hero.hp));
       setVars(hpBar, { "--p": hero.hp == null ? 0 : clamp(hero.hp / 100) });
       hpBar.dataset.low = hero.hp != null && hero.hp <= 30 ? "1" : "0";
       /* Nível */
-      lvlNum.textContent = hero.level ?? "—";
+      // "≥N" = piso derivado do XP passivo e "~N" = estimado pelo tabuleiro: nenhum dos dois é leitura.
+      lvlNum.textContent =
+        hero.level == null
+          ? "—"
+          : hero.levelSource === "derivado"
+            ? `≥${hero.level}`
+            : hero.levelSource === "estimado"
+              ? `~${hero.level}`
+              : hero.level;
+      lvlWrap.dataset.stale =
+        hero.levelStale || hero.levelSource !== "tela" ? "1" : "0";
       const xp = hero.xp,
         cost = plan?.panel?.level?.cost,
         next = plan?.panel?.level?.go;
@@ -185,9 +199,22 @@ export function mountHud(root) {
       xpText.textContent = xp
         ? `${xp.have}/${xp.total} XP${cost != null ? ` · ${cost}g` : ""}`
         : "XP não lido";
-      lvlWrap.title = `Nível ${hero.level ?? "?"} (${hero.levelSource})`;
+      lvlWrap.title = `Nível ${hero.level ?? "?"} (${
+        hero.levelFrom === "gep"
+          ? "lido do GEP (TFTAcademy), sem leitura de tela"
+          : ({
+              tela: "lido da tela",
+              derivado: "mínimo derivado do XP passivo: não foi lido",
+              estimado: "estimado pelo tabuleiro: não foi lido",
+            }[hero.levelSource] ?? hero.levelSource)
+      }${hero.levelStale ? "; leitura velha ou em conflito com o XP" : ""}${
+        hero.levelUsed != null && hero.levelUsed !== hero.level
+          ? `; a análise usou o nível ${hero.levelUsed}`
+          : ""
+      })`;
       /* Ouro */
       setNum(goldNum, hero.gold);
+      goldWrap.dataset.stale = hero.goldStale ? "1" : "0";
       setVars(goldGauge, {
         "--p": hero.gold == null ? 0 : clamp(hero.gold / INTEREST_CAP),
       });
@@ -206,19 +233,45 @@ export function mountHud(root) {
       const gain = plan?.panel?.economy?.interest;
       interest.textContent = gain != null ? `+${gain} juros` : "";
       interest.hidden = gain == null;
-      goldWrap.title = keep != null ? `Piso desta decisão: ${keep}g` : "Ouro";
+      /* Título único: motivo do esmaecimento + piso da decisão */
+      goldWrap.title =
+        [
+          hero.goldFrom === "gep"
+            ? "Ouro do GEP (TFTAcademy), sem leitura de tela"
+            : null,
+          hero.goldStale
+            ? "Última leitura do ouro; a tela está coberta agora"
+            : null,
+          keep != null ? `Piso desta decisão: ${keep}g` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Ouro";
       /* Meta */
       const g = plan?.progress;
       setVars(goalRing, { "--p": g?.total ? clamp(g.have / g.total) : 0 });
       goalText.textContent = g ? `${g.have}/${g.total}` : "—";
-      goalSub.textContent = [
+      const sc = plan?.score;
+      // O carry é a imagem dele (nome só para leitor de tela); o resto são textos fixos e números.
+      goalSub.innerHTML = [
         status.pinned ? "fixada" : plan ? "sugerida" : "",
-        plan?.carry ? `carry ${plan.carry}` : "",
+        sc ? `score ${sc.value}${sc.best ? " · melhor comp" : ""}` : "",
+        sc?.chance != null ? `chance ${Math.round(sc.chance * 100)}%` : "",
       ]
+        .filter(Boolean)
+        .map(esc)
+        .concat(
+          plan?.carry
+            ? [
+                `carry ${nameChip("champion", plan.carryId, plan.carry, { size: 18 })}`,
+              ]
+            : [],
+        )
         .filter(Boolean)
         .join(" · ");
       goalLink.textContent = status.pinned ? "Trocar comp" : "Escolher comp";
-      goalWrap.title = plan?.title ?? "";
+      goalWrap.title = plan
+        ? `${plan.title}${sc ? ` · score ${sc.value}/100 (itens, o que você tem, força, chance de montar no nível ${sc.level ?? "?"}, loja e disputa)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
+        : "";
     },
   };
 }

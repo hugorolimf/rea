@@ -20,15 +20,26 @@ const CUTS = [1, 0.4, -0.4, -1];
 // Variância da colocação de uma partida (1..8 uniforme): (8² − 1) / 12.
 export const PLACEMENT_VAR = 63 / 12;
 
+/**
+ * Consumíveis ocupam espaço no banco, mas não são itens para montar nem equipar (Removedor, Duplicadores, Reforjador,
+ * Poções, Boosters, Melhoria do Mestre-Artesão, Baú da Sorte): ficam fora de toda análise de itens.
+ */
+export const CONSUMABLE =
+  /Consumable_|Reforger|Potion|Booster|Masterwork|LuckyItemChest/;
+export const isConsumable = (id) => CONSUMABLE.test(id ?? "");
+
+/** Id do item base de um radiante ("DA_TitansResolve_Radiant" e "DA_VoidStaffRadiant" viram o item comum). */
+export const baseItemId = (id) => id.replace(/_?Radiant$/, "");
+
 /** Tipo do item pelo id do set atual e pela receita. */
 export function kindOf(id, from = []) {
-  if (id.startsWith('DA_Component_')) return "component";
+  if (id.startsWith("DA_Component_")) return "component";
   // Itens de aprimoramento e consumíveis também têm "Radiant"/"Artifact" no nome; só contam os itens de fato.
   if (/Potion|Upgrade|Radiantize|Artifactinate|Chest/i.test(id)) return "other";
   if (/_?Radiant$/.test(id)) return "radiant";
   if (/^DA_(Item_)?Artifact_/.test(id)) return "artifact";
   if (/Emblem/i.test(id)) return "emblem";
-  if (from.length === 2 && from.every((c) => c.startsWith('DA_Component_')))
+  if (from.length === 2 && from.every((c) => c.startsWith("DA_Component_")))
     return "completed";
   return "other";
 }

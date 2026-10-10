@@ -1,0 +1,567 @@
+{
+  "3291596434": {
+    "endedAt": "2026-10-10T15:54:21.072Z",
+    "placement": 1,
+    "finalBoard": [
+      { "championName": "DA_18_Leona", "starLevel": 2 },
+      { "championName": "DA_18_Rengar", "starLevel": 3 },
+      { "championName": "DA_18_Rammus", "starLevel": 2 },
+      { "championName": "DA_18_Yunara", "starLevel": 2 },
+      { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+      { "championName": "DA_18_Shen", "starLevel": 2 },
+      { "championName": "DA_18_Ezreal", "starLevel": 2 },
+      { "championName": "DA_18_Lillia", "starLevel": 2 },
+      { "championName": "DA_18_Soraka", "starLevel": 1 }
+    ],
+    "snapshots": [
+      { "at": "2026-10-10T15:20:12.575Z", "board": [] },
+      {
+        "at": "2026-10-10T15:20:33.731Z",
+        "board": [{ "championName": "DA_18_Sentry", "starLevel": 1 }]
+      },
+      {
+        "at": "2026-10-10T15:21:17.593Z",
+        "board": [
+          { "championName": "DA_18_Sentry", "starLevel": 1 },
+          { "championName": "DA_18_Teemo", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:21:59.782Z",
+        "board": [
+          { "championName": "DA_18_Sentry", "starLevel": 1 },
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_Scuttlecrab18", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:24:08.900Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_Scuttlecrab18", "starLevel": 1 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:25:20.028Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_Scuttlecrab18", "starLevel": 1 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 1 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:28:20.171Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_Scuttlecrab18", "starLevel": 1 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:30:01.366Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:31:32.938Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:32:43.509Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:34:37.316Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:35:51.454Z",
+        "board": [
+          { "championName": "DA_18_Teemo", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:37:36.787Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 1 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:39:01.667Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 1 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 1 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:40:11.483Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:41:52.775Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:43:03.310Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:43:55.553Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 1 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:44:46.610Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 2 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:45:57.835Z",
+        "board": [
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Azir", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 },
+          { "championName": "DA_18_Lillia", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:47:04.273Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:48:50.016Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:49:53.866Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:50:47.790Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:51:36.667Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 },
+          { "championName": "DA_18_Soraka", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:52:48.224Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 },
+          { "championName": "DA_18_Soraka", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:53:22.322Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 },
+          { "championName": "DA_18_Soraka", "starLevel": 1 },
+          { "championName": "DA_18_Lillia", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T15:53:54.234Z",
+        "board": [
+          { "championName": "DA_18_Leona", "starLevel": 2 },
+          { "championName": "DA_18_Rengar", "starLevel": 3 },
+          { "championName": "DA_18_Rammus", "starLevel": 2 },
+          { "championName": "DA_18_Yunara", "starLevel": 2 },
+          { "championName": "DA_Fiddlesticks18", "starLevel": 2 },
+          { "championName": "DA_18_Shen", "starLevel": 2 },
+          { "championName": "DA_18_Ezreal", "starLevel": 2 },
+          { "championName": "DA_18_Lillia", "starLevel": 2 },
+          { "championName": "DA_18_Soraka", "starLevel": 1 }
+        ]
+      }
+    ]
+  },
+  "3291600904": {
+    "endedAt": "2026-10-10T16:25:29.559Z",
+    "placement": 5,
+    "finalBoard": [
+      { "championName": "DA_18_KhaZix", "starLevel": 2 },
+      { "championName": "DA_18_Diana", "starLevel": 2 },
+      { "championName": "DA_18_Alistar", "starLevel": 2 },
+      { "championName": "DA_18_Rakan", "starLevel": 2 },
+      { "championName": "DA_18_Elise", "starLevel": 2 },
+      { "championName": "DA_18_Hecarim", "starLevel": 1 },
+      { "championName": "DA_18_Ezreal", "starLevel": 1 }
+    ],
+    "snapshots": [
+      { "at": "2026-10-10T15:58:32.805Z", "board": [] },
+      {
+        "at": "2026-10-10T15:58:54.119Z",
+        "board": [{ "championName": "DA_18_KhaZix", "starLevel": 1 }]
+      },
+      {
+        "at": "2026-10-10T15:59:36.809Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Leona", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:00:19.042Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:01:25.051Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Leona", "starLevel": 1 },
+          { "championName": "DA_18_Xayah", "starLevel": 1 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:02:43.657Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:03:50.190Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:05:41.968Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Xayah", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:06:54.518Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:07:43.430Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:08:35.536Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:11:07.130Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:12:51.349Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:13:57.878Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:15:49.841Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:17:20.657Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:20:10.733Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 1 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Caitlyn", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:21:11.458Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 1 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:22:04.308Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 },
+          { "championName": "DA_18_Diana", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:22:55.234Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 },
+          { "championName": "DA_18_Azir", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:23:57.745Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 },
+          { "championName": "DA_18_Azir", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:24:27.254Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 },
+          { "championName": "DA_18_Azir", "starLevel": 1 }
+        ]
+      },
+      {
+        "at": "2026-10-10T16:24:59.229Z",
+        "board": [
+          { "championName": "DA_18_KhaZix", "starLevel": 2 },
+          { "championName": "DA_18_Diana", "starLevel": 2 },
+          { "championName": "DA_18_Alistar", "starLevel": 2 },
+          { "championName": "DA_18_Rakan", "starLevel": 2 },
+          { "championName": "DA_18_Elise", "starLevel": 2 },
+          { "championName": "DA_18_Hecarim", "starLevel": 1 },
+          { "championName": "DA_18_Ezreal", "starLevel": 1 }
+        ]
+      }
+    ]
+  }
+}

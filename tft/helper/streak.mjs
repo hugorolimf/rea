@@ -15,14 +15,20 @@ const index = ({ stage, round }) =>
 export function streakTracker() {
   let game = null;
   const seen = new Map(); // índice da rodada → { round, low }
+  // Quedas de vida com o horário, independentes do estágio (o estágio pode não ser lido da tela).
+  const hpLog = [];
   return {
-    observe({ gameId, stage, hp }) {
-      const round = typeof stage === "string" ? parse(stage) : stage;
-      if (gameId == null || !round || !Number.isFinite(hp)) return;
+    observe({ gameId, stage, hp, now = Date.now() }) {
+      if (gameId == null || !Number.isFinite(hp)) return;
       if (gameId !== game) {
         game = gameId;
         seen.clear();
+        hpLog.length = 0;
       }
+      if (hp > 0 && hp <= 100 && (!hpLog.length || hpLog.at(-1).hp !== hp))
+        hpLog.push({ at: now, hp });
+      const round = typeof stage === "string" ? parse(stage) : stage;
+      if (!round) return;
       const at = index(round),
         known = seen.get(at);
       if (known) known.low = Math.min(known.low, hp);
@@ -42,6 +48,23 @@ export function streakTracker() {
         length++;
       }
       return kind ? { kind, length, inferred: true } : null;
+    },
+    /**
+     * Tendência da vida: queda média das últimas 3 perdas e quantas perdas houve nos últimos 5 minutos (~4 rodadas).
+     * Não depende do estágio lido da tela.
+     */
+    trend(now = Date.now()) {
+      const drops = [];
+      for (let i = 1; i < hpLog.length; i++)
+        if (hpLog[i].hp < hpLog[i - 1].hp)
+          drops.push({ at: hpLog[i].at, loss: hpLog[i - 1].hp - hpLog[i].hp });
+      const last = drops.slice(-3);
+      return {
+        avgLoss: last.length
+          ? last.reduce((n, d) => n + d.loss, 0) / last.length
+          : 0,
+        recentLosses: drops.filter((d) => now - d.at <= 5 * 60 * 1000).length,
+      };
     },
   };
 }

@@ -89,6 +89,39 @@
     background: color-mix(in oklab, var(--go), transparent 88%);
     color: var(--go);
   }
+  .chip-best {
+    border-color: color-mix(in oklab, var(--gold), transparent 45%);
+    background: color-mix(in oklab, var(--gold), transparent 82%);
+    color: var(--gold);
+  }
+  /* Score 0-100 da comp para a partida (no lugar das faixas S/A/B/C). */
+  .score {
+    display: inline-grid;
+    place-items: center;
+    min-width: 34px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 7px;
+    background: var(--line);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    &[data-band="high"] {
+      background: var(--go);
+      color: oklch(0.25 0.05 168);
+    }
+    &[data-band="mid"] {
+      background: var(--amber);
+      color: oklch(0.25 0.05 80);
+    }
+    &[data-band="low"] {
+      background: color-mix(in oklab, var(--line), var(--text) 12%);
+    }
+    &[data-band="none"] {
+      color: var(--faint);
+    }
+  }
   .chip-amber {
     border-color: color-mix(in oklab, var(--amber), transparent 55%);
     background: color-mix(in oklab, var(--amber), transparent 88%);
@@ -220,7 +253,7 @@
     min-width: 0;
     align-content: start;
   }
-  .items-sec:has(.steps[data-empty="1"]) {
+  .items-sec:has(.steps[data-empty="1"]):has(.inventory[hidden]) {
     display: none;
   }
   .section-head {

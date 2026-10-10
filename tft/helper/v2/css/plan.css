@@ -1,0 +1,227 @@
+@layer components {
+  /* Plano em andamento: checklist do que já foi conquistado e do que falta. */
+  .plan-sec h4 {
+    margin: 14px 0 6px;
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .plan-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 2px 12px;
+    & h3 {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    & small {
+      color: var(--faint);
+      font-size: 11px;
+    }
+  }
+  .plan-meter,
+  .plan-bar {
+    position: relative;
+    display: block;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line-soft);
+    overflow: hidden;
+    & i {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: var(--go);
+      transform-origin: left;
+      transform: scaleX(var(--p, 0));
+      transition: transform var(--settle-ms) var(--settle-ease);
+    }
+  }
+  .plan-meter {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+  }
+  .plan-bar {
+    width: 44px;
+    & i {
+      background: var(--amber);
+    }
+  }
+  .plan-challenger {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in oklab, var(--amber), transparent 55%);
+    border-radius: 10px;
+    color: var(--amber);
+    font-size: 11px;
+    line-height: 1.4;
+    & .i {
+      flex: none;
+      width: 14px;
+      height: 14px;
+      margin-top: 1px;
+    }
+  }
+  .plan-next ol {
+    display: grid;
+    gap: 4px;
+    padding-left: 18px;
+    color: var(--text);
+    font-size: 12px;
+    list-style: decimal;
+    & li::marker {
+      color: var(--faint);
+    }
+    & li:first-child {
+      color: var(--go);
+      font-weight: 600;
+    }
+  }
+  .plan-list {
+    display: grid;
+    gap: 4px;
+  }
+  .plan-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    &:not(:has(.plan-bar)) {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    & .plan-main {
+      display: grid;
+      min-width: 0;
+      & b {
+        overflow: hidden;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      & small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+    }
+    & .plan-mark {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      color: var(--faint);
+      & .i {
+        width: 14px;
+        height: 14px;
+      }
+    }
+    &[data-status="done"],
+    &[data-status="built"] {
+      background: color-mix(in oklab, var(--go), var(--surface) 93%);
+      & .plan-mark {
+        color: var(--go);
+      }
+    }
+    &[data-status="ready"] .plan-mark,
+    &[data-status="move"] .plan-mark {
+      color: var(--go);
+    }
+    &[data-status="partial"] .plan-mark {
+      color: var(--amber);
+    }
+    &[data-lost] small {
+      color: var(--amber);
+    }
+  }
+  .plan-carry {
+    color: var(--gold);
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .plan-augs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    & li {
+      display: grid;
+      gap: 2px;
+      padding: 6px 8px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      color: var(--faint);
+      font-size: 11px;
+      & b {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+      }
+      & span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      &[data-status="done"] {
+        border-style: solid;
+        border-color: var(--line-soft);
+        color: var(--text);
+      }
+      &[data-status="now"] {
+        border-style: solid;
+        border-color: color-mix(in oklab, var(--go), transparent 50%);
+        color: var(--go);
+      }
+    }
+  }
+  .plan-state {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    & li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    & .i {
+      width: 14px;
+      height: 14px;
+      color: var(--faint);
+    }
+    & li[data-status="done"] .i {
+      color: var(--go);
+    }
+  }
+  .plan-changes {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 11px;
+    & summary {
+      cursor: pointer;
+      color: var(--faint);
+    }
+    & ul {
+      display: grid;
+      gap: 3px;
+      margin-top: 6px;
+    }
+    & b {
+      color: var(--faint);
+    }
+  }
+  @container stage (max-width: 520px) {
+    .plan-augs {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

@@ -1,8 +1,55 @@
-import { POOL, ODDS } from "./rules.mjs";
+import { POOL, ODDS, GAME } from "./rules.mjs";
 import { rollLevelOf, isContested } from "./economy.mjs";
-import { itemEdge, tierOf } from "./item-edge.mjs";
+import {
+  anyUnit,
+  exactUnit,
+  filterKey,
+  starUnit,
+  traitAt,
+  unitUpTo,
+} from "./evidence.mjs";
+import { TIER_PLACE } from "./augment-stats.mjs";
+import { itemEdge, shrunk, tierOf } from "./item-edge.mjs";
+import { HOLD_VALUE, holdValue, resolveHoldings } from "./item-holdings.mjs";
+import { baseItem } from "./v2/js/item-source.js";
+import { buildItemPlan, planPoints } from "./item-plan.mjs";
+import { isPlanItem, itemValueTable } from "./item-value.mjs";
+import { compScore } from "./comp-score.mjs";
+import { emblemTraitMap, traitsWithEmblems } from "./v2/js/traits.js";
 export { POOL, ODDS };
 const STICKY_BONUS = 10;
+// Com evidência medida (evidence.mjs), o total é a colocação esperada convertida em pontos: 0,1 de colocação
+// vale 2 pontos. A continuidade da sugestão anterior equivale a 0,15 de colocação (evita trocar por ruído).
+const PLACEMENT_POINTS = 20;
+const SCORE_POINTS = 0.1;
+// Com a colocação esperada medida (evidência), o plano de itens (item-plan.mjs) soma esta parte dos seus pontos
+// (planPoints): a pergunta medida já leva os 2 melhores itens do banco, então só uma parte entra.
+const EVIDENCE_ITEM_SHARE = 0.3;
+// Confiança: colocação final tem desvio de ~2,29 (uniforme de 1 a 8), então a média de n partidas erra
+// ~2,29/√n. Trocar de plano exige diferença maior que essa incerteza (95%, unilateral) MAIS o custo de trocar.
+const PLACEMENT_SD = 2.29;
+const Z95 = 1.645;
+// Custo de trocar (política explícita, em colocações): cresce com o estágio e é proporcional às peças que
+// mudam. Tarde na partida, trocar joga fora peças, itens e ouro investidos e não há tempo de reconstruir.
+const SWITCH_COST = { 1: 0.1, 2: 0.1, 3: 0.25, 4: 0.5, 5: 0.8 };
+// Uma combinação só vale como evidência com amostra suficiente; abaixo disso usa-se a pergunta mais curta.
+const MIN_GAMES = 300;
+// Memória por identidade dos objetos de entrada (cópias de estatísticas e catálogo): some quando eles são trocados.
+const memos = new WeakMap();
+function memoFor(objects) {
+  let node = memos;
+  for (const o of objects) {
+    const k = o && typeof o === "object" ? o : NO_OBJECT;
+    let next = node.get(k);
+    if (!next) node.set(k, (next = new WeakMap()));
+    node = next;
+  }
+  let map = node.get(MEMO_LEAF);
+  if (!map) node.set(MEMO_LEAF, (map = new Map()));
+  return map;
+}
+const NO_OBJECT = {},
+  MEMO_LEAF = {};
 export function analyze(snapshot, catalog, options) {
   const level = options.level;
   const boardLevel = options.targetLevel ?? level;
@@ -58,20 +105,33 @@ export function analyze(snapshot, catalog, options) {
     const p = alive.find((p) => String(p.playerId) === String(u.playerId));
     if (p) count([u], p === self, p.riotIdGameName ?? p.summonerName, false);
   }
-  const free = (k) =>
+  // Cópias que saíram do tabuleiro dos rivais e provavelmente estão no banco deles (estimativa do servidor a
+  // partir do histórico de tabuleiros): fora da pool provável e sinal de interesse do rival na peça.
+  const held = new Map();
+  for (const [id, n] of Object.entries(options.hidden ?? {})) {
+    const c = byId.get(id);
+    if (c && Number.isFinite(n) && n > 0)
+      held.set(key(c), (held.get(key(c)) ?? 0) + n);
+  }
+  const upper = (k) =>
     Math.max(0, POOL[allPools.get(k)] - (visible.get(k) ?? 0));
+  const free = (k) => Math.max(0, upper(k) - (held.get(k) ?? 0));
+  // Disputa: cópias vistas nos tabuleiros rivais mais as estimadas nos bancos deles.
+  const contestOf = (k) => (enemy.get(k) ?? 0) + (held.get(k) ?? 0);
   const pool = [...allPools].map(([name, cost]) => ({
     name,
     cost,
     total: POOL[cost],
     own: own.get(name)?.copies ?? 0,
     enemy: enemy.get(name) ?? 0,
-    remainingUpper: free(name),
+    hidden: Math.round((held.get(name) ?? 0) * 10) / 10,
+    remainingUpper: upper(name),
+    remainingLikely: Math.round(free(name) * 10) / 10,
     rivals: [...(rivals.get(name) ?? [])],
   }));
   const denomByCost = {};
   for (const p of pool)
-    denomByCost[p.cost] = (denomByCost[p.cost] ?? 0) + p.remainingUpper;
+    denomByCost[p.cost] = (denomByCost[p.cost] ?? 0) + free(p.name);
   function probability(c, atLevel = level) {
     const denom = denomByCost[c.cost] ?? 0;
     return denom
@@ -117,11 +177,12 @@ export function analyze(snapshot, catalog, options) {
   }
   const equippedItems = [...own.values()].flatMap((u) => u.items);
   const ownedItems = [...equippedItems, ...(options.inventory ?? [])];
-  // Estoque para medir builds: itens completos (equipados ou no banco) e componentes livres no banco.
+  // Estoque para medir builds: itens completos e componentes, equipados ou no banco (componente equipado
+  // ainda vira metade de um item da build).
   const isComponent = (id) => id.startsWith("DA_Component_");
   const itemStock = {
       completed: ownedItems.filter((id) => !isComponent(id)),
-      components: (options.inventory ?? []).filter(isComponent),
+      components: ownedItems.filter(isComponent),
     },
     recipes = new Map(
       catalog.items
@@ -221,7 +282,8 @@ export function analyze(snapshot, catalog, options) {
     const total = demand.ad + demand.ap + demand.tank + demand.flex;
     return { placed, orphans: total - placed };
   }
-  const traitMap = new Map(catalog.traits.map((t) => [t.name, t]));
+  const traitMap = new Map(catalog.traits.map((t) => [t.name, t])),
+    traitByApi = new Map(catalog.traits.map((t) => [t.apiName, t.name]));
   const thresholdCache = new Map();
   const thresholdsOf = (name) => {
     let t = thresholdCache.get(name);
@@ -233,10 +295,40 @@ export function analyze(snapshot, catalog, options) {
     }
     return t;
   };
+  // Emblema equipado numa peça sua dá a sinergia do nome a ela enquanto estiver na comp.
+  // Regra única em v2/js/traits.js, derivada do catálogo (todo item "X Emblem" cujo X é uma sinergia do set).
+  const emblemTrait = emblemTraitMap(catalog.items, traitMap.keys());
+  const traitsOfItems = (c, items) =>
+    traitsWithEmblems(c.traits, items, emblemTrait);
+  function traitsOf(c) {
+    return traitsOfItems(c, own.get(key(c))?.items).traits;
+  }
+  // Sinergias de uma peça com os itens dela: `traits` já inclui os emblemas e `emblemTraits` lista só os vindos deles.
+  const traitsFor = (c, items) => {
+    const r = traitsOfItems(c, items);
+    return { traits: r.traits, emblemTraits: r.added };
+  };
+  const unitTraits = (u) => {
+    const c = byId.get(u.championName);
+    return c ? traitsFor(c, u.itemNames) : { traits: [], emblemTraits: [] };
+  };
+  // Sinergia que só vale com uma peça dela em campo (texto do catálogo: "Only active while fielding 1"): duas no
+  // mesmo tabuleiro desligam a sinergia, a menos que um aprimoramento escolhido a libere (Aminimigos → Rival).
+  const soloOnly = new Set(
+    catalog.traits
+      .filter((t) => /Only active while fielding 1\b/i.test(t.desc ?? ""))
+      .map((t) => t.name)
+      .filter((n) => !(options.augmentTraits ?? []).includes(n)),
+  );
+  const legal = (board) =>
+    [...soloOnly].every(
+      (n) => board.filter((c) => traitsOf(c).includes(n)).length < 2,
+    );
   function traits(board) {
     const counts = {};
     for (const c of board)
-      for (const t of c.traits) counts[t] = (counts[t] ?? 0) + 1;
+      for (const t of traitsOf(c)) counts[t] = (counts[t] ?? 0) + 1;
+    for (const n of soloOnly) if (counts[n] >= 2) delete counts[n];
     return Object.entries(counts).map(([name, count]) => {
       const thresholds = thresholdsOf(name);
       const reached = thresholds.filter((n) => n <= count);
@@ -249,6 +341,136 @@ export function analyze(snapshot, catalog, options) {
         next: thresholds.find((n) => n > count) ?? null,
       };
     });
+  }
+  // Emblemas: Espátula/Frigideira + componente (ou emblema pronto no banco) dão a sinergia do nome a uma peça.
+  // Para cada comp, o melhor emblema ao alcance: fechar o próximo patamar de uma sinergia vale muito; reforçar
+  // uma sinergia ativa vale pouco. Sem o outro componente no banco, o emblema conta 60% (falta pegá-lo).
+  const emblemRecipes = catalog.items
+    .filter(
+      (i) =>
+        i.apiName.startsWith("DA_") &&
+        /Emblem/.test(i.apiName) &&
+        i.composition?.length === 2,
+    )
+    .map((i) => ({
+      id: i.apiName,
+      name: i.name,
+      trait: i.name.replace(/ Emblem$/, ""),
+      parts: i.composition,
+    }));
+  const bankFree = options.inventory ?? [];
+  // Itens que dá para pôr numa peça de uma comp: o banco e o que está equipado em peça que SAI dela (o Avatar fica).
+  // Cada item leva de onde vem: o de peça que sai custa mover (HOLD_VALUE.move). Emblema equipado numa peça que
+  // fica já entra pelas sinergias dela (traitsOf).
+  const movableCache = new WeakMap();
+  function movable(board) {
+    let m = movableCache.get(board);
+    if (!m) {
+      const here = new Set(board.map(key)),
+        leaving = [...own]
+          .filter(
+            ([k, u]) => !here.has(k) && !u.champion.traits.includes("Avatar"),
+          )
+          .flatMap(([, u]) => u.items.map(baseItem));
+      m = {
+        all: [
+          ...bankFree.map((id) => ({ id, leaving: false })),
+          ...leaving.map((id) => ({ id, leaving: true })),
+        ],
+      };
+      m.ids = m.all.map((x) => x.id);
+      movableCache.set(board, m);
+    }
+    return m;
+  }
+  const isTool = (id) => /Component_(Spatula|FryingPan)/.test(id);
+  function emblemEdge(board) {
+    const pool = movable(board).all,
+      emblemTools = pool.filter((x) => isTool(x.id)).map((x) => x.id),
+      readyEmblems = pool.filter((x) => /Emblem/.test(x.id)).map((x) => x.id);
+    if (!emblemTools.length && !readyEmblems.length) return null;
+    const ts = new Map(traits(board).map((t) => [t.name, t]));
+    // Quem recebe: peça da comp sem a sinergia, de preferência sua e com menos itens (o carry quer 3 itens).
+    const holderOf = (trait, taken = new Set()) =>
+      board
+        .filter((c) => !traitsOf(c).includes(trait) && !taken.has(c))
+        .map((c) => ({ c, u: own.get(key(c)) }))
+        .sort(
+          (a, b) =>
+            !!b.u - !!a.u ||
+            (a.u?.items.length ?? 0) - (b.u?.items.length ?? 0) ||
+            a.c.cost - b.c.cost,
+        )[0]?.c ?? null;
+    const gain = (trait) => {
+      if (!holderOf(trait)) return 0;
+      const t = ts.get(trait);
+      if (!t) return 0.5;
+      if (t.next && t.count + 1 >= t.next) return 10 + 4 * (t.tier + 1);
+      return t.active ? 3 : (2 * (t.count + 1)) / (t.next ?? t.count + 1);
+    };
+    const picks = [],
+      stock = [...pool];
+    // Gasta uma unidade do item (banco primeiro, depois peça que sai) e devolve de onde veio; null se não há.
+    const use = (id) => {
+      const at = stock.findIndex((x) => x.id === id);
+      return at < 0 ? null : stock.splice(at, 1)[0];
+    };
+    const moved = (...src) =>
+      src.some((x) => x?.leaving) ? HOLD_VALUE.move : 1;
+    for (const id of readyEmblems) {
+      const r = emblemRecipes.find((e) => e.id === id),
+        src = r && use(id);
+      if (src)
+        picks.push({
+          ...r,
+          ready: true,
+          points: gain(r.trait) * moved(src),
+          leaving: src.leaving,
+        });
+    }
+    for (const tool of emblemTools) {
+      const toolSrc = use(tool);
+      if (!toolSrc) continue;
+      const best = emblemRecipes
+        .filter((e) => e.parts.includes(tool))
+        .map((e) => {
+          const other = e.parts[0] === tool ? e.parts[1] : e.parts[0],
+            at = stock.find((x) => x.id === other),
+            have = !!at;
+          return {
+            ...e,
+            other,
+            ready: have,
+            leaving: !!(toolSrc.leaving || at?.leaving),
+            points: gain(e.trait) * (have ? 1 : 0.6) * moved(toolSrc, at),
+          };
+        })
+        .sort((a, b) => b.points - a.points)[0];
+      if (best) {
+        if (best.ready) use(best.other);
+        picks.push(best);
+      }
+    }
+    picks.sort((a, b) => b.points - a.points);
+    const taken = new Set();
+    return {
+      points: picks.reduce((n, p) => n + p.points, 0),
+      picks: picks
+        .filter((p) => p.points > 0)
+        .map((p) => {
+          const h = holderOf(p.trait, taken) ?? holderOf(p.trait);
+          if (h) taken.add(h);
+          return {
+            id: p.id,
+            name: p.name,
+            trait: p.trait,
+            ready: p.ready,
+            other: p.other ?? null,
+            holder: h ? { id: h.apiName, name: h.name } : null,
+            fromLeaving: !!p.leaving,
+          };
+        }),
+    };
   }
   // Parcelas que dependem só do campeão são calculadas uma vez; a busca chama score() dezenas de milhares de vezes.
   const termCache = new Map();
@@ -264,11 +486,14 @@ export function analyze(snapshot, catalog, options) {
       (id) => itemRole(id) === r || itemRole(id) === "flex",
     ).length;
     s = {
+      // Investimento já feito na peça: custo × cópias (estrelas) e itens equipados. Pesa mais conforme o nível
+      // sobe: no começo trocar de comp é barato; tarde, abandonar 2★ com itens custa a partida.
       preservation: u
-        ? 0.6 + Math.log2(u.copies + 1) * 0.35 + u.items.length * 0.3
+        ? (1.5 + Math.log2(u.copies + 1) * c.cost * 0.6 + u.items.length * 2) *
+          (0.6 + level * 0.08)
         : 0,
       strength: Math.pow(c.cost, 1.25) * 2,
-      dispute: ((enemy.get(key(c)) ?? 0) / POOL[c.cost]) * 8,
+      dispute: (contestOf(key(c)) / POOL[c.cost]) * 12,
       access: Math.log(1 + probability(c, boardLevel) * 100) * 0.7,
       items:
         matching * 1.1 +
@@ -352,7 +577,7 @@ export function analyze(snapshot, catalog, options) {
   const available = candidates.filter(
     (c) =>
       own.has(key(c)) ||
-      (free(key(c)) > 0 &&
+      (upper(key(c)) > 0 &&
         ODDS[boardLevel][c.cost - 1] >= 10 &&
         (c.cost < 5 || boardLevel >= 9)),
   );
@@ -362,39 +587,117 @@ export function analyze(snapshot, catalog, options) {
     );
   // Com comps de meta disponíveis, elas são as candidatas: a força vem da colocação média real, e o estado da
   // partida (o que você já tem, itens, disputa na pool, acesso na loja, lobby) decide qual delas encaixa melhor.
-  // Quanto dos itens que a comp pede você já tem: item pronto ou montável com seus componentes vale 1,
-  // metade de receita vale 0,35. O carry pesa muito mais que o resto; cada item seu só é contado uma vez.
-  function buildFit(m, carry) {
-    const stock = [...ownedItems];
-    const take = (id) => {
-      const at = stock.indexOf(id);
-      if (at >= 0) {
-        stock.splice(at, 1);
-        return 1;
+  // Itens que você já tem, comp a comp (item-holdings.mjs, a regra da Formação): para cada item que a build pede,
+  // onde ele está (já na peça certa, no banco, equipado em peça que sai da comp, em peça que fica, montável com
+  // componentes) e o valor que o custo de mover/montar deixa (HOLD_VALUE). Cada item seu é gasto uma vez: primeiro
+  // o que a peça já usa, depois o carry, depois as demais (as de dano antes dos tanques). Item que só está numa peça
+  // que fica e que a própria build dela pede não sobra para outra peça.
+  const compositionOf = (id) => itemCatalog.get(id)?.composition ?? [];
+  // Plano de itens da comp (item-plan.mjs): valor medido de cada item seu em cada campeão da comp, atribuído para somar
+  // o máximo (3 por campeão), e a lista de desejos do meta. Sem o banco lido, só a lista de desejos.
+  const valueTable = itemValueTable({
+      stats: options.stats,
+      itemStats: options.itemStats,
+      metaBuilds: options.metaBuilds,
+      baseAvg: options.baseAvg ?? 4.466,
+    }),
+    planRecipes = new Map(
+      catalog.items
+        .filter((i) => i.composition?.length === 2 && isPlanItem(i.apiName))
+        .map((i) => [i.apiName, i.composition]),
+    ),
+    planCache = new WeakMap();
+  // O plano não depende da evidência: as rodadas de análise do servidor (até 4 por pedido) repetem as mesmas entradas, então
+  // o resultado fica guardado por entrada (jogo, banco e cópias das estatísticas de meta, por identidade).
+  const planMemo = memoFor([
+    options.stats,
+    options.itemStats,
+    options.metaBuilds,
+    catalog,
+  ]);
+  function planFor(board) {
+    let plan = planCache.get(board);
+    if (!plan) {
+      const here = new Set(board.map(key)),
+        input = {
+          units: board.map((c) => {
+            const u = own.get(key(c));
+            return {
+              id: c.apiName,
+              name: c.name,
+              owned: !!u,
+              equipped: u?.items ?? [],
+            };
+          }),
+          leaving: [...own]
+            .filter(
+              ([k, u]) => !here.has(k) && !u.champion.traits.includes("Avatar"),
+            )
+            .map(([, u]) => ({ name: u.champion.name, items: u.items })),
+          bank: options.inventory ?? [],
+          bankRead: options.bankRead !== false,
+        },
+        memoKey = JSON.stringify([
+          input.units.map((u) => [u.id, [...u.equipped].sort()]),
+          input.leaving,
+          [...input.bank].sort(),
+          input.bankRead,
+          options.baseAvg ?? null,
+        ]);
+      plan = planMemo.get(memoKey);
+      if (!plan) {
+        plan = buildItemPlan({
+          ...input,
+          recipes: planRecipes,
+          valueOf: valueTable.valueOf,
+          rankedOf: valueTable.rankedOf,
+          wantsOf: valueTable.wantsOf,
+          nameOf: (id) => itemCatalog.get(id)?.name ?? id,
+        });
+        if (planMemo.size >= 600) planMemo.clear();
+        planMemo.set(memoKey, plan);
       }
-      const recipe = itemCatalog.get(id)?.composition ?? [];
-      if (recipe.length !== 2) return 0;
-      const rest = [...stock];
-      let got = 0;
-      for (const part of recipe) {
-        const k = rest.indexOf(part);
-        if (k >= 0) {
-          rest.splice(k, 1);
-          got++;
-        }
-      }
-      if (got === 2) {
-        stock.splice(0, stock.length, ...rest);
-        return 1;
-      }
-      return got ? 0.35 : 0;
-    };
-    const wanted = m.builds?.[carry.apiName] ?? [];
-    let carryHits = 0,
-      otherHits = 0;
-    for (const id of wanted) carryHits += take(id);
-    for (const [unit, ids] of Object.entries(m.builds ?? {}))
-      if (unit !== carry.apiName) for (const id of ids) otherHits += take(id);
+      planCache.set(board, plan);
+    }
+    return plan;
+  }
+  function holdingsFor(m, carry, board) {
+    const names = new Map(board.map((c) => [key(c), c.apiName])),
+      goalIds = new Set(names.values()),
+      wanted = Object.keys(m.builds ?? {}).filter((u) => u !== carry.apiName),
+      priority = (u) => {
+        const c = byId.get(u);
+        return !c ? 0 : role(c) === "tank" ? 0 : 0.5;
+      };
+    wanted.sort(
+      (a, b) =>
+        priority(b) - priority(a) ||
+        shrunk(m.buildStats?.[a]) - shrunk(m.buildStats?.[b]),
+    );
+    return resolveHoldings({
+      builds: m.builds ?? {},
+      order: [carry.apiName, ...wanted],
+      units: [...own].map(([k, u]) => ({
+        unitId: names.get(k) ?? u.champion.apiName,
+        name: u.champion.name,
+        stars: u.stars,
+        items: u.items,
+        keeps: u.champion.traits.includes("Avatar"),
+      })),
+      goalIds,
+      bank: options.inventory ?? [],
+      compositionOf,
+      carryId: carry.apiName,
+    });
+  }
+  // Quanto dos itens que a comp pede você já tem: o valor de cada item (1 posicionado; um pouco menos por equipar do
+  // banco, mover ou montar; 0,35 de metade de receita). O carry pesa muito mais que o resto.
+  function buildFit(m, carry, holdings, plan = null) {
+    const wanted = m.builds?.[carry.apiName] ?? [],
+      carryHits = holdValue(holdings.entries.get(carry.apiName)),
+      otherHits = [...holdings.entries]
+        .filter(([unit]) => unit !== carry.apiName)
+        .reduce((n, [, list]) => n + holdValue(list), 0);
     // Itens de dano físico não servem a carry mágico e vice-versa; a diferença entre os dois perfis vira penalidade.
     const r = role(carry),
       lean =
@@ -406,7 +709,21 @@ export function analyze(snapshot, catalog, options) {
       carryWanted: wanted.length,
       otherHits,
       mismatch,
-      points: carryHits * 6 + otherHits * 1.2 - Math.min(18, mismatch * 4),
+      // Com o banco lido, o total acumulado do plano de itens (valor medido de cada item que você tem, nos campeões
+      // onde rendem mais) vale no lugar da conta por carry; sem o banco, a conta por builds de antes.
+      points: plan?.active
+        ? planPoints(plan.total)
+        : carryHits * 6 + otherHits * 1.2 - Math.min(18, mismatch * 4),
+      // Onde estão os itens da build (contagem por situação) e, do carry, item a item (para a tela e o relatório).
+      holdings: {
+        counts: holdings.counts,
+        carry: (holdings.entries.get(carry.apiName) ?? []).map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          value: e.value,
+          from: e.from,
+        })),
+      },
     };
   }
   // Crescer a comp: quando seu nível passa do tamanho dela, cada vaga extra recebe a unidade que mais soma —
@@ -421,8 +738,9 @@ export function analyze(snapshot, catalog, options) {
         .filter(
           (c) =>
             !out.includes(c) &&
+            legal([...out, c]) &&
             (own.has(key(c)) ||
-              (free(key(c)) > 0 && ODDS[level][c.cost - 1] >= 10)),
+              (upper(key(c)) > 0 && ODDS[level][c.cost - 1] >= 10)),
         )
         .map((c) => {
           const gained = traits([...out, c])
@@ -440,7 +758,7 @@ export function analyze(snapshot, catalog, options) {
               gained.length * 8 +
               c.cost * 1.5 +
               (u ? 4 + u.stars : 0) -
-              ((enemy.get(key(c)) ?? 0) / POOL[c.cost]) * 6,
+              (contestOf(key(c)) / POOL[c.cost]) * 6,
           };
         })
         .sort((a, b) => b.value - a.value)[0];
@@ -460,14 +778,15 @@ export function analyze(snapshot, catalog, options) {
   const growTo = Math.min(10, Math.max(level, boardLevel));
   const selected = [];
   // Todas as comps de meta com o encaixe nesta partida, para a tela de seleção (as 3 sugeridas são um recorte).
-  let compRanking = [];
+  let compRanking = [],
+    ranked = [];
   if (options.metaComps?.length) {
-    const ranked = options.metaComps
+    ranked = options.metaComps
       .map((m) => {
         const core = m.units
           .map((id) => byId.get(id))
           .filter((c) => c && !c.traits.includes("Avatar"));
-        if (core.length < 5) return null;
+        if (core.length < 5 || !legal(core)) return null;
         const grown =
             core.length < growTo
               ? extend(core, growTo)
@@ -488,14 +807,26 @@ export function analyze(snapshot, catalog, options) {
           board[0];
         // Força de meta pela colocação média ajustada aos seus itens: a build publicada de cada campeão que
         // você já tem (ou monta com o banco) puxa a média da comp para baixo (ver item-edge.mjs).
-        const edge = itemEdge(m, itemStock, recipes, (unit) => {
-          const c = byId.get(unit);
-          return !c ? 0 : c === carry ? 1 : role(c) === "tank" ? 0 : 0.5;
-        });
+        // Os itens vêm localizados nesta comp (onde estão e quanto custa mover/montar): ver holdingsFor.
+        const holdings = holdingsFor(m, carry, board);
+        const edge = itemEdge(
+          m,
+          itemStock,
+          recipes,
+          (unit) => {
+            const c = byId.get(unit);
+            return !c ? 0 : c === carry ? 1 : role(c) === "tank" ? 0 : 0.5;
+          },
+          holdings.entries,
+        );
         component.edge = edge;
-        component.meta = (5 - edge.adjustedAvg) * 25;
+        // Força geral da comp (colocação média publicada): pesa, mas não decide sozinha; o encaixe na partida
+        // (o que você tem, itens, disputa, acesso na loja) é que escolhe entre comps parecidas.
+        component.meta = (5 - edge.adjustedAvg) * 15;
         component.total = component.fit + component.meta;
-        const build = buildFit(m, carry);
+        const plan = planFor(board);
+        component.itemPlan = plan;
+        const build = buildFit(m, carry, holdings, plan);
         component.build = build.points;
         component.buildFit = build;
         component.total += build.points;
@@ -514,97 +845,846 @@ export function analyze(snapshot, catalog, options) {
           component.total += STICKY_BONUS;
         }
         component.grown = grown.added;
+        const emblem = emblemEdge(board);
+        if (emblem?.points) {
+          component.emblem = emblem;
+          component.total += emblem.points;
+        }
         return { board, component, carry, focus: null, meta: m };
       })
       .filter(Boolean)
       .sort((a, b) => b.component.total - a.component.total);
-    for (const r of ranked) {
+  }
+  // Tabuleiros de vantagem e avaliação por evidência medida (evidence.mjs). Sem dados do explorer (offline), as
+  // comps de meta seguem ranqueadas pela conta acima e não há tabuleiro de vantagem.
+  //
+  // Trunfos (options.assets): as suas peças com estrela e itens de melhor colocação medida. Para cada uma, a
+  // MetaTFT diz quais peças e sinergias rendem mais junto com ela (options.conditional); o tabuleiro é montado
+  // com as que mais melhoram a colocação esperada, pesadas pela chance de você conseguir cada peça.
+  const baseAvg = options.baseAvg ?? 4.466;
+  // Lojas ao alcance: o ouro de agora mais a renda das próximas 4 rodadas (base + juros), guardando 10g.
+  const goldNow = options.gold ?? 30,
+    income =
+      GAME.baseIncome +
+      Math.min(GAME.interestMax, Math.floor(goldNow / GAME.interestStep)),
+    shops =
+      3 + Math.floor(Math.max(0, goldNow + 4 * income - 10) / GAME.shopCost);
+  const evidence = options.evidence ?? null,
+    requests = new Map(),
+    conditionalRequests = new Set();
+  // Chance de ter a peça: sua já é certa; senão, ao menos uma cópia nas lojas que o ouro paga (as perguntas de
+  // evidência pedem a peça presente, em qualquer estrela).
+  const stats = options.stats ?? null;
+  // Chance de ver ao menos k cópias em n vagas de loja com chance p por vaga.
+  const atLeast = (n, p, k) => {
+    if (k <= 0) return 1;
+    if (p <= 0) return 0;
+    let term = (1 - p) ** n,
+      below = 0;
+    for (let i = 0; i < k; i++) {
+      below += term;
+      term *= ((n - i) / (i + 1)) * (p / (1 - p));
+    }
+    return Math.max(0, 1 - below);
+  };
+  // Estrela em que a peça mais aparece nos tabuleiros medidos (Rengar: 3★; a maioria: 2★).
+  const typicalStar = (c) => {
+    const n = [1, 2, 3].map(
+      (st) => stats?.unit?.[`${c.apiName}|${st}`]?.[1] ?? 0,
+    );
+    return n.some(Boolean) ? n.indexOf(Math.max(...n)) + 1 : null;
+  };
+  // Maior estrela que você realisticamente alcança com a peça: a maior com 50%+ de chance de juntar as cópias que
+  // faltam (seu ouro das próximas rodadas, a pool provável e as chances de loja do seu nível). Uma peça nova de
+  // reroll no nível 9 fica em 1★ — e é com 1★ que ela entra na pergunta, não com o 3★ de quem fez o reroll cedo.
+  const reachStar = (c) => {
+    const have = own.get(key(c))?.copies ?? 0;
+    for (const st of [3, 2]) {
+      const need = 3 ** (st - 1) - have;
+      if (need <= 0) return st;
       if (
-        selected.some(
-          (s) =>
-            r.board.filter((c) => s.board.includes(c)).length / r.board.length >
-            0.85,
-        )
+        upper(key(c)) >= need &&
+        atLeast(5 * shops, probability(c, boardLevel), need) >= 0.5
+      )
+        return st;
+    }
+    return 1;
+  };
+  const presence = (c) => {
+    if (own.has(key(c))) return anyUnit(c.apiName); // sua: o caminho dela é o seu plano
+    const st = reachStar(c);
+    return st >= 3 ? anyUnit(c.apiName) : unitUpTo(c.apiName, st);
+  };
+  const pFind = (c) =>
+    own.has(key(c))
+      ? 1
+      : upper(key(c)) > 0
+        ? 1 - (1 - probability(c, boardLevel)) ** (5 * shops)
+        : 0;
+  const shrinkTo = (stat, prior, k = MIN_GAMES) =>
+    stat ? (stat[0] * stat[1] + prior * k) / (stat[1] + k) : prior;
+  // Trunfos: as suas peças pelo que elas podem ser nesta partida, não pelo que valem isoladas agora. Cada uma vale
+  // pela colocação medida na estrela em que ela é jogada (Rengar 2★ vira o Rengar 3★ que o reroll busca),
+  // ponderada pela chance de chegar lá com o ouro das próximas rodadas e a pool de agora. As peças ligadas a um
+  // aprimoramento escolhido vêm primeiro: o aprimoramento é o plano que a partida te deu.
+  const augTraits = new Set(options.augmentTraits ?? []);
+  const assets = candidates
+    .filter((c) => own.has(key(c)))
+    .map((c) => {
+      const u = own.get(key(c)),
+        items = Math.min(3, u.items.length),
+        now =
+          stats?.unit?.[`${c.apiName}|${u.stars}|${items}`] ??
+          stats?.unit?.[`${c.apiName}|${u.stars}`],
+        avgNow = now?.[0] ?? baseAvg;
+      // Estrela-alvo: a que dá a melhor colocação esperada (média medida nela × chance de chegar lá com o ouro das
+      // próximas rodadas; se não chegar, fica como está). Até a estrela em que a peça costuma ser jogada, sempre;
+      // acima dela (Ahri 3★: 9 cópias de custo 4), só com chance real — 15% ou mais nas próximas rodadas.
+      const usual = typicalStar(c) ?? u.stars;
+      const option = (st) => {
+        const m = st === u.stars ? now : stats?.unit?.[`${c.apiName}|${st}`];
+        if (!m) return null;
+        const need = 3 ** (st - 1) - u.copies,
+          p =
+            st === u.stars || need <= 0
+              ? 1
+              : upper(key(c)) < need
+                ? 0
+                : atLeast(5 * shops, probability(c, boardLevel), need);
+        return { st, m, p, value: p * m[0] + (1 - p) * avgNow };
+      };
+      const best = [u.stars, u.stars + 1, u.stars + 2]
+        .filter((st) => st <= 3)
+        .map(option)
+        .filter((o) => o && (o.st <= Math.max(usual, u.stars) || o.p >= 0.15))
+        .sort((x, y) => x.value - y.value)[0];
+      if (!best) return null;
+      const target = best.st,
+        later = best.m,
+        pReach = best.p,
+        value = best.value;
+      return {
+        id: c.apiName,
+        champion: c,
+        stars: target,
+        starsNow: u.stars,
+        items,
+        avg: later[0],
+        avgNow,
+        games: later[1],
+        pReach,
+        value,
+        augment: traitsOf(c).some((t) => augTraits.has(t)),
+        // Os dados são de tabuleiros FINAIS. Peça pronta (na estrela-alvo, com 2+ itens) é medida exatamente como
+        // está. Peça que ainda vai crescer (subir estrela, ganhar itens) é medida "presente, em qualquer estrela",
+        // como as outras peças: a medição inclui quem chegou lá e quem não chegou, na proporção real. Medir o estado
+        // de agora (ex.: 2★ com 1 item) compararia com quem terminou a partida assim — quem caiu cedo.
+        exact: target === u.stars && items >= 2,
+        filter:
+          target === u.stars && items >= 2
+            ? exactUnit(c.apiName, u.stars, items)
+            : anyUnit(c.apiName),
+      };
+    })
+    .filter((a) => a && a.games >= MIN_GAMES && (a.pReach > 0 || a.exact))
+    .sort((x, y) => y.augment - x.augment || x.value - y.value)
+    .slice(0, 2);
+  for (const a of assets)
+    if (!options.conditional?.has(a.filter)) conditionalRequests.add(a.filter);
+  const advantage = [];
+  for (const asset of assets) {
+    const cond = options.conditional?.get(asset.filter);
+    if (!cond) continue;
+    // Referência na mesma escala da tabela condicional (a linha do próprio trunfo na pergunta dele); asset.avg é
+    // da estrela-alvo e, com o filtro "presente", deslocaria todo ganho.
+    const ref =
+      cond.units[asset.id]?.[0] ??
+      (asset.exact ? asset.avg : (stats?.unit?.[asset.id]?.[0] ?? asset.avg));
+    const gainOf = (c) =>
+      pFind(c) * (ref - shrinkTo(cond.units[c.apiName], ref));
+    const pool = available.filter(
+      (c) =>
+        c !== asset.champion && (cond.units[c.apiName]?.[1] ?? 0) >= MIN_GAMES,
+    );
+    // Variantes: só pelas peças, ou puxando uma das duas sinergias que mais rendem com o trunfo (patamar 2+).
+    const traitPicks = Object.entries(cond.traits)
+      .map(([k, st]) => {
+        const [api, tier] = k.split("|");
+        return {
+          api,
+          tier: Number(tier),
+          avg: shrinkTo(st, ref),
+          games: st[1],
+        };
+      })
+      .filter(
+        (t) => t.tier >= 2 && t.games >= MIN_GAMES && traitByApi.has(t.api),
+      )
+      .sort((x, y) => x.avg - y.avg)
+      .slice(0, 2);
+    for (const variant of [null, ...traitPicks]) {
+      // Peças suas ligadas ao aprimoramento entram junto (Aminimigos: Rengar e Kha'Zix no mesmo tabuleiro).
+      const linked = asset.augment
+          ? candidates.filter(
+              (c) =>
+                c !== asset.champion &&
+                own.has(key(c)) &&
+                traitsOf(c).some((t) => augTraits.has(t)),
+            )
+          : [],
+        board = [asset.champion, ...linked],
+        need = variant
+          ? (thresholdsOf(traitByApi.get(variant.api))[variant.tier - 1] ?? 0)
+          : 0,
+        name = variant ? traitByApi.get(variant.api) : null,
+        order = pool
+          .map((c) => ({
+            c,
+            gain: gainOf(c),
+            hasTrait: !!name && traitsOf(c).includes(name),
+          }))
+          .sort((x, y) => y.gain - x.gain);
+      const count = () =>
+        board.filter((c) => name && traitsOf(c).includes(name)).length;
+      for (const r of order) {
+        if (board.length >= growTo) break;
+        if (board.includes(r.c)) continue; // peça ligada ao aprimoramento já está no tabuleiro
+        if (name && count() < need && !r.hasTrait) continue;
+        if (!legal([...board, r.c])) continue;
+        board.push(r.c);
+      }
+      for (const r of order) {
+        if (board.length >= growTo) break;
+        if (!board.includes(r.c) && legal([...board, r.c])) board.push(r.c);
+      }
+      if (variant && count() < need) continue;
+      const component = score(board, null);
+      component.fit =
+        component.preservation +
+        component.items +
+        component.access +
+        component.matchup -
+        component.dispute;
+      component.total = component.fit;
+      advantage.push({
+        board,
+        component,
+        carry: asset.champion,
+        focus: name,
+        freeId: `free:${asset.id}${variant ? `:${variant.api}` : ""}`,
+        asset,
+        core: [
+          ...(variant ? [traitAt(variant.api, variant.tier)] : []),
+          ...order
+            .filter((r) => board.includes(r.c))
+            .slice(0, 3)
+            .map((r) => r.c),
+        ],
+      });
+    }
+  }
+  // O seu tabuleiro de agora também concorre: é o que fica se a troca não der certo.
+  const onBoard = candidates.filter((c) => own.get(key(c))?.onBoard);
+  const ownAvg = (c) => {
+    const u = own.get(key(c));
+    return (
+      stats?.unit?.[
+        `${c.apiName}|${u.stars}|${Math.min(3, u.items.length)}`
+      ]?.[0] ?? baseAvg
+    );
+  };
+  const current = onBoard.length
+    ? (() => {
+        // Peças principais do seu tabuleiro: trunfos (e as do aprimoramento) primeiro, depois quem carrega mais
+        // itens e o custo; as de enchimento do começo de jogo ficam por último.
+        const isAsset = (c) => assets.some((x) => x.champion === c),
+          order = [...onBoard].sort(
+            (x, y) =>
+              isAsset(y) - isAsset(x) ||
+              own.get(key(y)).items.length - own.get(key(x)).items.length ||
+              y.cost - x.cost ||
+              ownAvg(x) - ownAvg(y),
+          ),
+          component = score(order, null);
+        component.fit =
+          component.preservation +
+          component.items +
+          component.access +
+          component.matchup -
+          component.dispute;
+        component.total = component.fit;
+        return {
+          board: order,
+          component,
+          carry: order[0],
+          focus: null,
+          freeId: "free:current",
+          current: true,
+          core: order.slice(0, 4),
+        };
+      })()
+    : null;
+  if (current) advantage.push(current);
+  // O plano sugerido antes (options.sticky: id e peças) concorre sempre, mesmo que não seja mais gerado — é o
+  // que você está montando. Só sai se perder com folga (ver a troca mais abaixo).
+  const sticky = options.sticky ?? null;
+  // "free:current" não vira cópia congelada: o tabuleiro atual já é regerado acima com esse freeId.
+  if (sticky?.id && sticky.id !== "free:current" && sticky.units?.length) {
+    // Comp de meta tem peças fixas; tabuleiro de vantagem seria regerado a cada leitura com peças diferentes.
+    // O plano em andamento mantém as peças que já tinha e só cresce quando o nível sobe (nunca troca peça).
+    const isMeta = ranked.some((r) => r.meta?.id === sticky.id);
+    const kept0 = sticky.units
+      .map((id) => byId.get(id))
+      .filter((c) => c && candidates.includes(c));
+    const board = kept0.length < growTo ? extend(kept0, growTo).board : kept0;
+    if (!isMeta && kept0.length >= 3 && legal(board)) {
+      for (let i = advantage.length - 1; i >= 0; i--)
+        if (advantage[i].freeId === sticky.id && !advantage[i].current)
+          advantage.splice(i, 1);
+      const component = score(board, null);
+      component.fit =
+        component.preservation +
+        component.items +
+        component.access +
+        component.matchup -
+        component.dispute;
+      component.total = component.fit;
+      const carry = byId.get(sticky.carry) ?? board[0];
+      advantage.push({
+        board,
+        component,
+        carry: board.includes(carry) ? carry : board[0],
+        focus: null,
+        freeId: sticky.id,
+        kept: true,
+        title: sticky.title ?? null,
+        // A mesma pergunta com que o plano foi medido quando foi escolhido (sinergia mirada + peças principais):
+        // medir o mesmo tabuleiro com outra pergunta o fazia perder para a própria versão "nova".
+        core: sticky.core?.length
+          ? sticky.core
+              .map((x) => (x.startsWith("trait=") ? x : byId.get(x)))
+              .filter(Boolean)
+          : [carry, ...board.filter((c) => c !== carry)].slice(0, 4),
+        // O trunfo da pergunta guardada, como foi perguntado — mesmo que hoje ele não esteja entre os 2 trunfos.
+        asset: (() => {
+          const c =
+              sticky.asset && sticky.assetFilter
+                ? byId.get(sticky.asset)
+                : null,
+            u = c && own.get(key(c));
+          if (!u) return null;
+          const items = Math.min(3, u.items.length),
+            live = assets.find((a) => a.champion === c);
+          let filter = sticky.assetFilter;
+          // Filtro exato de outro estado (ex.: 2★ 2 itens e a peça já está 3★ 3 itens): mede como os candidatos novos medem.
+          if (
+            !filter.includes(",") &&
+            filter !== exactUnit(c.apiName, u.stars, items)
+          )
+            filter = live?.filter ?? anyUnit(c.apiName);
+          const exact = !filter.includes(",");
+          return {
+            id: c.apiName,
+            champion: c,
+            filter,
+            exact,
+            stars: exact ? u.stars : (live?.stars ?? u.stars),
+            starsNow: u.stars,
+            items,
+            avg:
+              (exact
+                ? stats?.unit?.[`${c.apiName}|${u.stars}|${items}`]?.[0]
+                : null) ??
+              stats?.unit?.[c.apiName]?.[0] ??
+              baseAvg,
+            pReach: 1,
+          };
+        })(),
+      });
+    }
+  }
+  // Pergunta de evidência de cada candidato: o trunfo que está nele (exato) + as peças principais presentes.
+  // Prefixos da mais curta à mais longa; vale a mais longa com amostra suficiente. Sem filtro de nível: filtrar
+  // pelo nível final pune comps de nível 9 (no 8 só ficam as que morreram antes) e não filtrar favorece peças
+  // caras (quem as tem já sobreviveu); o custo de chegar lá entra pela chance de montar (lojas do seu nível).
+  const coreOf = (r) => {
+    if (r.core) return r.core;
+    const holders = Object.keys(r.meta?.builds ?? {});
+    return [
+      r.carry,
+      ...r.board.filter((c) => holders.includes(c.apiName) && c !== r.carry),
+    ]
+      .concat(
+        r.board
+          .filter((c) => c !== r.carry && !holders.includes(c.apiName))
+          .sort((x, y) => y.cost - x.cost),
+      )
+      .slice(0, 3);
+  };
+  const assetIn = (r) =>
+    r.asset ?? assets.find((x) => r.board.includes(x.champion)) ?? null;
+  // Itens que você já tem e vão para o tabuleiro final: prontos no banco ou equipados em peça que sai da comp
+  // (movem-se para o tabuleiro), e emblemas dados por aprimoramento. Entram na pergunta ("tabuleiros com estas peças
+  // e com este item"), então cada tabuleiro é medido com os seus itens. Os dois de melhor colocação medida
+  // (meta-builds) primeiro, para a amostra não acabar.
+  const itemCat = new Map(catalog.items.map((i) => [i.apiName, i])),
+    itemAvg = (id) => options.itemStats?.[id]?.avg ?? baseAvg,
+    myItemsFor = (board) =>
+      [
+        ...new Set([
+          ...movable(board).ids.filter(
+            (id) => itemCat.get(id)?.composition?.length === 2,
+          ),
+          ...(options.augmentEmblems ?? []),
+        ]),
+      ]
+        .sort((x, y) => itemAvg(x) - itemAvg(y))
+        .slice(0, 2);
+  // Espátula/Frigideira: o emblema que dá para montar com o banco (ou com peças que saem da comp) e que mais melhora
+  // este tabuleiro, pelo efeito medido do patamar de sinergia que ele fecha (meta-stats: sinergia × patamar).
+  function emblemFor(board) {
+    const have = movable(board).ids,
+      tools = have.filter(isTool);
+    if (!tools.length || !stats) return null;
+    const ts = new Map(traits(board).map((t) => [t.name, t]));
+    let best = null;
+    for (const e of emblemRecipes) {
+      const tool = tools.find((t) => e.parts.includes(t));
+      if (!tool) continue;
+      const other = e.parts[0] === tool ? e.parts[1] : e.parts[0];
+      if (
+        !have.includes(other) ||
+        (other === tool && have.filter((x) => x === tool).length < 2)
       )
         continue;
-      selected.push(r);
-      if (selected.length === 3) break;
+      const def = traitMap.get(e.trait);
+      if (!def || !board.some((c) => !traitsOf(c).includes(e.trait))) continue;
+      const t = ts.get(e.trait),
+        th = thresholdsOf(e.trait),
+        tier = t?.tier ?? 0,
+        next = th.filter((n) => n <= (t?.count ?? 0) + 1).length;
+      if (next <= tier) continue;
+      const at = (k) =>
+          k ? (stats.trait?.[`${def.apiName}|${k}`]?.[0] ?? baseAvg) : baseAvg,
+        gain = at(tier) - at(next);
+      if (gain > 0 && (!best || gain > best.gain))
+        best = { id: e.id, name: e.name, trait: e.trait, gain };
     }
-    const round = (n) => Math.round(n * 10) / 10;
-    compRanking = ranked.map((r, index) => ({
-      id: r.meta.id,
-      rank: index + 1,
-      suggested: selected.includes(r),
-      total: round(r.component.total),
-      fit: round(r.component.fit),
-      owned: r.board.filter((c) => own.has(key(c))).length,
-      size: r.board.length,
-      dispute: round(r.component.dispute),
-      carryItems: r.component.buildFit.carryHits,
-      carryWanted: r.component.buildFit.carryWanted,
-      adjustedAvg: r.component.edge.adjustedAvg,
-      itemTier: tierOf(r.component.edge.adjustedAvg),
-      itemGain: r.component.edge.gain,
-      itemGains: r.component.edge.gains,
-    }));
+    return best;
   }
-  const focuses = selected.length
-    ? []
-    : [...new Set(candidates.flatMap((c) => c.traits))];
-  const results = [];
-  for (const focus of focuses) {
-    let board = [];
-    while (board.length < Math.min(boardLevel, available.length)) {
-      const next = available
-        .filter((c) => !board.includes(c))
-        .map((c) => ({ c, score: score([...board, c], focus).total }))
-        .sort((a, b) => b.score - a.score)[0];
-      board.push(next.c);
-    }
-    // Local swaps improve the greedy board without discarding its trait direction.
-    for (let pass = 0; pass < 2; pass++) {
-      let best = score(board, focus).total,
-        replacement = null;
-      for (let i = 0; i < board.length; i++)
-        for (const c of available) {
-          if (board.includes(c)) continue;
-          const trial = [...board];
-          trial[i] = c;
-          const s = score(trial, focus).total;
-          if (s > best + 0.1) {
-            best = s;
-            replacement = trial;
-          }
-        }
-      if (replacement) board = replacement;
-      else break;
-    }
-    const component = score(board, null);
-    const carry =
-      board
-        .filter((c) => c.stats.range >= 3)
-        .sort((a, b) => {
-          const value = (c) =>
-            Math.pow(c.cost, 1.25) * 3 +
-            (itemProfile[role(c)] ?? 0) * 2 +
-            (freeProfile[role(c)] ?? 0) * 2 +
-            (own.get(key(c))?.items.length ?? 0) * 0.3;
-          return value(b) - value(a);
-        })[0] ?? board[0];
-    results.push({ board, component, carry, focus });
+  function questions(r) {
+    const asset = assetIn(r),
+      start = asset ? [asset.filter] : [],
+      core = coreOf(r).filter((c) => c !== asset?.champion),
+      emblem = emblemFor(r.board),
+      mine = myItemsFor(r.board),
+      extras = [
+        ...mine,
+        ...(emblem && !mine.includes(emblem.id) ? [emblem.id] : []),
+      ].map((id) => `item=${id}`),
+      // Aprimoramento escolhido que mexe numa sinergia (Aminimigos → Rival com as duas peças): a pergunta exige a
+      // sinergia no patamar deste tabuleiro, então a medição é de tabuleiros com o mesmo efeito do aprimoramento.
+      augmented = traits(r.board)
+        .filter(
+          (t) =>
+            (options.augmentTraits ?? []).includes(t.name) &&
+            t.tier > 0 &&
+            traitMap.get(t.name),
+        )
+        .map((t) => traitAt(traitMap.get(t.name).apiName, t.tier)),
+      // Uma sinergia só tem um patamar por tabuleiro: a do aprimoramento (patamar do tabuleiro) substitui a mesma
+      // sinergia vinda das peças principais (repetida ou em outro patamar, que voltaria com 0 partidas).
+      traitApi = (f) =>
+        typeof f === "string" ? /^trait=(.+)_\d+$/.exec(f)?.[1] : undefined,
+      augApis = new Set(augmented.map(traitApi)),
+      dropped = new Set(core.map(traitApi).filter((a) => a && augApis.has(a))),
+      coreQ = core.filter((c) => !dropped.has(traitApi(c))),
+      merged = augmented.filter((f) => dropped.has(traitApi(f))),
+      steps = [
+        ...augmented,
+        ...coreQ.map((c) => (typeof c === "string" ? c : presence(c))),
+        ...extras,
+      ],
+      out = [];
+    for (let k = asset ? 0 : 1; k <= steps.length; k++)
+      out.push([...start, ...steps.slice(0, k)]);
+    return {
+      asset,
+      core: coreQ,
+      emblem,
+      extras,
+      augmented,
+      merged,
+      sets: out.filter((f) => f.length),
+    };
   }
-  results.sort((a, b) => b.component.total - a.component.total);
-  for (const r of results) {
+  // "trait=DA_18_Rival_3" → "Rival 3".
+  const traitLabel = (f) => {
+    const m = /^trait=(.+)_(\d+)$/.exec(f);
+    return m ? `${traitByApi.get(m[1]) ?? m[1]} ${m[2]}` : f;
+  };
+  // Comp de meta mais parecida com um tabuleiro (para o tier dos aprimoramentos); null abaixo de 50% das peças.
+  const nearestCluster = (board) => {
+    let best = null,
+      share = 0.5;
+    for (const m of options.metaComps ?? []) {
+      const n =
+        m.units.filter((id) => board.some((c) => c.apiName === id)).length /
+        m.units.length;
+      if (n >= share) {
+        share = n;
+        best = m.id;
+      }
+    }
+    return best;
+  };
+  const augmentTraitIds = (id) => options.augmentTraitsById?.[id] ?? [];
+  function measure(r) {
+    const { asset, core, emblem, extras, augmented, merged, sets } =
+      questions(r);
+    let best = null,
+      depth = 0,
+      starved = false;
+    sets.forEach((f, i) => {
+      const k = filterKey(f);
+      if (!evidence?.has(k)) {
+        if (!starved) requests.set(k, f);
+        return;
+      }
+      const e = evidence.get(k);
+      // Filtros com "e": prefixo mais longo só tem menos partidas. null (falha de rede) não conta como amostra pequena.
+      if (e && e.games < MIN_GAMES) starved = true;
+      if (e?.avg != null && e.games >= MIN_GAMES) {
+        best = e;
+        depth = i;
+      }
+    });
+    if (!best) return null;
+    // Passos usados na pergunta escolhida: sinergias do aprimoramento, depois peças, depois itens.
+    const reach = depth + (asset ? 0 : 1),
+      augUsed = augmented.slice(0, reach),
+      coreSteps = core.slice(0, Math.max(0, reach - augmented.length)),
+      used = coreSteps.filter((c) => typeof c !== "string"),
+      itemsUsed = extras.slice(
+        0,
+        Math.max(0, reach - augmented.length - core.length),
+      );
+    // Chance de montar o que foi medido: ter as peças da pergunta (o trunfo já é seu) e, para cada patamar de
+    // sinergia na pergunta, as peças do tabuleiro que o fecham — medir só quem fechou o patamar sem descontar a
+    // chance de fechá-lo dava vantagem de graça às perguntas com sinergia.
+    // Inclui a sinergia da variante que se fundiu à do aprimoramento (questions: merged), se entrou na pergunta.
+    const traitUnits = [
+      ...coreSteps,
+      ...augUsed.filter((f) => merged.includes(f)),
+    ]
+      .filter((x) => typeof x === "string" && x.startsWith("trait="))
+      .flatMap((f) => {
+        const m = /^trait=(.+)_(\d+)$/.exec(f),
+          name = m && traitByApi.get(m[1]);
+        if (!name) return [];
+        const need = thresholdsOf(name)[Number(m[2]) - 1] ?? 0;
+        return r.board
+          .filter((c) => traitsOf(c).includes(name))
+          .sort((x, y) => pFind(y) - pFind(x))
+          .slice(0, need);
+      });
+    const p = [...new Set([...used, ...traitUnits])].reduce(
+        (n, c) => n * pFind(c),
+        1,
+      ),
+      fallback = r.current ? best.avg : (currentMeasured ?? baseAvg);
+    // Aprimoramentos escolhidos que a pergunta não mediu (os que não viram sinergia): o tier deles nesta comp, na
+    // régua da MetaTFT (S −0,30 … D +0,30). Tabuleiro sem comp de meta usa a comp de meta mais parecida (50%+).
+    const cluster = r.meta?.id ?? nearestCluster(r.board),
+      augAdj = (options.augments ?? [])
+        .filter(
+          (id) =>
+            !augUsed.length ||
+            !augmentTraitIds(id).some((t) =>
+              augUsed.some((f) => f.includes(`=${t}_`)),
+            ),
+        )
+        .map((id) => ({
+          id,
+          tier: options.augmentStats?.compTiers?.[cluster]?.[id] ?? null,
+        }))
+        .filter((x) => x.tier && TIER_PLACE[x.tier] != null)
+        .map((x) => ({
+          ...x,
+          name: options.augmentNames?.[x.id] ?? x.id,
+          adj: TIER_PLACE[x.tier],
+        }));
+    const expected =
+      p * best.avg + (1 - p) * fallback + augAdj.reduce((n, x) => n + x.adj, 0);
+    // Incerteza da colocação esperada: erro da média medida, pesado pela chance de montar.
+    const se = Math.max(p, 0.2) * (PLACEMENT_SD / Math.sqrt(best.games));
+    return {
+      expected: Math.round(expected * 100) / 100,
+      measured: best.avg,
+      games: best.games,
+      top4: best.top4,
+      chance: Math.round(p * 100) / 100,
+      se: Math.round(se * 1000) / 1000,
+      basis: [
+        ...(asset
+          ? [
+              asset.exact
+                ? `${asset.champion.name} ${asset.stars}★ ${asset.items} itens`
+                : `${asset.champion.name} (hoje ${asset.starsNow}★, alvo ${asset.stars}★)`,
+            ]
+          : []),
+        ...augUsed.map((f) => `${traitLabel(f)} (aprimoramento)`),
+        ...coreSteps.filter((c) => typeof c === "string").map(traitLabel),
+        ...used.map((c) => c.name),
+        ...itemsUsed.map((f) => itemCat.get(f.slice(5))?.name ?? f.slice(5)),
+      ],
+      emblem: emblem
+        ? { id: emblem.id, name: emblem.name, trait: emblem.trait }
+        : null,
+      augments: augAdj,
+    };
+  }
+  const currentMeasured = current ? (measure(current)?.measured ?? null) : null;
+  for (const r of [...ranked, ...advantage]) {
+    r.component.itemPlan ??= planFor(r.board);
+    const ev = measure(r);
+    if (!ev) continue;
+    r.component.evidence = ev;
+    r.component.total = (baseAvg - ev.expected) * PLACEMENT_POINTS;
+    // Itens que você tem, comp a comp (plano de itens): soma parte do total acumulado ao valor medido.
+    if (r.component.itemPlan.active)
+      r.component.total +=
+        EVIDENCE_ITEM_SHARE * planPoints(r.component.itemPlan.total);
+  }
+  // Score de cada comp (comp-score.mjs): itens que você tem, força medida, chance de montá-la com o SEU nível (agora e no
+  // nível alvo) com a pool e as lojas ao alcance, peças em campo/na loja agora e a disputa dos rivais. Ordena as comps.
+  const shopIds = new Set((options.shop ?? []).filter(Boolean)),
+    findAt = (c, atLevel) =>
+      own.has(key(c))
+        ? 1
+        : upper(key(c)) > 0
+          ? 1 - (1 - probability(c, atLevel)) ** (5 * shops)
+          : 0,
+    // Chance de montar a comp com o nível dado: TODA peça que falta entra, inclusive as de custo baixo (no nível 6 uma
+    // peça de custo 1 tem só 30% por vaga e a pool dela é grande). As principais (carry e núcleo) contam inteiras; as
+    // demais pesam metade no expoente, porque a comp tem alternativas para elas (flex) e o núcleo decide.
+    chanceOf = (r, atLevel) => {
+      const core = new Set([
+        r.carry,
+        ...coreOf(r).filter((c) => typeof c !== "string"),
+      ]);
+      return r.board.reduce(
+        (n, c) => n * findAt(c, atLevel) ** (core.has(c) ? 1 : 0.5),
+        1,
+      );
+    };
+  // O que você já tem da comp, de 0 a 1, ponderado pelo custo (um custo 4 pesa mais que um custo 1): 1★ vale 0,35, 2★ 0,65
+  // e 3★ 1; a peça que ainda pode subir de estrela (cópias que faltam × pool × lojas do seu nível) soma até a metade do
+  // que falta até o 1. Peça que você não tem vale 0.
+  const heldOf = (r) => {
+    let got = 0,
+      all = 0;
+    for (const c of r.board) {
+      all += c.cost;
+      const u = own.get(key(c));
+      if (!u) continue;
+      const base = u.stars >= 3 ? 1 : u.stars === 2 ? 0.65 : 0.35,
+        need = 3 ** u.stars - u.copies,
+        up =
+          u.stars >= 3 || need <= 0
+            ? u.stars >= 3
+              ? 0
+              : 1
+            : upper(key(c)) >= need
+              ? atLeast(5 * shops, probability(c, level), need)
+              : 0;
+      got += c.cost * Math.min(1, base + (1 - base) * 0.5 * up);
+    }
+    return all ? got / all : 0;
+  };
+  for (const r of [...ranked, ...advantage]) {
+    const c = r.component,
+      ev = c.evidence ?? null;
+    c.compScore = compScore({
+      expected: ev?.expected ?? c.edge?.adjustedAvg ?? r.meta?.avg ?? null,
+      itemGain: c.edge?.gain ?? 0,
+      carryItems: c.buildFit?.carryHits ?? 0,
+      carryWanted: c.buildFit?.carryWanted ?? 0,
+      itemPlan: c.itemPlan?.active ? c.itemPlan.total : null,
+      chanceNow: chanceOf(r, level),
+      chancePlan: boardLevel > level ? chanceOf(r, boardLevel) : null,
+      held: heldOf(r),
+      shopHits: r.board.filter(
+        (x) => !own.has(key(x)) && shopIds.has(x.apiName),
+      ).length,
+      dispute: c.dispute ?? 0,
+    });
+  }
+  // Ordem: a pontuação medida (colocação esperada, já com seus itens e a chance de montar no nível alvo) mais o score,
+  // que traz o que a medida não vê: disputa dos rivais, chance com o nível de agora, loja e o valor do que você já tem.
+  // O score vale SCORE_POINTS por 100 pontos (uma colocação inteira são PLACEMENT_POINTS = 20).
+  const byScore = (a, b) =>
+    b.component.total +
+    SCORE_POINTS * (b.component.compScore?.score ?? 0) -
+    (a.component.total + SCORE_POINTS * (a.component.compScore?.score ?? 0));
+  // Com evidência, só concorre quem foi medido; sem ela (offline), as comps de meta pela conta anterior.
+  const measured = (r) => !!r.component.evidence;
+  const anyMeasured = [...ranked, ...advantage].some(measured);
+  const overlaps = (r, s) =>
+    r.board.filter((c) => s.board.includes(c)).length / r.board.length > 0.85;
+  // Política explícita (não medida): tentar uma troca gasta ouro e enfraquece o tabuleiro se não der certo, e
+  // os dados não medem esse custo. Por isso, tabuleiro com menos de 50% de chance de montar é "aposta": só
+  // passa à frente dos que dá para montar quando não houver nenhum.
+  // O plano em andamento tem faixa de tolerância (35%): a chance oscila com o ouro de cada rodada, e cruzar 50%
+  // por pouco não pode derrubar o que você está montando.
+  const SAFE = 0.5,
+    SAFE_KEPT = 0.35,
+    isSticky = (r) =>
+      !!options.sticky?.id && (r.meta?.id ?? r.freeId) === options.sticky.id,
+    safe = (r) =>
+      (r.component.evidence?.chance ?? 1) >= (isSticky(r) ? SAFE_KEPT : SAFE);
+  // Política explícita (não medida): com um aprimoramento de sinergia escolhido, o tabuleiro que o usa vem antes
+  // do que o descarta. A média de uma comp alheia vem de quem a montou com recursos para ela; trocar e jogar o
+  // aprimoramento fora custa uma vantagem que os dados não medem.
+  const usesAugment = (r) =>
+    !augTraits.size ||
+    traits(r.board).some((t) => augTraits.has(t.name) && t.tier > 0);
+  for (const r of advantage.concat(ranked))
+    if (r.component.evidence) {
+      r.component.evidence.bet = !safe(r);
+      r.component.evidence.dropsAugment = !usesAugment(r);
+    }
+  const contenders = (
+    anyMeasured ? [...ranked, ...advantage].filter(measured) : ranked
+  ).sort(
+    (a, b) =>
+      usesAugment(b) - usesAugment(a) || safe(b) - safe(a) || byScore(a, b),
+  );
+  // Troca de plano com confiança: o melhor agora só substitui o plano em andamento se a vantagem passar da
+  // incerteza das duas medições (95%) mais o custo de trocar neste estágio (proporcional às peças que mudam).
+  // Não vale quando o plano em andamento caiu de classe (virou aposta ou deixou de usar o aprimoramento).
+  const stage =
+    options.stage?.stage ??
+    (level >= 8 ? 5 : level >= 7 ? 4 : level >= 6 ? 3 : 2);
+  let switchNote = null;
+  const keptAt = sticky?.id
+    ? contenders.findIndex((r) => (r.meta?.id ?? r.freeId) === sticky.id)
+    : -1;
+  if (keptAt > 0) {
+    const top = contenders[0],
+      kept = contenders[keptAt],
+      a = top.component.evidence,
+      b = kept.component.evidence;
+    const sameClass =
+      usesAugment(kept) >= usesAugment(top) && safe(kept) >= safe(top);
+    if (a && b && sameClass) {
+      const gain = b.expected - a.expected,
+        noise = Z95 * Math.hypot(a.se ?? 0, b.se ?? 0),
+        changed =
+          1 -
+          top.board.filter((c) => kept.board.includes(c)).length /
+            Math.max(1, kept.board.length),
+        cost = (SWITCH_COST[Math.min(5, Math.max(1, stage))] ?? 0.8) * changed,
+        round2 = (x) => Math.round(x * 100) / 100;
+      // `holdPlan`: o servidor ainda não confirmou o desafiante (plan-state.mjs: precisa liderar por mais de uma
+      // rodada). A vantagem é medida e registrada (`held`), mas o plano em andamento não troca por ela agora.
+      const wins = gain > noise + cost,
+        keep = !wins || options.holdPlan === true;
+      switchNote = {
+        kept: keep,
+        held: wins && keep,
+        fromId: kept.meta?.id ?? kept.freeId ?? null,
+        toId: top.meta?.id ?? top.freeId ?? null,
+        from: kept.meta?.title ?? kept.title ?? kept.carry.name,
+        to: top.meta?.title ?? top.title ?? top.carry.name,
+        gain: round2(gain),
+        noise: round2(noise),
+        cost: round2(cost),
+        stage,
+        changed: round2(changed),
+      };
+      if (keep) contenders.unshift(...contenders.splice(keptAt, 1));
+    }
+  }
+  // Confiança da escolha: quão claramente o 1º supera o 2º (diferença ÷ incerteza combinada).
+  if (
+    contenders.length > 1 &&
+    contenders[0].component.evidence &&
+    contenders[1].component.evidence
+  ) {
+    const a = contenders[0].component.evidence,
+      b = contenders[1].component.evidence,
+      z =
+        (b.expected - a.expected) /
+        Math.max(0.01, Math.hypot(a.se ?? 0, b.se ?? 0));
+    a.confidence = {
+      z: Math.round(z * 100) / 100,
+      level: z >= Z95 ? "alta" : z >= 0.5 ? "média" : "baixa",
+      over:
+        contenders[1].meta?.title ??
+        contenders[1].title ??
+        contenders[1].carry.name,
+      margin: Math.round((b.expected - a.expected) * 100) / 100,
+      // Mesma incerteza (95%) usada no nível e na troca de plano, para a tela não refazer a conta.
+      noise: Math.round(Z95 * Math.hypot(a.se ?? 0, b.se ?? 0) * 100) / 100,
+    };
+    if (switchNote) a.switch = switchNote;
+  } else if (switchNote && contenders[0].component.evidence)
+    contenders[0].component.evidence.switch = switchNote;
+  const contendersAll = contenders;
+  for (const r of contenders) {
     if (
       selected.some(
-        (s) =>
-          r.board.filter((c) => s.board.includes(c)).length / r.board.length >
-          0.85,
+        (s) => overlaps(r, s) || (r.freeId && r.freeId === s.freeId),
       )
     )
       continue;
     selected.push(r);
     if (selected.length === 3) break;
+  }
+  if (ranked.length) {
+    const round = (n) => Math.round(n * 10) / 10;
+    // Posição = ordem final de escolha (contenders, já com aprimoramento/aposta/troca de plano); as não medidas
+    // vêm depois, pelo total. Sem isso, com evidência o rank seguia a conta heurística anterior.
+    const order = new Map(contendersAll.map((r, i) => [r, i]));
+    compRanking = [...ranked]
+      .sort(
+        (a, b) =>
+          (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity) ||
+          byScore(a, b),
+      )
+      .map((r, index) => ({
+        id: r.meta.id,
+        rank: index + 1,
+        suggested: selected.includes(r),
+        total: round(r.component.total),
+        // Score 0-100 e a chance de montar no seu nível (ver comp-score.mjs); "best" = a melhor comp para você agora.
+        score: r.component.compScore.score,
+        best: index === 0,
+        chance: r.component.compScore.chance,
+        chancePlan: r.component.compScore.chancePlan,
+        scoreParts: r.component.compScore.parts,
+        contestFactor: r.component.compScore.contest,
+        level,
+        fit: round(r.component.fit),
+        owned: r.board.filter((c) => own.has(key(c))).length,
+        size: r.board.length,
+        dispute: round(r.component.dispute),
+        carryItems: r.component.buildFit.carryHits,
+        carryWanted: r.component.buildFit.carryWanted,
+        // Onde estão os itens da build desta comp (no lugar, banco, mover de quem sai, montar, falta): item-holdings.mjs.
+        itemHoldings: r.component.buildFit.holdings,
+        // Plano de itens: atribuições (campeão, item, valor, situação), total acumulado, campeões por impacto e a lista
+        // de desejos do meta; sem o banco lido, só a lista de desejos (item-plan.mjs).
+        itemPlan: r.component.itemPlan,
+        adjustedAvg: r.component.edge.adjustedAvg,
+        itemTier: tierOf(r.component.edge.adjustedAvg),
+        itemGain: r.component.edge.gain,
+        itemGains: r.component.edge.gains,
+        emblem: r.component.emblem?.picks ?? [],
+        // Colocação esperada medida (trunfo + peças principais) e a chance de montar; null sem evidência.
+        evidence: r.component.evidence ?? null,
+      }));
   }
   const reserve = (options.bench ?? [])
     .filter((u) => String(u.playerId) === String(self.playerId))
@@ -614,8 +1694,8 @@ export function analyze(snapshot, catalog, options) {
       name: byId.get(u.championName)?.name ?? u.championName,
       stars: u.starLevel,
       cost: byId.get(u.championName)?.cost ?? 0,
-      source: "manual",
-      traits: byId.get(u.championName)?.traits ?? [],
+      source: u.source ?? "manual",
+      ...unitTraits(u),
     }));
   // Substituições: a comp de meta é um ponto de partida. Para cada peça (menos o carry), campeões de custo
   // próximo e mesmo papel (tanque ou dano) que mantêm as sinergias, ordenados pelo que a partida favorece:
@@ -625,8 +1705,25 @@ export function analyze(snapshot, catalog, options) {
   const traitTiers = (board) =>
     traits(board).filter((t) => t.active && !t.solo);
   const shopOk = (c) => ODDS[boardLevel][c.cost - 1] >= 10;
-  const reachable = (c) => own.has(key(c)) || (free(key(c)) > 0 && shopOk(c));
+  const reachable = (c) => own.has(key(c)) || (upper(key(c)) > 0 && shopOk(c));
   const access = (c) => Math.log(1 + probability(c, boardLevel) * 100);
+  // Contexto das trocas: quanto cada peça rende junto com o seu trunfo principal (MetaTFT), encolhido para a
+  // média do trunfo quando a amostra é pequena. É o "a Lillia segura a frente dos seus cores" medido.
+  const mainAsset = assets[0] ?? null,
+    mainCond = mainAsset
+      ? (options.conditional?.get(mainAsset.filter) ?? null)
+      : null,
+    // Mesma escala da tabela condicional (ver ref nos tabuleiros de vantagem).
+    mainRef = mainCond
+      ? (mainCond.units[mainAsset.id]?.[0] ??
+        (mainAsset.exact
+          ? mainAsset.avg
+          : (stats?.unit?.[mainAsset.id]?.[0] ?? mainAsset.avg)))
+      : null;
+  const withAsset = (c) =>
+    mainCond && c !== mainAsset.champion
+      ? shrinkTo(mainCond.units[c.apiName], mainRef)
+      : null;
   function flexOf(board, carry) {
     const base = traitTiers(board),
       baseSum = base.reduce((n, t) => n + t.tier, 0),
@@ -666,15 +1763,25 @@ export function analyze(snapshot, catalog, options) {
             delta * 6 +
             (mine ? 5 + mine.stars * 2 : 0) -
             (mineU ? 6 + mineU.stars * 2 : 0) +
-            ((p?.enemy ?? 0) / POOL[u.cost] - (q?.enemy ?? 0) / POOL[c.cost]) *
+            (contestOf(key(u)) / POOL[u.cost] -
+              contestOf(key(c)) / POOL[c.cost]) *
               12 +
             (access(c) - access(u)) * 1.5 +
             (c.cost - u.cost) * 1.5 +
-            (role(c) === role(u) ? 2 : 0);
+            (role(c) === role(u) ? 2 : 0) +
+            // Medido junto com o seu trunfo: cada 0,1 de colocação melhor vale 2 pontos.
+            (withAsset(u) != null && withAsset(c) != null
+              ? (withAsset(u) - withAsset(c)) * PLACEMENT_POINTS
+              : 0);
           return {
             id: c.apiName,
             name: c.name,
             cost: c.cost,
+            // Colocação média de tabuleiros com o seu trunfo e esta peça (null sem a tabela do trunfo).
+            withAsset:
+              withAsset(c) != null
+                ? Math.round(withAsset(c) * 100) / 100
+                : null,
             owned: !!mine,
             stars: mine?.stars ?? 0,
             enemyCopies: q?.enemy ?? 0,
@@ -699,7 +1806,8 @@ export function analyze(snapshot, catalog, options) {
         stars: mineU?.stars ?? 0,
         enemyCopies: p?.enemy ?? 0,
         total: POOL[u.cost],
-        remaining: free(key(u)),
+        remaining: upper(key(u)),
+        remainingLikely: Math.round(free(key(u)) * 10) / 10,
         rivals: [...(rivals.get(key(u)) ?? [])],
         contested,
         unreachable,
@@ -744,7 +1852,8 @@ export function analyze(snapshot, catalog, options) {
         cost: c.cost,
         chancePerShop: 1 - (1 - probability(c)) ** 5,
         enemyCopies: enemy.get(key(c)) ?? 0,
-        remainingUpper: free(key(c)),
+        hiddenCopies: Math.round((held.get(key(c)) ?? 0) * 10) / 10,
+        remainingUpper: upper(key(c)),
       }));
     const carryOwn = own.get(key(r.carry))?.copies ?? 0,
       needed = Math.max(0, 3 - carryOwn),
@@ -759,6 +1868,9 @@ export function analyze(snapshot, catalog, options) {
     const keep = r.board.filter((c) => own.has(key(c))).map((c) => c.name);
     return {
       rank: index + 1,
+      // Emblemas ao alcance que mais rendem nesta comp (Espátula/Frigideira no banco).
+      emblems: r.component?.emblem?.picks ?? [],
+      evidence: r.component?.evidence ?? null,
       meta: r.meta
         ? {
             id: r.meta.id,
@@ -773,14 +1885,34 @@ export function analyze(snapshot, catalog, options) {
             builds: r.meta.builds,
           }
         : null,
+      // Tabuleiro de vantagem (sem comp de meta): id estável pelo carry, para a continuidade entre leituras.
+      freeId: r.freeId ?? null,
+      // Pergunta de evidência deste plano (sinergias e peças principais; trunfo), para medi-lo igual depois.
+      evidenceCore: (r.core ?? []).map((x) =>
+        typeof x === "string" ? x : x.apiName,
+      ),
+      evidenceAsset: (r.asset ?? assetIn(r))?.id ?? null,
+      evidenceAssetFilter: (r.asset ?? assetIn(r))?.filter ?? null,
       title:
         r.meta?.title ||
+        (r.current ? "Seu tabuleiro atual" : "") ||
+        (r.kept && r.title ? r.title : "") ||
+        (r.freeId
+          ? [
+              `${r.carry.name} ${own.get(key(r.carry))?.stars ?? 1}★`,
+              ...ts
+                .filter((t) => !t.solo)
+                .slice(0, 2)
+                .map((t) => `${t.count} ${t.name}`),
+            ].join(" · ")
+          : "") ||
         ts
           .slice(0, 2)
           .map((t) => `${t.count} ${t.name}`)
           .join(" · ") ||
         "Flex",
       score: Math.round(r.component.total * 10) / 10,
+      compScore: r.component.compScore ?? null,
       components: r.component,
       traits: ts,
       carry: r.carry.name,
@@ -790,7 +1922,7 @@ export function analyze(snapshot, catalog, options) {
         id: c.apiName,
         name: c.name,
         cost: c.cost,
-        traits: c.traits,
+        ...traitsFor(c, own.get(key(c))?.items),
         role: role(c),
         owned: own.has(key(c)),
         inReserve: !own.get(key(c))?.onBoard && own.has(key(c)),
@@ -806,7 +1938,7 @@ export function analyze(snapshot, catalog, options) {
         level: rollLevel,
         budget: rollBudget,
         neededForTwoStar: needed,
-        availableUpper: free(key(r.carry)),
+        availableUpper: upper(key(r.carry)),
         chanceOneCopy:
           rollBudget === null ? null : 1 - (1 - p) ** (rollBudget * 5),
       },
@@ -824,7 +1956,12 @@ export function analyze(snapshot, catalog, options) {
           : []),
         ...(r.meta
           ? [
-              `Meta tier ${r.meta.tier}: colocação média ${r.meta.avg}, top 4 em ${r.meta.top4}% e vitória em ${r.meta.win}% de ${r.meta.games} partidas · estilo ${r.meta.levelling || "não informado"}.`,
+              `Ponto de partida: comp de meta com colocação média ${r.meta.avg}, top 4 em ${r.meta.top4}% e vitória em ${r.meta.win}% de ${r.meta.games} partidas · estilo ${r.meta.levelling || "não informado"}.`,
+            ]
+          : []),
+        ...(r.freeId
+          ? [
+              `Montado em volta de ${r.carry.name} ${own.get(key(r.carry))?.stars ?? 1}★ (${own.get(key(r.carry))?.items.length ?? 0} itens): a força dele vem antes de qualquer comp; o resto do tabuleiro é a frente e as sinergias que a pool de agora permite.`,
             ]
           : []),
         ...(r.component.buildFit && ownedItems.length
@@ -914,6 +2051,35 @@ export function analyze(snapshot, catalog, options) {
     previewGrow,
     previewFlex: goalBoard.length >= 5 ? flexOf(goalBoard, goalCarry) : [],
     compRanking,
+    // Perguntas de evidência ainda sem resposta (o servidor busca e refaz a análise); vazio quando completa.
+    evidenceRequests: [...requests.values()],
+    conditionalRequests: [...conditionalRequests],
+    // Todos os tabuleiros medidos, do melhor para o pior (comps de meta, de vantagem e o seu atual).
+    measured: contendersAll
+      .filter((r, i) => i < 12 || !r.meta)
+      .map((r) => ({
+        title:
+          r.meta?.title ??
+          (r.current
+            ? "Seu tabuleiro atual"
+            : r.kept && r.title
+              ? r.title
+              : `${r.carry.name} · ${r.focus ?? "peças"}`),
+        kind: r.meta ? "meta" : r.current ? "atual" : "vantagem",
+        units: r.board.map((c) => c.name),
+        ...r.component.evidence,
+      })),
+    assets: assets.map((a) => ({
+      id: a.id,
+      name: a.champion.name,
+      stars: a.stars,
+      starsNow: a.starsNow,
+      items: a.items,
+      avg: a.avg,
+      games: a.games,
+      chance: Math.round(a.pReach * 100) / 100,
+      augment: a.augment,
+    })),
     self: {
       id: self.playerId,
       name: self.riotIdGameName ?? self.summonerName,
@@ -923,7 +2089,7 @@ export function analyze(snapshot, catalog, options) {
       units: self.boardPieces.map((u) => ({
         ...u,
         name: byId.get(u.championName)?.name ?? u.championName,
-        traits: byId.get(u.championName)?.traits ?? [],
+        ...unitTraits(u),
       })),
     },
     recommendations,

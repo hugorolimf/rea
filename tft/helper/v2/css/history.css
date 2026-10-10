@@ -47,7 +47,8 @@
     & .notice,
     & .deck,
     & .skeleton,
-    & .waiting {
+    & .waiting,
+    & .contest {
       display: none !important;
     }
   }
@@ -161,6 +162,72 @@
     }
     & .muted {
       color: var(--faint);
+    }
+  }
+  .match[data-game] {
+    cursor: pointer;
+    transition: border-color 0.2s;
+    &:hover,
+    &:focus-visible {
+      border-color: var(--line);
+      outline: none;
+    }
+  }
+  .notice[data-kind="replay"] a {
+    margin-left: 10px;
+    color: var(--go);
+    font-weight: 700;
+  }
+  /* Aviso de disputa: discreto; vermelho só na disputa alta */
+  .contest {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 12.5px;
+    & > .i {
+      width: 15px;
+      height: 15px;
+      color: var(--amber);
+    }
+    &[data-level="high"] > .i {
+      color: var(--danger);
+    }
+    & p {
+      flex: 1 1 240px;
+    }
+    & b {
+      color: var(--text);
+    }
+    & small {
+      color: var(--faint);
+    }
+    &[hidden] {
+      display: none;
+    }
+  }
+  .contest-units {
+    display: inline-flex;
+    gap: 3px;
+  }
+  .contest-x {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    & .i {
+      width: 13px;
+      height: 13px;
     }
   }
 }

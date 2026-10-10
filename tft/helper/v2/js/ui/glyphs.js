@@ -30,11 +30,25 @@ const initials = (name) => String(name ?? "?").slice(0, 2);
 export const portrait = (
   id,
   name,
-  { kind = "champion", size = 30, ring = "", badge = "" } = {},
+  { kind = "champion", size = 30, ring = "", badge = "", hidden = false } = {},
 ) => {
-  const src = kind === "item" ? itemIcon(id) : champIcon(id);
-  return `<span class="pt ${kind === "item" ? "pt-item" : ""} ${ring}" style="--s:${size}px" data-i="${esc(initials(name))}" title="${esc(name)}">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : ""}${badge}</span>`;
+  const src = kind === "item" ? itemIcon(id) : champIcon(id),
+    label = esc(name);
+  // O nome fica acessível sem texto visível: `role="img"` + rótulo (com selo, o `title` basta para não ocultar o selo).
+  // `hidden`: o chamador já escreve o nome ao lado (texto rico), então o retrato some para leitores de tela.
+  const a11y = hidden
+    ? ' aria-hidden="true"'
+    : badge
+      ? ""
+      : ` role="img" aria-label="${label}"`;
+  return `<span class="pt ${kind === "item" ? "pt-item" : ""} ${ring}" style="--s:${size}px" data-i="${esc(initials(name))}" title="${label}"${a11y}>${src ? `<img src="${esc(src)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async">` : ""}${badge}</span>`;
 };
+/** Nome do campeão pelo catálogo (o id cru só quando o catálogo ainda não carregou). */
+export const champName = (id) =>
+  catalog.champions.get(id)?.name ?? String(id ?? "");
+/** Retrato de campeão com o anel na cor do custo (padrão de "Substituições"); o custo vem do catálogo se não informado. */
+export const unitPortrait = (id, name, cost = null, size = 32) =>
+  `<span class="sub-pt" style="--ring-c:var(--cost-${Math.min(5, Math.max(1, cost ?? catalog.champions.get(id)?.cost ?? 1))})">${portrait(id, name ?? champName(id), { size })}</span>`;
 export const itemPortrait = (item, opts = {}) =>
   portrait(item.id, item.name ?? itemName(item.id), {
     ...opts,

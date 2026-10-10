@@ -2,14 +2,33 @@ import { watch } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { gameRows } from "./replay.mjs";
+
+// Assinatura do tabuleiro independente da ordem das peças (a mesma para o arquivo do jogo e o histórico gravado).
+const signatureOf = (units) =>
+  JSON.stringify(
+    units
+      .map((u) => ({
+        championName: u.championName,
+        starLevel: u.starLevel,
+        itemNames: u.itemNames,
+        price: u.price,
+      }))
+      .sort((a, b) =>
+        String(a.championName).localeCompare(String(b.championName)),
+      ),
+  );
+
 export function captureBoards(file, history) {
   const subscribers = new Set();
   let current = null,
     stamp = null,
     hash = null,
+    sent = null, // digest do último evento enviado (pode estar à frente de `hash` se a gravação falhou)
     busy = false,
     queued = false,
     previous = new Map(),
+    fallen = new Set(), // ids cuja eliminação (vida ≤ 0) já foi gravada
     records = new Map(),
     sequence = 0,
     lastError = null;
@@ -37,13 +56,25 @@ export function captureBoards(file, history) {
       if (!Array.isArray(d.statsBlock?.players))
         throw Error("Snapshot sem jogadores");
       const digest = crypto.createHash("sha256").update(raw).digest("hex");
-      stamp = stat.mtimeMs;
-      if (digest === hash) return;
-      hash = digest;
-      const changed = [];
+      if (digest === hash) {
+        stamp = stat.mtimeMs;
+        return;
+      }
+      const changed = [],
+        lines = [],
+        nextSigs = new Map(),
+        nextFallen = [],
+        since = new Map();
       if (current?.gameId !== d.gameId) {
-        previous = new Map();
         records = new Map();
+        // Reinício no meio da partida: parte do último tabuleiro já gravado de cada jogador, para não regravá-lo.
+        previous = new Map();
+        fallen = new Set();
+        for (const r of await gameRows(history, d.gameId)) {
+          previous.set(String(r.id), signatureOf(r.units ?? []));
+          since.set(String(r.id), r.lastBoardChangeAt);
+          if ((r.health ?? 1) <= 0) fallen.add(String(r.id));
+        }
       }
       for (const p of d.statsBlock.players) {
         const id = String(p.playerId);
@@ -53,11 +84,7 @@ export function captureBoards(file, history) {
           itemNames: u.itemNames,
           price: u.price,
         }));
-        const signature = JSON.stringify(
-          [...units].sort((a, b) =>
-            a.championName.localeCompare(b.championName),
-          ),
-        );
+        const signature = signatureOf(units);
         const old = records.get(id);
         const boardChanged = previous.get(id) !== signature;
         const row = {
@@ -68,31 +95,46 @@ export function captureBoards(file, history) {
           sourceAt: stat.mtime.toISOString(),
           lastBoardChangeAt: boardChanged
             ? stat.mtime.toISOString()
-            : old?.lastBoardChangeAt,
+            : (old?.lastBoardChangeAt ?? since.get(id)),
           receivedAt: new Date().toISOString(),
         };
         records.set(id, row);
+        // A eliminação também vira linha (mesmo tabuleiro): replay e pool-tracker leem a vida da última.
+        const died = (p.health ?? 1) <= 0 && !fallen.has(id);
         if (boardChanged) {
           changed.push(id);
-          previous.set(id, signature);
-          await fs.appendFile(
-            history,
-            JSON.stringify({ gameId: d.gameId, ...row }) + "\n",
-          );
+          nextSigs.set(id, signature);
         }
+        if (died) nextFallen.push(id);
+        if (boardChanged || died)
+          lines.push(JSON.stringify({ gameId: d.gameId, ...row }) + "\n");
       }
-      current = {
-        type: "boards",
-        sequence: ++sequence,
-        gameId: d.gameId,
-        sourceAt: stat.mtime.toISOString(),
-        receivedAt: new Date().toISOString(),
-        changedIds: changed,
-        players: [...records.values()],
-        viewedPlayerId: null,
-      };
+      // A tela recebe o evento antes da gravação: uma falha no disco não a deixa sem os tabuleiros.
+      // Nas novas tentativas de gravar o mesmo arquivo, o evento não é reenviado.
+      if (digest !== sent) {
+        current = {
+          type: "boards",
+          sequence: ++sequence,
+          gameId: d.gameId,
+          sourceAt: stat.mtime.toISOString(),
+          receivedAt: new Date().toISOString(),
+          changedIds: changed,
+          players: [...records.values()],
+          viewedPlayerId: null,
+        };
+        sent = digest;
+        send(current);
+      }
+      if (lines.length) {
+        await fs.mkdir(path.dirname(history), { recursive: true });
+        await fs.appendFile(history, lines.join(""));
+      }
+      // Só confirma depois de gravar: se falhar, o próximo tick relê o mesmo arquivo e regrava as linhas.
+      for (const [id, signature] of nextSigs) previous.set(id, signature);
+      for (const id of nextFallen) fallen.add(id);
+      stamp = stat.mtimeMs;
+      hash = digest;
       lastError = null;
-      send(current);
     } catch (e) {
       lastError = e.message;
     } finally {

@@ -6,11 +6,14 @@ import { itemTiers } from "../../item-tiers.mjs";
 import {
   COMPONENTS,
   attrMatrix,
+  bankReading,
+  sameItems,
   filterItems,
   formatStat,
   recipeGrid,
   statList,
   tierRows,
+  unknownNote,
 } from "./items.js";
 
 // Mesmo dado que /api/items entrega: catálogo gerado + desempenho da cópia de meta.
@@ -104,4 +107,62 @@ test("matriz de atributos: ordena pela coluna escolhida e guarda o máximo de ca
     Math.max(...ap.filter(Number.isFinite)),
   );
   assert.ok(m.columns.every((c) => c.max > 0));
+});
+
+test("bankReading mantém repetidos, consumíveis e espaços não reconhecidos do banco lido", () => {
+  const screen = {
+    items: ["A", "A", "B"],
+    bank: ["A", "DA_Consumable_ItemRemover", "A", "B"],
+    unknownItems: 2,
+  };
+  assert.deepEqual(bankReading(screen), {
+    bank: ["A", "DA_Consumable_ItemRemover", "A", "B"],
+    items: ["A", "A", "B"],
+    unknown: 2,
+  });
+  // Servidor sem `bank` (versão antiga): o banco é a lista de itens.
+  assert.deepEqual(bankReading({ items: ["A"] }), {
+    bank: ["A"],
+    items: ["A"],
+    unknown: 0,
+  });
+  assert.equal(bankReading({}), null);
+  assert.equal(bankReading(null), null);
+  // Banco lido e vazio é diferente de banco não lido.
+  assert.deepEqual(bankReading({ items: [] }), {
+    bank: [],
+    items: [],
+    unknown: 0,
+  });
+});
+
+test("unknownNote: espaços não reconhecidos ficam fora da análise; chance de componente só como estimativa", () => {
+  assert.equal(unknownNote(null), null);
+  assert.equal(unknownNote({ bank: ["A"], items: ["A"], unknown: 0 }), null);
+  assert.match(
+    unknownNote({ bank: ["DA_Component_BFSword"], items: [], unknown: 1 }),
+    /^1 espaço ocupado sem ícone reconhecido: fora da análise/,
+  );
+  assert.doesNotMatch(
+    unknownNote({ bank: ["DA_Component_BFSword"], items: [], unknown: 1 }),
+    /Estimativa/,
+  );
+  const note = unknownNote({
+    bank: [
+      "DA_Component_BFSword",
+      "DA_Component_GiantsBelt",
+      "DA_BrambleVest",
+      "DA_Component_Tear",
+    ],
+    items: [],
+    unknown: 6,
+  });
+  assert.match(note, /^6 espaços ocupados/);
+  assert.match(note, /Estimativa: 75% dos reconhecidos são componentes/);
+});
+
+test("sameItems compara quantidades, não só quais itens", () => {
+  assert.ok(sameItems(["A", "B", "A"], ["A", "A", "B"]));
+  assert.ok(!sameItems(["A", "B"], ["A", "A", "B"]));
+  assert.ok(!sameItems(["A", "B", "B"], ["A", "A", "B"]));
 });

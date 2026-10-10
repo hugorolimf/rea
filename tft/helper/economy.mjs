@@ -42,6 +42,19 @@ export const POLICY = {
   newUnitWeight: 0.5,
   // Simulação de rolagem: corridas, semente fixa (resultado determinístico) e teto de ouro simulado.
   simulation: { runs: 500, seed: 0x7f4a7c15, maxGold: 120 },
+  // Rolar pelo time inteiro (roll.mjs): vale rolar com pelo menos `chance` de evoluir alguma peça que valha a
+  // evolução (`minValue` de força: um 2★ de custo 1 da comp não vale rolar sozinho); o carry pesa `carryWeight`,
+  // os demais cores `coreWeight` e a peça fora da comp `offPlanWeight`; a espera pelo nível de rolagem só é
+  // sugerida se a chance subir `waitMargin`; `rows` limita a lista enviada e `simTargets` os alvos da simulação conjunta.
+  roll: {
+    chance: 0.5,
+    minValue: 1,
+    coreWeight: 1.5,
+    offPlanWeight: 0.6,
+    waitMargin: 0.15,
+    rows: 14,
+    simTargets: 10,
+  },
   // Fração do ganho máximo que ainda conta como "tão bom quanto" ao escolher quanto rolar.
   spendTolerance: 0.04,
 };
@@ -242,11 +255,16 @@ export function lobbyStrength(analysis) {
  * Faixa de vida usada por todas as decisões de gasto: crítica, perigo, ferido ou saudável,
  * com o piso de ouro, a urgência e o horizonte de juros de cada faixa.
  */
-export function pressureOf({ hp, stage = null, weak = false }) {
+export function pressureOf({ hp, stage = null, weak = false, trend = null }) {
   const H = POLICY.hp;
+  // Tendência: no ritmo das últimas perdas, chegar a 15 de vida em 3 rodadas é perigo; 3+ perdas em ~5 minutos
+  // com 65 de vida ou menos também (o tabuleiro não segura o lobby — estabilizar antes da vida acabar).
+  const projected = trend?.avgLoss ? hp - 3 * trend.avgLoss : Infinity,
+    bleeding = projected <= 15 || ((trend?.recentLosses ?? 0) >= 3 && hp <= 65);
   const critical = hp <= H.critical,
     danger =
       critical ||
+      bleeding ||
       hp <= H.danger ||
       (hp <= H.dangerLate && (stage?.stage ?? 0) >= POLICY.lateStage) ||
       (weak && hp <= H.weak);
@@ -267,10 +285,21 @@ export function pressureOf({ hp, stage = null, weak = false }) {
   };
 }
 
-/** 3★ disputado demais: muitas cópias com rivais ou fração alta da pool. */
-export const isContested = (p) =>
-  (p?.enemy ?? 0) >= POLICY.contested.copies ||
-  (p?.enemy ?? 0) / (p?.total ?? POOL[p?.cost] ?? 1) > POLICY.contested.share;
+/** 3★ disputado demais: muitas cópias com rivais (em campo ou estimadas no banco) ou fração alta da pool. */
+export const isContested = (p) => {
+  const held = (p?.enemy ?? 0) + (p?.hidden ?? 0);
+  return (
+    held >= POLICY.contested.copies ||
+    held / (p?.total ?? POOL[p?.cost] ?? 1) > POLICY.contested.share
+  );
+};
+
+/**
+ * Cópias provavelmente livres na pool, inteiras: o teto observado menos as estimadas nos bancos rivais.
+ * Use para probabilidade; para "ainda é possível?" use o teto (`remainingUpper`).
+ */
+export const likelyFree = (p) =>
+  Math.max(0, Math.round(p?.remainingLikely ?? p?.remainingUpper ?? 0));
 
 /* ---------- Probabilidade de loja ---------- */
 
@@ -278,7 +307,7 @@ export const isContested = (p) =>
 export function freeByCost(pool) {
   const free = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   for (const p of pool ?? [])
-    free[p.cost] = (free[p.cost] ?? 0) + Math.max(0, p.remainingUpper ?? 0);
+    free[p.cost] = (free[p.cost] ?? 0) + likelyFree(p);
   return free;
 }
 
@@ -385,14 +414,20 @@ export function mulberry32(seed) {
 }
 
 /**
- * Ganho esperado de força por ouro gasto rolando, para g = 0..maxGold, com vários alvos disputando o mesmo
- * ouro e a mesma pool. `targets`: [{ cost, free, steps: [{ copies, value }] }], em que `copies` é quantas
- * cópias comprar até o degrau render `value`.
+ * Rolagem simulada do time inteiro, para cada orçamento g = 0..maxGold, com todos os alvos disputando o mesmo
+ * ouro e a mesma pool. `targets`: [{ cost, free, evolve?, steps: [{ copies, value }] }], em que `copies` é
+ * quantas cópias comprar até o degrau render `value` e `evolve` (padrão: sim) diz se o primeiro degrau é uma
+ * evolução de estrela (conta para "pelo menos uma evolui"; comprar uma peça nova não conta).
  * Monte Carlo com números aleatórios comuns: cada corrida rola até maxGold, compra o que aparecer (pagando
- * cada cópia) e registra o valor acumulado pelo ouro já gasto; o ganho com orçamento g é o valor no último
- * ponto ≤ g. Assim a curva é monótona e orçamentos vizinhos comparam as mesmas lojas.
+ * cada cópia) e registra o valor acumulado e o ouro gasto quando o primeiro alvo fecha o primeiro degrau; o
+ * resultado com orçamento g é o estado no último ponto ≤ g. Assim as curvas são monótonas e orçamentos
+ * vizinhos comparam as mesmas lojas. Uma passada só entrega:
+ *  - `gain`: ganho esperado de força do time (soma dos degraus fechados, em pontos de força);
+ *  - `any`: chance de pelo menos um dos alvos que evoluem fechar o primeiro degrau com g.
+ * A política é comprar tudo o que aparecer do time (não foca numa peça só): é um piso para a chance de evoluir
+ * alguma peça; focar numa peça só é a conta exata de `closeCurve`.
  */
-export function rollValue({
+export function rollSim({
   level,
   targets,
   denom,
@@ -400,20 +435,25 @@ export function rollValue({
   runs = POLICY.simulation.runs,
   seed = POLICY.simulation.seed,
 }) {
-  const gain = new Float64Array(maxGold + 1);
+  const gain = new Float64Array(maxGold + 1),
+    any = new Float64Array(maxGold + 1);
   const live = targets.filter((t) => t.steps.length && t.free > 0);
-  if (!live.length || maxGold < GAME.shopCost) return gain;
+  if (!live.length || maxGold < GAME.shopCost) return { gain, any };
   const rand = mulberry32(seed),
     odds = ODDS[clamp(level, 1, 11)],
-    n = live.length;
-  const last = live.map((t) => t.steps.at(-1).copies);
+    n = live.length,
+    chance = live.map((t) => (odds[t.cost - 1] ?? 0) / 100);
+  const last = live.map((t) => t.steps.at(-1).copies),
+    goal = live.map((t) => t.steps[0].copies),
+    evolves = live.map((t) => t.evolve !== false);
   for (let run = 0; run < runs; run++) {
     const left = live.map((t) => t.free),
       bought = new Array(n).fill(0),
       pool = { ...denom };
     let spent = 0,
       value = 0,
-      cursor = 0;
+      cursor = 0,
+      firstAt = -1;
     const mark = () => {
       for (; cursor < spent && cursor <= maxGold; cursor++)
         gain[cursor] += value;
@@ -424,10 +464,7 @@ export function rollValue({
         let r = rand();
         for (let i = 0; i < n; i++) {
           const t = live[i],
-            p =
-              pool[t.cost] > 0
-                ? ((odds[t.cost - 1] / 100) * left[i]) / pool[t.cost]
-                : 0;
+            p = pool[t.cost] > 0 ? (chance[i] * left[i]) / pool[t.cost] : 0;
           if (r >= p) {
             r -= p;
             continue;
@@ -439,6 +476,8 @@ export function rollValue({
             bought[i]++;
             left[i]--;
             pool[t.cost]--;
+            if (bought[i] === goal[i] && evolves[i] && firstAt < 0)
+              firstAt = spent;
             for (const step of t.steps)
               if (step.copies === bought[i]) value += step.value;
           }
@@ -448,9 +487,15 @@ export function rollValue({
     }
     spent = maxGold + 1;
     mark();
+    if (firstAt >= 0) any[firstAt]++;
   }
-  for (let g = 0; g <= maxGold; g++) gain[g] /= runs;
-  return gain;
+  let count = 0;
+  for (let g = 0; g <= maxGold; g++) {
+    count += any[g];
+    any[g] = count / runs;
+    gain[g] /= runs;
+  }
+  return { gain, any };
 }
 
 /**

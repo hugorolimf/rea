@@ -150,6 +150,13 @@
     color: var(--muted);
     font-size: 12px;
   }
+  .aug-measured {
+    color: var(--muted);
+    font-size: 11px;
+    & b {
+      color: var(--go);
+    }
+  }
   .aug-why {
     display: grid;
     gap: 3px;

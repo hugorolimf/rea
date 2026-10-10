@@ -159,3 +159,84 @@ test("partidas sem o Hero (tutorial/desafio) não entram no histórico", () => {
   t.observe(other, stat, client(0, "Lobby"));
   assert.equal(t.history().length, 0);
 });
+
+test("consulta do cliente sem ID no meio da partida não encerra; encerrada por engano reabre", () => {
+  const file = tmp(),
+    events = [],
+    t = matchTracker(file, HERO, { onChange: (e) => events.push(e.kind) });
+  t.observe(snap(9, [40, 30]), stat, client(9));
+  // Sessão estourou o tempo: fase em partida, ID vazio.
+  let s = t.observe(snap(9, [40, 30]), stat, {
+    phase: "InProgress",
+    gameId: null,
+  });
+  assert.equal(s.status, "live");
+  // Uma leitura solta fora da partida (soluço do cliente) também não encerra.
+  s = t.observe(snap(9, [40, 30]), stat, client(9, "None"));
+  assert.equal(s.status, "live");
+  s = t.observe(snap(9, [40, 30]), stat, client(9));
+  assert.equal(s.status, "live");
+  // Duas leituras seguidas fora: encerra; o cliente volta a mostrar a mesma partida: reabre.
+  t.observe(snap(9, [40, 30]), stat, client(9, "None"));
+  s = t.observe(snap(9, [40, 30]), stat, client(9, "None"));
+  assert.equal(s.status, "ended");
+  s = t.observe(snap(9, [40, 30]), stat, client(9));
+  assert.equal(s.status, "live");
+  // Reabertura não é partida nova: o servidor não zera plano nem leitor.
+  assert.deepEqual(events, ["start", "end", "resume"]);
+});
+
+test("a mesma leitura do cliente em cache conta uma vez fora da partida", () => {
+  const events = [],
+    t = matchTracker(tmp(), HERO, { onChange: (e) => events.push(e.kind) });
+  t.observe(snap(11, [40, 3]), stat, { ...client(11), at: 0 });
+  // watchMatch, /api/state e /api/recommend observam a mesma leitura (lcu() guarda 5 s).
+  const once = { phase: "None", gameId: null, at: 1 };
+  let s = t.observe(snap(11, [40, 3]), stat, once);
+  s = t.observe(snap(11, [40, 3]), stat, once);
+  assert.equal(s.status, "live");
+  s = t.observe(snap(11, [40, 3]), stat, {
+    phase: "None",
+    gameId: null,
+    at: 2,
+  });
+  assert.equal(s.status, "ended");
+  assert.deepEqual(events, ["start", "end"]);
+});
+
+test("servidor reiniciado com a partida já registrada: não reabre nem emite start", async () => {
+  const file = tmp();
+  matchTracker(file, HERO).observe(snap(12, [-3, 6]), stat, client(12));
+  assert.ok(await until(() => lines(file).length === 1));
+  const events = [],
+    t = matchTracker(file, HERO, { onChange: (e) => events.push(e.kind) });
+  // O Hero eliminado continua assistindo: cliente em InProgress com o mesmo ID.
+  let s = t.observe(snap(12, [-3, 6]), stat, client(12));
+  s = t.observe(snap(12, [-3, 6]), stat, client(12));
+  assert.equal(s.status, "ended");
+  assert.equal(s.placement, 6);
+  assert.deepEqual(events, []);
+  assert.equal(lines(file).length, 1);
+});
+
+test("histórico com a mesma partida gravada duas vezes: vale o último registro", () => {
+  const file = tmp();
+  fs.writeFileSync(
+    file,
+    [
+      { gameId: 13, placement: 7, augments: [] },
+      { gameId: 14, placement: 2, augments: [] },
+      { gameId: 13, placement: 7, augments: [{ id: "a" }, { id: "b" }] },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join("\n") + "\n",
+  );
+  const h = matchTracker(file, HERO).history();
+  assert.deepEqual(
+    h.map((r) => [r.gameId, r.augments.length]),
+    [
+      [13, 2],
+      [14, 0],
+    ],
+  );
+});

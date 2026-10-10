@@ -1,0 +1,465 @@
+{
+  "note": "Eventos reais do GEP gravados pelo TFTAcademy (partida de 2026-09-11, Set 18), sem dados pessoais: nomes e tags trocados por apelidos, id da partida sintético. dt = segundos desde o primeiro evento.",
+  "game": {
+    "id": "game-fixture-1",
+    "matchId": "BR1_1000000001",
+    "set": 18,
+    "queue": 1100
+  },
+  "local": {
+    "name": "Local",
+    "tag": "LOC"
+  },
+  "rows": [
+    {
+      "id": 1,
+      "dt": 0,
+      "round": "0-0",
+      "feature": "me",
+      "key": "gold",
+      "event_type": "me",
+      "data": "{}"
+    },
+    {
+      "id": 2,
+      "dt": 0,
+      "round": "0-0",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "event_type": "bench",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Leona\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 3,
+      "dt": 0,
+      "round": "0-0",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[]}]"
+    },
+    {
+      "id": 4,
+      "dt": 0,
+      "round": "0-0",
+      "feature": "me",
+      "key": "player_rank",
+      "event_type": "info_update",
+      "data": "{\"tier\":\"SILVER\",\"division\":\"I\",\"leaguePoints\":96}"
+    },
+    {
+      "id": 5,
+      "dt": 1,
+      "round": "0-0",
+      "feature": "store",
+      "key": "shop_visible",
+      "event_type": "unknown",
+      "data": "\"true\""
+    },
+    {
+      "id": 6,
+      "dt": 1,
+      "round": "0-0",
+      "feature": "match_info",
+      "key": "match_state",
+      "event_type": "match_info",
+      "data": "{\"in_progress\":true}"
+    },
+    {
+      "id": 7,
+      "dt": 1,
+      "round": "0-0",
+      "feature": "match_info",
+      "key": "match_start",
+      "event_type": "unknown",
+      "data": "{}"
+    },
+    {
+      "id": 8,
+      "dt": 1,
+      "round": "1-1",
+      "feature": "match_info",
+      "key": "round_type",
+      "event_type": "match_info",
+      "data": "{\"stage\":\"1-1\",\"name\":\"PVE\",\"type\":\"Encounter\",\"native_name\":\"Encounter\"}"
+    },
+    {
+      "id": 9,
+      "dt": 1,
+      "round": "1-1",
+      "feature": "match_info",
+      "key": "round_start",
+      "event_type": "unknown",
+      "data": "\"PVE\""
+    },
+    {
+      "id": 10,
+      "dt": 1,
+      "round": "1-1",
+      "feature": "roster",
+      "key": "player_status",
+      "event_type": "roster",
+      "data": "{\"RivalC\":{\"index\":0,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T3\"},\"RivalG\":{\"index\":7,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T7\"},\"RivalB\":{\"index\":1,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T2\"},\"RivalD\":{\"index\":2,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T4\"},\"RivalE\":{\"index\":3,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T5\"},\"RivalA\":{\"index\":4,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T1\"},\"Local\":{\"index\":5,\"health\":100,\"xp\":1,\"localplayer\":true,\"rank\":0,\"tag_line\":\"LOC\"},\"RivalF\":{\"index\":6,\"health\":100,\"xp\":1,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T6\"}}"
+    },
+    {
+      "id": 11,
+      "dt": 1,
+      "round": "1-1",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[]}]"
+    },
+    {
+      "id": 12,
+      "dt": 1,
+      "round": "1-1",
+      "feature": "store",
+      "key": "shop_visible",
+      "event_type": "unknown",
+      "data": "\"false\""
+    },
+    {
+      "id": 13,
+      "dt": 15,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "round_type",
+      "event_type": "match_info",
+      "data": "{\"stage\":\"1-2\",\"name\":\"PVE\",\"type\":\"Minions_1\",\"native_name\":\"Intro1\"}"
+    },
+    {
+      "id": 14,
+      "dt": 15,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "round_start",
+      "event_type": "unknown",
+      "data": "\"PVE\""
+    },
+    {
+      "id": 15,
+      "dt": 15,
+      "round": "1-2",
+      "feature": "board",
+      "key": "board_pieces",
+      "event_type": "board",
+      "data": "{}"
+    },
+    {
+      "id": 16,
+      "dt": 18,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "event_type": "bench",
+      "data": "{}"
+    },
+    {
+      "id": 17,
+      "dt": 19,
+      "round": "1-2",
+      "feature": "board",
+      "key": "board_pieces",
+      "event_type": "board",
+      "data": "{\"cell_10\":{\"name\":\"DA_18_Leona\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 18,
+      "dt": 24,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_state",
+      "event_type": "match_info",
+      "data": "{\"in_progress\":true}"
+    },
+    {
+      "id": 19,
+      "dt": 24,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_start",
+      "event_type": "unknown",
+      "data": "\"PVE\""
+    },
+    {
+      "id": 20,
+      "dt": 24,
+      "round": "1-2",
+      "feature": "board",
+      "key": "opponent_board_pieces",
+      "event_type": "board",
+      "data": "{\"cell_23\":{\"name\":\"DA_Minion_ChaosMelee\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_25\":{\"name\":\"DA_Minion_ChaosMelee\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 21,
+      "dt": 24,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_stats",
+      "event_type": "match_info",
+      "data": "[{\"team\":0,\"units\":[{\"name\":\"DA_18_Leona\",\"true_dmg\":0,\"phy_dmg\":0,\"mag_dmg\":0,\"total_dmg\":0,\"true_blocked\":0,\"mag_blocked\":0,\"phy_blocked\":0,\"total_blocked\":0,\"shielded\":0,\"healed\":0}]}]"
+    },
+    {
+      "id": 22,
+      "dt": 25,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_stats",
+      "event_type": "match_info",
+      "data": "[{\"team\":0,\"units\":[{\"name\":\"DA_18_Leona\",\"true_dmg\":0,\"phy_dmg\":50,\"mag_dmg\":0,\"total_dmg\":50,\"true_blocked\":0,\"mag_blocked\":0,\"phy_blocked\":0,\"total_blocked\":0,\"shielded\":0,\"healed\":0}]}]"
+    },
+    {
+      "id": 30,
+      "dt": 30,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]}]"
+    },
+    {
+      "id": 38,
+      "dt": 34,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]}]"
+    },
+    {
+      "id": 39,
+      "dt": 34,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 41,
+      "dt": 35,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 43,
+      "dt": 36,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 45,
+      "dt": 36,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 47,
+      "dt": 38,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "event_type": "bench",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Varus\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_2\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 48,
+      "dt": 38,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 51,
+      "dt": 38,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 53,
+      "dt": 39,
+      "round": "1-2",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 57,
+      "dt": 42,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_state",
+      "event_type": "match_info",
+      "data": "{\"in_progress\":false}"
+    },
+    {
+      "id": 58,
+      "dt": 42,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "battle_end",
+      "event_type": "unknown",
+      "data": "{}"
+    },
+    {
+      "id": 61,
+      "dt": 46,
+      "round": "1-2",
+      "feature": "match_info",
+      "key": "round_end",
+      "event_type": "unknown",
+      "data": "{}"
+    },
+    {
+      "id": 62,
+      "dt": 48,
+      "round": "1-2",
+      "feature": "store",
+      "key": "shop_visible",
+      "event_type": "unknown",
+      "data": "\"true\""
+    },
+    {
+      "id": 63,
+      "dt": 48,
+      "round": "1-2",
+      "feature": "store",
+      "key": "shop_pieces",
+      "event_type": "store",
+      "data": "{\"slot_1\":{\"name\":\"DA_18_Sentry\"},\"slot_2\":{\"name\":\"DA_18_Rakan\"},\"slot_3\":{\"name\":\"DA_18_Kobuko\"},\"slot_4\":{\"name\":\"DA_18_RekSai\"},\"slot_5\":{\"name\":\"DA_18_Akali_AD\"}}"
+    },
+    {
+      "id": 64,
+      "dt": 48,
+      "round": "1-2",
+      "feature": "me",
+      "key": "gold",
+      "event_type": "me",
+      "data": "2"
+    },
+    {
+      "id": 65,
+      "dt": 48,
+      "round": "1-2",
+      "feature": "roster",
+      "key": "player_status",
+      "event_type": "roster",
+      "data": "{\"RivalC\":{\"index\":0,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T3\"},\"RivalG\":{\"index\":7,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T7\"},\"RivalB\":{\"index\":1,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T2\"},\"RivalD\":{\"index\":2,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T4\"},\"RivalE\":{\"index\":3,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T5\"},\"RivalA\":{\"index\":4,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T1\"},\"Local\":{\"index\":5,\"health\":100,\"xp\":2,\"localplayer\":true,\"rank\":0,\"tag_line\":\"LOC\"},\"RivalF\":{\"index\":6,\"health\":100,\"xp\":2,\"localplayer\":false,\"rank\":0,\"tag_line\":\"T6\"}}"
+    },
+    {
+      "id": 66,
+      "dt": 48,
+      "round": "1-3",
+      "feature": "match_info",
+      "key": "round_type",
+      "event_type": "match_info",
+      "data": "{\"stage\":\"1-3\",\"name\":\"PVE\",\"type\":\"Minions_2\",\"native_name\":\"Intro2\"}"
+    },
+    {
+      "id": 67,
+      "dt": 48,
+      "round": "1-3",
+      "feature": "match_info",
+      "key": "round_start",
+      "event_type": "unknown",
+      "data": "\"PVE\""
+    },
+    {
+      "id": 68,
+      "dt": 48,
+      "round": "1-3",
+      "feature": "me",
+      "key": "xp",
+      "event_type": "me",
+      "data": "{\"level\":2,\"current_xp\":0,\"xp_max\":2}"
+    },
+    {
+      "id": 69,
+      "dt": 56,
+      "round": "1-3",
+      "feature": "store",
+      "key": "shop_pieces",
+      "event_type": "store",
+      "data": "{\"slot_1\":{\"name\":\"DA_18_Sentry\"},\"slot_2\":{\"name\":\"Sold\"},\"slot_3\":{\"name\":\"DA_18_Kobuko\"},\"slot_4\":{\"name\":\"DA_18_RekSai\"},\"slot_5\":{\"name\":\"DA_18_Akali_AD\"}}"
+    },
+    {
+      "id": 70,
+      "dt": 56,
+      "round": "1-3",
+      "feature": "me",
+      "key": "gold",
+      "event_type": "me",
+      "data": "1"
+    },
+    {
+      "id": 71,
+      "dt": 56,
+      "round": "1-3",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "event_type": "bench",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Varus\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_2\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_3\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 72,
+      "dt": 58,
+      "round": "1-3",
+      "feature": "store",
+      "key": "shop_pieces",
+      "event_type": "store",
+      "data": "{\"slot_1\":{\"name\":\"Sold\"},\"slot_2\":{\"name\":\"Sold\"},\"slot_3\":{\"name\":\"DA_18_Kobuko\"},\"slot_4\":{\"name\":\"DA_18_RekSai\"},\"slot_5\":{\"name\":\"DA_18_Akali_AD\"}}"
+    },
+    {
+      "id": 73,
+      "dt": 58,
+      "round": "1-3",
+      "feature": "me",
+      "key": "gold",
+      "event_type": "me",
+      "data": "{}"
+    },
+    {
+      "id": 74,
+      "dt": 58,
+      "round": "1-3",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "event_type": "bench",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Varus\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_2\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_3\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_4\":{\"name\":\"DA_18_Sentry\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "id": 75,
+      "dt": 58,
+      "round": "1-3",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    },
+    {
+      "id": 76,
+      "dt": 60,
+      "round": "1-3",
+      "feature": "bench",
+      "key": "item_bench",
+      "event_type": "bench",
+      "data": "[{\"summoner\":\"RivalC\",\"tag_line\":\"T3\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalG\",\"tag_line\":\"T7\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalB\",\"tag_line\":\"T2\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]},{\"summoner\":\"RivalD\",\"tag_line\":\"T4\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_GiantsBelt\",\"count\":1}]},{\"summoner\":\"RivalE\",\"tag_line\":\"T5\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_ChainVest\",\"count\":1}]},{\"summoner\":\"RivalA\",\"tag_line\":\"T1\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"Local\",\"tag_line\":\"LOC\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2}]},{\"summoner\":\"RivalF\",\"tag_line\":\"T6\",\"bench_items\":[{\"name\":\"DA_Consumable_ItemRemover\",\"count\":2},{\"name\":\"DA_Component_TearOfTheGoddess\",\"count\":1}]}]"
+    }
+  ]
+}

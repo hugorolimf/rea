@@ -25,10 +25,12 @@ const clean = (text) =>
     .trim();
 const setOf = (id) =>
   id.startsWith("DA_") ? 99 : Number(/^TFT(\d+)_/.exec(id)?.[1] ?? 50); // DA_ = set atual; TFT_ sem número = genérico
+// Aprimoramento: ID com "Augment" (sets antigos) ou ícone na pasta de aprimoramentos — no set atual a maioria
+// tem ID sem a palavra (DA_SoloLeveling) e só se reconhece pelo ícone.
 const augments = pt
   .filter(
     (i) =>
-      /Augment/i.test(i.apiName) &&
+      (/Augment/i.test(i.apiName) || /\/augments\//i.test(i.icon ?? "")) &&
       i.name &&
       !/^@|^tft_item_name/i.test(i.name),
   )

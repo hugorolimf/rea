@@ -22,7 +22,8 @@ const KIND_LABEL = {
  * Formação alvo em hexágonos. Só mostra estado: peça em campo (sólida), a comprar (tracejada) e,
  * no canto da casa que recebe a peça, um selo com quem sai. Detalhes ficam em tooltip e na trilha "Agora".
  */
-export function mountBoard(root, traitsRoot) {
+export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
+  let selected = null;
   const defs = svg(
     "defs",
     {},
@@ -49,6 +50,21 @@ export function mountBoard(root, traitsRoot) {
     }
   root.setAttribute("viewBox", `${-PAD} ${-PAD} ${W + PAD * 2} ${H + PAD * 2}`);
   root.replaceChildren(defs, grid, cellsLayer, empty);
+  const pick = (target) => {
+    const g = target.closest?.(".cell");
+    if (!g) return;
+    selected = selected === g.dataset.k ? null : g.dataset.k;
+    for (const n of cellsLayer.children)
+      n.dataset.selected = n.dataset.k === selected ? "1" : "0";
+    onSelect(selected);
+  };
+  cellsLayer.addEventListener("click", (e) => pick(e.target));
+  cellsLayer.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      pick(e.target);
+    }
+  });
 
   const cellNode = () => {
     const shape = hexPoints(0, 0, R);
@@ -133,6 +149,9 @@ export function mountBoard(root, traitsRoot) {
     const p = hexCenter(c.col, c.row, SIZE);
     setVars(g, { "--x": p.x.toFixed(2), "--y": p.y.toFixed(2) });
     g.dataset.status = c.status;
+    g.dataset.selected = c.id === selected ? "1" : "0";
+    g.setAttribute("tabindex", "0");
+    g.setAttribute("role", "button");
     g.dataset.carry = c.carry ? "1" : "0";
     const src = champIcon(c.id);
     if (src) g.querySelector(".cell-img").setAttribute("href", src);
@@ -188,14 +207,25 @@ export function mountBoard(root, traitsRoot) {
     setVars(li.querySelector("i"), {
       "--p": t.next ? Math.min(1, t.count / t.next) : 1,
     });
+    const via = t.emblem ? ` (${t.emblem} por emblema equipado)` : "";
+    li.dataset.emblem = t.emblem ? "1" : "0";
     li.title = t.next
-      ? `${t.name}: ${t.count} de ${t.next} para o próximo patamar`
-      : `${t.name}: ${t.count}`;
+      ? `${t.name}: ${t.count} de ${t.next} para o próximo patamar${via}`
+      : `${t.name}: ${t.count}${via}`;
   };
 
   return {
+    /** Desmarca a peça selecionada (ex.: ao fechar o detalhe). */
+    clear() {
+      selected = null;
+      for (const n of cellsLayer.children) n.dataset.selected = "0";
+    },
     update(plan) {
       const cells = plan?.cells ?? [];
+      if (selected && !cells.some((c) => c.id === selected)) {
+        selected = null;
+        onSelect(null);
+      }
       empty.style.display = cells.length ? "none" : "";
       reconcile(cellsLayer, cells, {
         key: (c) => c.id,

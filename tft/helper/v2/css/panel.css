@@ -1,17 +1,6 @@
 @layer components {
-  /* Painel de decisão: cabe na altura da janela, sem rolagem; texto longo vai para tooltips e para "Por que". */
+  /* Painel: cabe na altura da janela, sem rolagem; texto longo vai para tooltips e para "Por que". */
   .panel {
-    --tone: var(--go);
-    &[data-tone="rolar"] {
-      --tone: var(--amber);
-    }
-    &[data-tone="subirnvel"] {
-      --tone: var(--blue);
-    }
-    &[data-tone="encerrada"],
-    &[data-tone="planning"] {
-      --tone: var(--faint);
-    }
     &[data-empty="1"] {
       visibility: hidden;
     }
@@ -59,41 +48,10 @@
       color: var(--go);
       animation: verdict 1.8s ease-in-out infinite;
     }
-  }
-
-  /* Decisão */
-  .decision {
-    display: grid;
-    gap: 9px;
-    justify-items: start;
-  }
-  .action-tag {
-    padding: 4px 12px;
-    border-radius: 999px;
-    background: var(--tone);
-    color: oklch(0.24 0.04 160);
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-  }
-  .headline {
-    font-size: 17px;
-    font-weight: 700;
-    line-height: 1.25;
-    text-wrap: balance;
-  }
-  .meta-row {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--muted);
-    font-size: 12px;
-    & .carry {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      color: var(--gold);
-      font-weight: 600;
+    &[data-tone="danger"] {
+      border-color: color-mix(in oklab, var(--danger), transparent 55%);
+      background: color-mix(in oklab, var(--danger), transparent 88%);
+      color: var(--danger);
     }
   }
 
@@ -214,7 +172,78 @@
     opacity: 0.5;
   }
 
-  /* Roll */
+  /* Roll: veredito e motivo, orçamento, lista por peça */
+  .call {
+    display: grid;
+    gap: 1px;
+    margin-bottom: 7px;
+    & b {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    & span {
+      display: -webkit-box;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height: 1.35;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    &[data-kind="go"] b {
+      color: var(--go);
+    }
+    &[data-kind="danger"] b {
+      color: var(--danger);
+    }
+  }
+  .roll-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 7px;
+    color: var(--amber);
+    font-size: 11px;
+    & .i {
+      flex: none;
+      width: 12px;
+      height: 12px;
+    }
+  }
+  .shop-hits {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    & .lbl {
+      color: var(--faint);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    & .hit {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px 2px 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      &[data-action="comprar"] {
+        border-color: color-mix(in oklab, var(--go), transparent 55%);
+        background: color-mix(in oklab, var(--go), transparent 88%);
+        color: var(--go);
+        font-weight: 700;
+      }
+    }
+  }
+  .more {
+    margin-top: 6px;
+    color: var(--faint);
+    font-size: 10.5px;
+  }
   .spend {
     display: flex;
     align-items: baseline;
@@ -303,6 +332,59 @@
       font-size: 8px;
     }
   }
+  .finds {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    & .lbl {
+      color: var(--faint);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    & .find {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px 2px 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      & .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--line);
+      }
+      &[data-mine="1"] {
+        border-style: solid;
+        border-color: color-mix(in oklab, var(--amber), transparent 60%);
+      }
+      &[data-go="1"] {
+        border-color: color-mix(in oklab, var(--go), transparent 50%);
+        background: color-mix(in oklab, var(--go), transparent 88%);
+        color: var(--go);
+        font-weight: 700;
+        & .dot {
+          background: var(--go);
+          box-shadow: 0 0 0 3px color-mix(in oklab, var(--go), transparent 78%);
+        }
+      }
+      & .lv {
+        font-size: 11px;
+        &[data-dir="up"] {
+          color: var(--go);
+        }
+        &[data-dir="down"] {
+          color: var(--danger);
+        }
+      }
+    }
+  }
   .targets {
     display: grid;
     gap: 6px;
@@ -339,216 +421,58 @@
       color: var(--danger);
       font-size: 11px;
     }
-    &[data-done="1"] .name {
+    & .frac {
       color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
     }
-  }
-
-  /* Ouro: valor agora → depois da ação, renda decomposta e o fluxo das próximas rodadas */
-  .eco-sum {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 4px;
-  }
-  .eco-now {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-    & .arrow {
-      color: var(--faint);
-      font-size: 15px;
-      line-height: 1;
-    }
-    & .after {
-      color: var(--amber);
-      font-size: 16px;
-      font-weight: 750;
-      line-height: 1;
-      & small {
-        font-size: 11px;
-      }
-    }
-  }
-  .eco-sum .now {
-    color: var(--gold);
-    font-size: 24px;
-    font-weight: 750;
-    line-height: 1;
-    letter-spacing: -0.01em;
-    & small {
-      margin-left: 1px;
-      font-size: 13px;
-      opacity: 0.8;
-    }
-  }
-  .eco[data-unknown="1"] .eco-sum .now {
-    color: var(--faint);
-  }
-  .unread {
-    align-self: center;
-    margin-right: auto;
-    margin-left: 10px;
-    color: var(--faint);
-    font-size: 11px;
-  }
-  .eco-inc {
-    display: grid;
-    justify-items: end;
-    gap: 4px;
-  }
-  .inc-total {
-    color: var(--go);
-    line-height: 1;
-    & b {
-      font-size: 15px;
-      font-weight: 800;
-    }
-    & small {
-      margin-left: 2px;
-      color: var(--faint);
-      font-size: 10px;
-    }
-  }
-  /* Composição da renda: base, juros e sequência, na proporção de cada parte. */
-  .inc-bar {
-    display: flex;
-    gap: 2px;
-    width: 78px;
-    height: 5px;
-    & i {
-      flex: var(--w) 1 0;
-      border-radius: 3px;
-      background: color-mix(in oklab, var(--muted), var(--bg) 45%);
-      &[data-kind="interest"] {
-        background: var(--gold);
-      }
-      &[data-kind="win"] {
-        background: var(--go);
-      }
-      &[data-kind="loss"] {
-        background: var(--danger);
-      }
-    }
-  }
-  .gold-box {
-    margin: 0 -2px 2px 0;
-  }
-  .gold-chart {
-    display: block;
-    width: 100%;
-    height: auto;
-    overflow: visible;
-    & .band {
-      fill: color-mix(in oklab, var(--gold), transparent 96%);
-      &.alt {
-        fill: color-mix(in oklab, var(--gold), transparent 92%);
-      }
-      &.max {
-        fill: color-mix(in oklab, var(--gold), transparent 88%);
-      }
-    }
-    & .cap50 {
-      stroke: color-mix(in oklab, var(--gold), transparent 40%);
-      stroke-dasharray: 3 3;
-    }
-    & .bl {
-      fill: var(--faint);
-      font-size: 8.5px;
-      font-weight: 700;
-      &.on {
-        fill: var(--gold);
-      }
-    }
-    & .area {
-      fill: url(#gold-fill);
-    }
-    & .line {
-      fill: none;
-      stroke: var(--gold);
-      stroke-width: 2.2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    & .drop {
-      stroke: var(--amber);
-      stroke-width: 2;
-      stroke-dasharray: 3 2;
-    }
-    & .drop-head {
-      fill: var(--amber);
-    }
-    & .was {
-      fill: var(--bg);
-      stroke: color-mix(in oklab, var(--gold), transparent 30%);
-      stroke-width: 1.6;
-    }
-    & .dl {
-      fill: var(--amber);
-      font-size: 9px;
-      font-weight: 800;
-    }
-    & .start {
-      fill: var(--gold);
-      stroke: var(--bg);
-      stroke-width: 2;
-    }
-    & .pt {
-      fill: var(--bg);
-      stroke: var(--gold);
-      stroke-width: 1.8;
-      &.capped {
-        fill: color-mix(in oklab, var(--gold), var(--bg) 35%);
-      }
-      &.reach {
-        fill: var(--gold);
-        stroke: var(--bg);
-        stroke-width: 2;
-        filter: drop-shadow(0 0 4px color-mix(in oklab, var(--gold), transparent 30%));
-      }
-    }
-    & .vl {
-      fill: var(--muted);
-      font-size: 9px;
-      font-weight: 700;
-      &.reach {
-        fill: var(--gold);
-      }
-    }
-    & .xl {
-      fill: var(--faint);
-      font-size: 8.5px;
-      &.now {
-        fill: var(--muted);
-        font-weight: 700;
-      }
-    }
-  }
-  .eco-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
-    & .i {
-      width: 11px;
-      height: 11px;
-    }
-    & .streak[data-kind="win"] {
-      border-color: color-mix(in oklab, var(--go), transparent 55%);
-      color: var(--go);
-    }
-    & .streak[data-kind="loss"] {
-      border-color: color-mix(in oklab, var(--danger), transparent 55%);
-      color: var(--danger);
+    & .core {
+      display: inline-grid;
+      margin-right: 3px;
+      color: var(--gold);
+      vertical-align: -2px;
       & .i {
-        rotate: 180deg;
+        width: 11px;
+        height: 11px;
       }
     }
-  }
-  .chip[data-passive="1"] {
-    opacity: 0.55;
-    text-decoration: line-through;
+    & .bad {
+      color: var(--danger);
+      font-size: 10.5px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    & .in-shop {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: var(--faint);
+      font-size: 11px;
+      & .i {
+        width: 12px;
+        height: 12px;
+      }
+    }
+    /* Distante (3★ longe) e inviável ficam apagadas; a peça que a loja oferece e o plano manda comprar acende. */
+    &[data-status="longe"] {
+      opacity: 0.6;
+    }
+    &[data-status="inviavel"] {
+      opacity: 0.75;
+      & .name {
+        color: var(--muted);
+      }
+    }
+    &[data-shop="buy"] {
+      margin: -2px -5px;
+      padding: 2px 5px;
+      border-radius: 8px;
+      background: color-mix(in oklab, var(--go), transparent 90%);
+      & .in-shop {
+        color: var(--go);
+        font-weight: 800;
+      }
+    }
   }
 
   /* Loja: odds do nível numa barra só; o custo do carry fica aceso */
@@ -612,13 +536,10 @@
       box-shadow: 0 0 12px color-mix(in oklab, var(--go), transparent 65%);
     }
   }
-  /* Janelas baixas: o painel continua sem rolagem; primeiro o gráfico do ouro sai, abaixo de 800px a curva. */
+  /* Janelas baixas: o painel continua sem rolagem; abaixo de 800px a curva sai. */
   @media (min-width: 1181px) and (max-height: 899px) {
     .blk {
       padding: 9px 0;
-    }
-    .gold-box {
-      display: none;
     }
   }
   @media (min-width: 1181px) and (max-height: 800px) {

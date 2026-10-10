@@ -1,8 +1,23 @@
 import { isContested } from "./economy.mjs";
+import { carouselPicks } from "./carousel.mjs";
+import { baseItemId } from "./item-tiers.mjs";
+import { emblemTraitMap, traitsWithEmblems } from "./v2/js/traits.js";
+/**
+ * Lista de itens desejados de um campeão: a build da comp escolhida primeiro, depois a build geral publicada.
+ * Mesma ordem em build(), Passar itens (itemMoves) e item do banco (stage.mjs).
+ */
+export const wishlist = (id, compBuilds, metaBuilds) => [
+  ...new Set([...(compBuilds?.[id] ?? []), ...(metaBuilds?.get(id) ?? [])]),
+];
+/** "campeão:item" de cada item já montado que a comp passa de um campeão para outro (Passar itens). */
+const coveredByMoves = (moves) =>
+  new Set(
+    moves.flatMap((m) => (m.moves ?? []).map((x) => `${x.to.id}:${x.item.id}`)),
+  );
 export function tactics(analysis, catalog, options = {}) {
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c]));
   const items = new Map(catalog.items.map((i) => [i.apiName, i]));
-  const clean = (id) => id.replace(/Radiant/g, "");
+  const clean = baseItemId;
   // Cópias repetidas em campo: vale a de mais estrelas (e mais itens), como na reserva.
   const current = new Map();
   for (const u of analysis.self.units) {
@@ -79,6 +94,10 @@ export function tactics(analysis, catalog, options = {}) {
   };
   // Emblemas montáveis (espátula/frigideira + componente) concedem a sinergia do nome a quem equipa.
   const traitNames = new Set(catalog.traits.map((t) => t.name));
+  // Sinergias de uma peça do plano: as do campeão mais as de emblemas equipados nela (regra única em traits.js).
+  const emblemTrait = emblemTraitMap(catalog.items, traitNames);
+  const traitsOfUnit = (id, equipped) =>
+    traitsWithEmblems(byId.get(id)?.traits ?? [], equipped, emblemTrait).traits;
   const emblemByTrait = new Map(
     catalog.items
       .filter((i) => /Emblem/.test(i.apiName) && i.composition?.length === 2)
@@ -107,18 +126,39 @@ export function tactics(analysis, catalog, options = {}) {
     const add = (id, score, reason) => {
       if (items.has(id)) scores.push({ ...item(id), score, reason });
     };
+    // Efeito medido de cada item neste campeão (MetaTFT): colocação média com o item contra a dele em geral.
+    // É o que diz se um item que o jogo te deu "faz sentido" nele, sem exigir a build ideal.
+    const champAvg = options.stats?.unit?.[c.apiName]?.[0] ?? null,
+      measured = (id) => {
+        const m = options.stats?.unitItem?.[`${c.apiName}|${id}`];
+        return m && champAvg != null && m[1] >= 300
+          ? { delta: m[0] - champAvg, games: m[1] }
+          : null;
+      };
+    // Com build da comp para este campeão, a lista publicada manda e a medição só desempata (sem itens de fora).
+    const compBuild = !!compBuilds?.[c.apiName]?.length;
+    const measuredIds = compBuild
+      ? []
+      : Object.keys(options.stats?.unitItem ?? {})
+          .filter((k) => k.startsWith(c.apiName + "|"))
+          .map((k) => k.slice(c.apiName.length + 1))
+          .filter((id) => measured(id));
     const meta = [
       ...new Set([
-        ...(compBuilds?.[c.apiName] ?? []),
-        ...(options.metaBuilds?.get(c.apiName) ?? []),
+        ...wishlist(c.apiName, compBuilds, options.metaBuilds),
+        ...measuredIds,
       ]),
     ];
+    // Só item montável (receita de 2 componentes) ou já no banco: artefato vem da bigorna e componente não é item final.
+    const buildable = (id) =>
+      (items.get(id)?.composition?.length ?? 0) === 2 ||
+      (options.inventory ?? []).includes(id);
     if (meta?.length) {
       // Ordem da meta manda; o lobby observado só desempata itens que já estão na lista.
       const strong = units.some((u) => u.stars >= 2 && u.cost >= 3);
       let rank = 0;
       for (const id of meta) {
-        if (/Emblem|ThiefsGloves/.test(id)) continue;
+        if (/Emblem|ThiefsGloves/.test(id) || !buildable(id)) continue;
         rank++;
         let bonus = 0,
           why = "";
@@ -147,17 +187,45 @@ export function tactics(analysis, catalog, options = {}) {
           bonus = 6;
           why = " Sobe pelos alvos resistentes de alto custo.";
         }
-        add(
-          id,
-          126 - rank * 6 + bonus,
-          rank +
-            "º item de " +
-            c.name +
-            " na meta (" +
-            options.metaLabel +
-            ")." +
-            why,
-        );
+        const m = measured(id),
+          effect = m
+            ? `${m.delta <= 0 ? "melhora" : "piora"} a colocação em ${Math.abs(m.delta).toFixed(2).replace(".", ",")} (medido em ${m.games.toLocaleString("pt-BR")} partidas)`
+            : "";
+        if (compBuild)
+          // Build da comp: vale a posição; a medição desempata no máximo ±2,5 (menos que um degrau de 6).
+          add(
+            id,
+            126 -
+              rank * 6 +
+              Math.max(-2.5, Math.min(2.5, -(m?.delta ?? 0) * 10)) +
+              bonus,
+            rank +
+              "º item de " +
+              c.name +
+              (compBuilds[c.apiName].includes(id)
+                ? " na build da comp ("
+                : " na meta (") +
+              options.metaLabel +
+              ")." +
+              (m ? ` Em ${c.name}, ${effect}.` : "") +
+              why,
+          );
+        // Medido: quanto o item melhora (ou piora) a colocação deste campeão; 0,1 de colocação vale 4 pontos.
+        // Sem medição suficiente, vale a posição na lista publicada.
+        else
+          add(
+            id,
+            m ? 110 - m.delta * 40 + bonus : 126 - rank * 6 + bonus,
+            m
+              ? `Em ${c.name}, ${effect}.${why}`
+              : rank +
+                  "º item de " +
+                  c.name +
+                  " na meta (" +
+                  options.metaLabel +
+                  ")." +
+                  why,
+          );
       }
     } else if (r === "tank") {
       add("DA_WarmogsArmor", 82, "Vida para sustentar a frontline.");
@@ -283,11 +351,13 @@ export function tactics(analysis, catalog, options = {}) {
           ? "shredMagic"
           : s.id === "DA_LastWhisper"
             ? "shredArmor"
-            : /SunfireCape|Morellonomicon/.test(s.id)
+            : /SunfireCape|Morellonomicon|RedBuff/.test(s.id)
               ? "wounds"
               : null;
+      // Item que a comp designa para esta unidade não é duplicata: é dela.
       if (
         utility &&
+        !(compBuilds?.[c.apiName] ?? []).includes(s.id) &&
         coverage.has(utility) &&
         !equipped.some((i) => clean(i) === s.id)
       ) {
@@ -523,15 +593,22 @@ export function tactics(analysis, catalog, options = {}) {
       else
         t.reason = `Segure ${t.exit.name} ${outStars}★ em campo. Só troque quando ${t.enter.name} estiver ${required}★ (você tem ${copies} de ${3 ** (required - 1)} cópias).`;
     }
-    const counts = {};
-    for (const u of planned)
-      for (const t of byId.get(u.id)?.traits ?? [])
+    const counts = {},
+      byEmblem = {};
+    for (const u of planned) {
+      const base = byId.get(u.id)?.traits ?? [];
+      for (const t of traitsOfUnit(u.id, u.items)) {
         counts[t] = (counts[t] ?? 0) + 1;
+        if (!base.includes(t)) byEmblem[t] = (byEmblem[t] ?? 0) + 1;
+      }
+    }
     const traits = Object.entries(counts).map(([name, count]) => {
       const t = catalog.traits.find((t) => t.name === name);
       return {
         name,
         count,
+        // Peças que contam para a sinergia só por um emblema equipado.
+        emblem: byEmblem[name] ?? 0,
         active: (t?.effects ?? []).some((e) => e.minUnits <= count),
         next:
           (t?.effects ?? []).find((e) => e.minUnits > count)?.minUnits ?? null,
@@ -545,9 +622,11 @@ export function tactics(analysis, catalog, options = {}) {
         if (/SunfireCape|Morellonomicon|RedBuff/.test(i))
           coverage.add("wounds");
       }
+    // Carry primeiro; depois quem tem build na comp (fica com os efeitos dela), depois tanques.
     const itemOrder = [...planned].sort(
       (a, b) =>
         (b.name === carry) - (a.name === carry) ||
+        !!compBuilds?.[b.id]?.length - !!compBuilds?.[a.id]?.length ||
         (b.role === "tank") - (a.role === "tank"),
     );
     const itemPlans = itemOrder.map((u) =>
@@ -556,7 +635,10 @@ export function tactics(analysis, catalog, options = {}) {
     const traitOf = new Map(traits.map((t) => [t.name, t])),
       stockAll = options.inventory ?? [];
     for (const b of itemPlans)
-      b.synergies = (byId.get(b.championId)?.traits ?? [])
+      b.synergies = traitsOfUnit(
+        b.championId,
+        planned.find((u) => u.id === b.championId)?.items,
+      )
         .map((n) => traitOf.get(n))
         .filter(Boolean)
         .map((t) => ({
@@ -586,7 +668,10 @@ export function tactics(analysis, catalog, options = {}) {
             (b) =>
               b.slotsFree > 0 &&
               b.name !== carry &&
-              !(byId.get(b.championId)?.traits ?? []).includes(t.name),
+              !traitsOfUnit(
+                b.championId,
+                planned.find((u) => u.id === b.championId)?.items,
+              ).includes(t.name),
           );
           const holder =
             holders.find((b) =>
@@ -630,12 +715,7 @@ export function tactics(analysis, catalog, options = {}) {
       .slice(0, 5);
     // Mudanças de item: item em unidade que sai da comp, ou que não está na build de quem o carrega, vai para
     // quem o usa melhor entre as unidades que já estão em campo. Um removedor tira todos os itens de uma unidade.
-    const wish = (id) => [
-      ...new Set([
-        ...(compBuilds?.[id] ?? []),
-        ...(options.metaBuilds?.get(id) ?? []),
-      ]),
-    ];
+    const wish = (id) => wishlist(id, compBuilds, options.metaBuilds);
     const slotsLeft = new Map(
       itemPlans
         .filter((b) => current.has(b.championId))
@@ -736,9 +816,6 @@ export function tactics(analysis, catalog, options = {}) {
       ? options.removers
       : null;
     itemMoves.forEach((move, index) => {
-      move.now =
-        !move.leaving ||
-        transitions.find((t) => t.exit?.id === move.from.id)?.ready === true;
       move.method = options.hasRemover
         ? "removedor"
         : removers === null
@@ -748,115 +825,19 @@ export function tactics(analysis, catalog, options = {}) {
             : move.leaving
               ? "vender a unidade quando a substituta entrar"
               : "sem removedor disponível";
+      // Unidade que fica só troca agora com removedor; a que sai, quando a substituta já pode entrar.
+      move.now =
+        move.method !== "sem removedor disponível" &&
+        (!move.leaving ||
+          transitions.find((t) => t.exit?.id === move.from.id)?.ready === true);
     });
-    // Carrossel: distribui os componentes do seu banco entre as builds (carry, depois tanques, depois o resto),
-    // cada componente usado uma única vez, e pontua o que ainda falta. Vale muito mais o componente que fecha
-    // um item agora (a outra metade já é sua) do que o que só começa uma receita.
-    const bank = [...(options.inventory ?? [])],
-      wants = [];
-    for (const b of itemPlans) {
-      const heldBy = b.equipped
-        .map((e) => e.id)
-        .filter((id) => id.startsWith("DA_Component_"));
-      if (!b.slotsFree && !heldBy.length) continue;
-      const weight = b.name === carry ? 3 : b.role === "tank" ? 2 : 1;
-      let slots = b.slotsFree;
-      for (const recipe of [
-        ...b.ideal,
-        ...b.additions.filter((x) => !b.ideal.includes(x)),
-      ]) {
-        if (b.equipped.some((e) => clean(e.id) === recipe.id)) continue;
-        const whole = bank.indexOf(recipe.id);
-        if (whole >= 0) {
-          if (slots > 0) {
-            slots--;
-            bank.splice(whole, 1);
-          }
-          continue;
-        }
-        if (recipe.components.length !== 2) continue;
-        const need = [];
-        let held = false;
-        for (const part of recipe.components) {
-          const h = held ? -1 : heldBy.indexOf(part.id);
-          if (h >= 0) {
-            heldBy.splice(h, 1);
-            held = true;
-            continue;
-          }
-          const at = bank.indexOf(part.id);
-          if (at >= 0) bank.splice(at, 1);
-          else need.push(part);
-        }
-        if (!held) {
-          if (slots <= 0) {
-            continue;
-          }
-          slots--;
-        }
-        if (need.length)
-          wants.push({
-            b,
-            recipe,
-            need,
-            weight: weight + (held ? 1 : 0),
-            held,
-            order: wants.length,
-          });
-      }
-    }
-    const componentChoices = new Map();
-    for (const w of wants)
-      for (const part of w.need.filter(
-        (p, i, list) => list.findIndex((q) => q.id === p.id) === i,
-      )) {
-        if (!part.id.startsWith("DA_Component_")) continue;
-        const completes = w.need.length === 1,
-          points =
-            w.weight * (completes ? 10 : 3) * Math.max(0.4, 1 - w.order * 0.04);
-        const use = {
-          champion: w.b.name,
-          item: w.recipe.name,
-          itemId: w.recipe.id,
-          completesNow: completes,
-          reason: completes
-            ? "Fecha " +
-              w.recipe.name +
-              " agora: a outra metade já está " +
-              (w.held ? "equipada em " + w.b.name : "no seu banco") +
-              "."
-            : "Começa " +
-              w.recipe.name +
-              "; falta também " +
-              w.need
-                .filter((p) => p.id !== part.id)
-                .map((p) => p.name)
-                .join(", ") +
-              ".",
-        };
-        const entry = componentChoices.get(part.id);
-        if (entry) {
-          entry.score += points;
-          entry.uses.push(use);
-        } else
-          componentChoices.set(part.id, {
-            ...part,
-            score: points,
-            owned: (options.inventory ?? []).filter((id) => id === part.id)
-              .length,
-            uses: [use],
-          });
-      }
-    const carousel = [...componentChoices.values()]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((c, index) => ({
-        ...c,
-        rank: index + 1,
-        uses: c.uses
-          .sort((a, b) => Number(b.completesNow) - Number(a.completesNow))
-          .slice(0, 3),
-      }));
+    // Carrossel: o componente que fecha um item agora, depois o que começa o próximo item de quem mais
+    // importa (carry, tanque, demais), com o banco distribuído entre as builds. Regra em carousel.mjs.
+    const carousel = carouselPicks(itemPlans, {
+      carry,
+      inventory: options.inventory ?? [],
+      covered: coveredByMoves(itemMoves),
+    });
     return {
       carry: carry ?? planned[0]?.name,
       carousel,
@@ -930,10 +911,21 @@ export function tactics(analysis, catalog, options = {}) {
       if (/LastWhisper/.test(id)) coverage.add("shredArmor");
       if (/SunfireCape|Morellonomicon|RedBuff/.test(id)) coverage.add("wounds");
     }
+  // Próximo item / Montar agora seguem a build da comp alvo (a mesma dos planos); quem não está nela usa a geral.
+  // O preview ainda não tem `meta` (o servidor põe depois): as builds vêm da comp fixada.
+  const target = analysis.preview ?? analysis.recommendations[0] ?? null,
+    targetBuilds = analysis.preview
+      ? (options.goalComp?.builds ?? null)
+      : (target?.meta?.builds ?? null);
   const currentBuilds = analysis.self.units
     .filter((u) => byId.has(u.championName))
     .map((u) => ({
-      ...build(byId.get(u.championName), u.itemNames ?? [], coverage),
+      ...build(
+        byId.get(u.championName),
+        u.itemNames ?? [],
+        coverage,
+        targetBuilds,
+      ),
       stars: u.starLevel,
     }));
   for (const b of currentBuilds) {
@@ -943,11 +935,24 @@ export function tactics(analysis, catalog, options = {}) {
     b.synergies = planned?.synergies ?? [];
     b.synergyItem = planned?.synergyItem ?? null;
   }
+  // O que montar com o banco vale para a comp alvo inteira: as peças em campo e também as que ainda
+  // vão entrar (o item fica guardado para elas). Cada campeão recebe no máximo 3 itens (slotsFree).
+  const targetIds = new Set((target?.board ?? []).map((u) => u.id)),
+    ownedIds = new Set(currentBuilds.map((b) => b.championId)),
+    adviceBuilds = [
+      ...currentBuilds,
+      ...(target?.itemPlans ?? [])
+        .filter((p) => !ownedIds.has(p.championId))
+        .map((p) => ({ ...p, stars: 0 })),
+    ];
   const inventory = options.inventory ?? [],
     remaining = [...inventory],
-    choices = [];
-  for (const b of currentBuilds)
+    choices = [],
+    // Item já montado em outro campeão que a comp vai passar para este: não sugerir montar de novo.
+    covered = coveredByMoves(target?.itemMoves ?? []);
+  for (const b of adviceBuilds)
     for (const candidate of b.additions) {
+      if (covered.has(`${b.championId}:${candidate.id}`)) continue;
       const parts = candidate.components.map((i) => i.id);
       if (candidate.usesHeld)
         parts.splice(parts.indexOf(candidate.usesHeld), 1);
@@ -961,25 +966,38 @@ export function tactics(analysis, catalog, options = {}) {
         if (at >= 0) check.splice(at, 1);
         else missing.push(id);
       }
+      const inField = ownedIds.has(b.championId),
+        inGoal = targetIds.has(b.championId);
       choices.push({
         championId: b.championId,
         champion: b.name,
         stars: b.stars,
+        inField,
+        inGoal,
         item: candidate,
         required,
         missing,
         ready: required.length > 0 && !missing.length,
+        // Carry da comp primeiro; peça em campo da comp antes da que ainda vai entrar; temporária por último.
         rank:
           candidate.score +
           (required.length - missing.length) * 20 +
-          (required.length && !missing.length ? 60 : 0),
+          (required.length && !missing.length ? 60 : 0) +
+          (b.name === target?.carry ? 25 : 0) +
+          (inGoal ? (inField ? 10 : 4) : -15),
       });
     }
   choices.sort((a, b) => b.rank - a.rank);
-  const slots = new Map(currentBuilds.map((b) => [b.championId, b.slotsFree]));
+  const slots = new Map(adviceBuilds.map((b) => [b.championId, b.slotsFree]));
+  for (const key of covered) {
+    const id = key.split(":")[0];
+    if (slots.has(id)) slots.set(id, Math.max(0, slots.get(id) - 1));
+  }
   const ready = [];
   for (const c of choices) {
-    if (!c.ready || !slots.get(c.championId)) continue;
+    // Completar um componente já equipado não ocupa slot novo.
+    const needsSlot = !c.item.usesHeld;
+    if (!c.ready || (needsSlot && !slots.get(c.championId))) continue;
     const check = [...remaining];
     let possible = true;
     for (const id of c.required) {
@@ -992,7 +1010,7 @@ export function tactics(analysis, catalog, options = {}) {
     }
     if (!possible) continue;
     remaining.splice(0, remaining.length, ...check);
-    slots.set(c.championId, slots.get(c.championId) - 1);
+    if (needsSlot) slots.set(c.championId, slots.get(c.championId) - 1);
     ready.push(c);
   }
   analysis.ownedItemAdvice = {

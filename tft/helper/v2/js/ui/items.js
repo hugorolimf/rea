@@ -11,6 +11,7 @@ import {
   tierRows,
 } from "../items.js";
 import { getCatalog, glyph, portrait } from "./glyphs.js";
+import { richText } from "./rich-text.js";
 
 const PREFS = "tft-compass-items";
 const TABS = [
@@ -249,7 +250,7 @@ export function mountItems(root) {
         i.desc
           ? `<section class="dt-desc"><h4>Efeito</h4>${i.desc
               .split("\n")
-              .map((l) => `<p>${esc(l)}</p>`)
+              .map((l) => `<p>${richText(l)}</p>`)
               .join("")}</section>`
           : ""
       }

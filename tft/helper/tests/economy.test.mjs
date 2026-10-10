@@ -16,7 +16,7 @@ import {
   projectGold,
   rerollLevelOf,
   rollLevelOf,
-  rollValue,
+  rollSim,
   sellValue,
   slotChance,
   streakGold,
@@ -188,19 +188,25 @@ test("curva exata: a pool encolhendo deixa o 3★ mais difícil que a binomial d
 test("Monte Carlo de um alvo converge para a curva exata", () => {
   const args = { level: 8, cost: 4, own: 1, goal: 3, free: 8, denom: 80 },
     exact = closeCurve({ ...args, maxGold: 60 });
-  const gain = rollValue({
+  const sim = rollSim({
     level: 8,
     targets: [{ cost: 4, free: 8, steps: [{ copies: 2, value: 1 }] }],
     denom: { 1: 0, 2: 0, 3: 0, 4: 80, 5: 0 },
     maxGold: 60,
     runs: 6000,
   });
-  for (const g of [10, 20, 30, 40, 60])
+  for (const g of [10, 20, 30, 40, 60]) {
     assert.ok(
-      Math.abs(gain[g] - exact[g]) < 0.035,
-      `g=${g}: ${gain[g]} vs ${exact[g]}`,
+      Math.abs(sim.gain[g] - exact[g]) < 0.035,
+      `g=${g}: ${sim.gain[g]} vs ${exact[g]}`,
     );
-  for (let g = 1; g <= 60; g++) assert.ok(gain[g] >= gain[g - 1]);
+    // Com um alvo só, "pelo menos uma evolui" é a própria chance de fechar.
+    assert.ok(Math.abs(sim.any[g] - exact[g]) < 0.035, `any g=${g}`);
+  }
+  for (let g = 1; g <= 60; g++) {
+    assert.ok(sim.gain[g] >= sim.gain[g - 1]);
+    assert.ok(sim.any[g] >= sim.any[g - 1]);
+  }
 });
 
 test("quanto rolar: para no joelho de uma curva que satura e gasta tudo numa reta", () => {
@@ -222,4 +228,44 @@ test("quanto rolar: perder patamar de juros custa ouro futuro", () => {
     b = bestSpend(line, { gold: 50, max: 40, urgency: 1, horizon: 3 });
   assert.equal(a.spend, 40);
   assert.ok(b.price < a.price);
+});
+
+test("time inteiro: uma peça barata e fácil de fechar sobe a chance de evoluir alguma; mais ouro nunca piora", () => {
+  const args = {
+      level: 8,
+      denom: { 1: 300, 2: 250, 3: 200, 4: 100, 5: 60 },
+      maxGold: 80,
+    },
+    one = { cost: 4, free: 9, steps: [{ copies: 2, value: 5 }] },
+    two = { cost: 1, free: 25, steps: [{ copies: 1, value: 1 }] },
+    alone = rollSim({ ...args, targets: [one] }),
+    both = rollSim({ ...args, targets: [one, two] });
+  assert.equal(both.any[1], 0, "sem ouro para uma loja não há chance");
+  assert.ok(
+    both.any[30] > alone.any[30] + 0.1,
+    `${both.any[30]} vs ${alone.any[30]}`,
+  );
+  for (let g = 1; g <= 80; g++) assert.ok(both.any[g] >= both.any[g - 1]);
+  assert.ok(both.any[80] > both.any[30]);
+});
+
+test("time inteiro: peça nova não conta como evolução e alvo sem cópias livres é ignorado", () => {
+  const args = {
+    level: 8,
+    denom: { 1: 300, 2: 250, 3: 200, 4: 100, 5: 60 },
+    maxGold: 60,
+  };
+  const nova = rollSim({
+    ...args,
+    targets: [
+      { cost: 4, free: 9, evolve: false, steps: [{ copies: 1, value: 2 }] },
+    ],
+  });
+  assert.equal(nova.any[60], 0, "comprar peça nova não é evolução");
+  assert.ok(nova.gain[60] > 0, "mas rende força");
+  const vazio = rollSim({
+    ...args,
+    targets: [{ cost: 4, free: 0, steps: [{ copies: 1, value: 2 }] }],
+  });
+  assert.equal(vazio.gain[60], 0);
 });

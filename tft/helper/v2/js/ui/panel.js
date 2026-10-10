@@ -1,6 +1,7 @@
 import { el, reconcile, setVars, esc } from "../dom.js";
 import { clamp, monotonePath, round } from "../math.js";
 import { glyph, pct, pips, portrait } from "./glyphs.js";
+import { nameChip, richText } from "./rich-text.js";
 
 /* ---------- Roll: chance acumulada de fechar o upgrade por ouro gasto ---------- */
 
@@ -58,75 +59,12 @@ function curveSVG(curve, roll) {
       `<circle class="q" cx="${x}" cy="${y}" r="3.4"/><text class="ql" x="${round(Math.min(x + 6, CW - 46))}" y="${round(y + 15)}">80% · ${curve.q80}g</text>`,
     );
   }
-  return `<svg viewBox="0 0 ${CW} ${CH}" class="curve" role="img" aria-label="Chance acumulada de ${esc(curve.name)} ${curve.stars}★ por ouro gasto">
+  return `<svg viewBox="0 0 ${CW} ${CH}" class="curve" role="img" aria-label="${curve.team ? "Chance acumulada de pelo menos uma peça do time evoluir" : `Chance acumulada de ${esc(curve.name)} ${curve.stars}★`} por ouro gasto">
     <defs><linearGradient id="curve-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--amber)" stop-opacity=".32"/><stop offset="1" stop-color="var(--amber)" stop-opacity="0"/></linearGradient>
     <linearGradient id="curve-lit-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--go)" stop-opacity=".45"/><stop offset="1" stop-color="var(--go)" stop-opacity=".04"/></linearGradient></defs>
     ${[0, 0.5, 1].map((v) => `<line class="g" x1="${CM.l}" x2="${CW - CM.r}" y1="${round(cy(v))}" y2="${round(cy(v))}"/><text class="ax" x="${CM.l - 6}" y="${round(cy(v) + 3)}" text-anchor="end">${v * 100}%</text>`).join("")}
     ${ticks.join("")}
     <path class="area" d="${area}"/>${lit}<path class="line" d="${line}"/>${marks.join("")}</svg>`;
-}
-
-/* ---------- Ouro: agora → depois da ação → próximas rodadas ---------- */
-
-const GW = 280,
-  GH = 100,
-  GM = { l: 16, r: 28, t: 12, b: 18 };
-
-/**
- * Fluxo do ouro sobre as faixas de juros (+1 a +5, e "máx" acima de 50g). A seta âmbar é o gasto
- * desta ação; a linha dourada é o ouro no início das próximas rodadas só economizando. O ponto que
- * alcança 50g brilha. As faixas já garantidas depois da ação ficam com o rótulo aceso.
- */
-function goldSVG(e) {
-  const start = e.after ?? e.gold,
-    pts = [{ label: "agora", gold: start }, ...e.projection],
-    n = pts.length,
-    iw = GW - GM.l - GM.r,
-    ih = GH - GM.t - GM.b;
-  const X = (i) => GM.l + (n > 1 ? (i / (n - 1)) * iw : 0),
-    Y = (g) => GM.t + (1 - clamp(g / e.top)) * ih;
-  const bands = [];
-  for (let k = 0; k < 5; k++) {
-    const y1 = round(Y((k + 1) * 10)),
-      y2 = round(Y(k * 10));
-    bands.push(
-      `<rect class="band${k % 2 ? " alt" : ""}" x="${GM.l}" y="${y1}" width="${iw}" height="${round(y2 - y1)}"/>`,
-    );
-  }
-  const y50 = round(Y(50));
-  bands.push(
-    `<rect class="band max" x="${GM.l}" y="${GM.t}" width="${iw}" height="${round(y50 - GM.t)}"/><line class="cap50" x1="${GM.l}" x2="${GW - GM.r}" y1="${y50}" y2="${y50}"/><text class="bl${start >= 50 ? " on" : ""}" x="${GW - GM.r + 5}" y="${y50 + 3}">50g</text>`,
-  );
-  const xy = pts.map((p, i) => ({ x: X(i), y: Y(p.gold) })),
-    line = monotonePath(xy),
-    base = round(Y(0)),
-    area = `${line}L${round(xy.at(-1).x)} ${base}L${round(xy[0].x)} ${base}Z`;
-  const marks = [];
-  if (e.spend > 0) {
-    const x = round(X(0)),
-      y0 = round(Y(e.gold)),
-      y1 = round(Y(start));
-    marks.push(
-      `<line class="drop" x1="${x}" x2="${x}" y1="${y0}" y2="${y1 - 5}"/><path class="drop-head" d="M${x - 4} ${y1 - 7}L${x} ${y1 - 1}L${x + 4} ${y1 - 7}Z"/><circle class="was" cx="${x}" cy="${y0}" r="3.5"/>`,
-    );
-  }
-  marks.push(
-    `<circle class="start" cx="${round(xy[0].x)}" cy="${round(xy[0].y)}" r="4"/>`,
-  );
-  pts.forEach((p, i) => {
-    if (i === 0) return;
-    const { x, y } = xy[i];
-    marks.push(
-      `<circle class="pt${p.reach ? " reach" : ""}${p.capped ? " capped" : ""}" cx="${round(x)}" cy="${round(y)}" r="${p.reach ? 4.6 : 3.2}"/><text class="vl${p.reach ? " reach" : ""}" x="${round(x)}" y="${round(y - 8)}" text-anchor="middle">${p.gold}</text>`,
-    );
-  });
-  const labels = pts.map(
-    (p, i) =>
-      `<text class="xl${i === 0 ? " now" : ""}" x="${round(X(i))}" y="${GH - 5}" text-anchor="middle">${esc(p.label)}</text>`,
-  );
-  return `<svg viewBox="0 0 ${GW} ${GH}" class="gold-chart" role="img" aria-label="Ouro agora e no início das próximas rodadas">
-    <defs><linearGradient id="gold-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--gold)" stop-opacity=".34"/><stop offset="1" stop-color="var(--gold)" stop-opacity="0"/></linearGradient></defs>
-    ${bands.join("")}<path class="area" d="${area}"/><path class="line" d="${line}"/>${marks.join("")}${labels.join("")}</svg>`;
 }
 
 /* ---------- Montagem ---------- */
@@ -148,27 +86,32 @@ const setVerdict = (v, text, tone, title = "") => {
 };
 
 export function mountPanel(root) {
-  /* Decisão */
-  const tag = el("span", { class: "action-tag" }),
-    headline = el("strong", { class: "headline" }),
-    metaRow = el("div", { class: "meta-row" }),
-    decision = section("decision", tag, headline, metaRow);
   /* Nível: nós e elos; o elo do nível atual é a barra de XP */
   const lvHead = head("Nível", "up"),
     track = el("div", { class: "lv-track" }),
     level = section("level", lvHead.node, track);
-  /* Roll */
+  /* Roll: veredito e motivo, orçamento, lista por peça do time e a curva de "alguma peça evolui" */
   const rollHead = head("Roll", "roll"),
+    call = el("div", { class: "call" }),
     spend = el("div", { class: "spend" }),
+    note = el("div", { class: "roll-note" }),
+    shopHits = el("div", { class: "shop-hits" }),
+    finds = el("div", { class: "finds" }),
     curveBox = el("div", { class: "curve-box" }),
     targets = el("div", { class: "targets" }),
-    roll = section("roll", rollHead.node, spend, curveBox, targets);
-  /* Ouro */
-  const ecoHead = head("Ouro", "coin"),
-    sum = el("div", { class: "eco-sum" }),
-    chart = el("div", { class: "gold-box" }),
-    chips = el("div", { class: "eco-chips" }),
-    eco = section("eco", ecoHead.node, sum, chart, chips);
+    more = el("div", { class: "more" }),
+    roll = section(
+      "roll",
+      rollHead.node,
+      call,
+      spend,
+      note,
+      shopHits,
+      finds,
+      targets,
+      more,
+      curveBox,
+    );
   /* Loja */
   const oddsHead = head("Loja", "eye");
   oddsHead.verdict.hidden = true; // a loja não tem veredito
@@ -182,7 +125,7 @@ export function mountPanel(root) {
       el("summary", {}, "Por que esta decisão"),
       whyBody,
     );
-  root.replaceChildren(decision, level, roll, eco, odds, why);
+  root.replaceChildren(level, roll, odds, why);
 
   const lvNode = () =>
     el("span", { class: "lv-node" }, el("b"), el("i"), el("em"));
@@ -193,13 +136,6 @@ export function mountPanel(root) {
     update(p) {
       root.dataset.empty = p ? "0" : "1";
       if (!p) return;
-      root.dataset.tone = p.tone;
-      tag.textContent = p.action ?? "";
-      tag.hidden = !p.action;
-      headline.textContent = p.action ? p.headline : "";
-      headline.hidden = !p.action;
-      metaRow.innerHTML = `${p.tier ? `<b class="tier tier-${esc(p.tier)}" title="Tier da comp">${esc(p.tier)}</b>` : ""}${p.style ? `<em class="chip">${esc(p.style)}</em>` : ""}<span class="carry" title="${esc(p.comp)}">${glyph("crown")}${esc(p.carry)}</span>`;
-
       /* Nível */
       const lv = p.level;
       level.hidden = !lv;
@@ -291,68 +227,69 @@ export function mountPanel(root) {
       const r = p.roll;
       roll.hidden = !r;
       if (r) {
-        setVerdict(
-          rollHead.verdict,
-          r.go ? "rolar" : r.level < r.at ? `no nível ${r.at}` : "espere",
-          r.go ? "go" : "wait",
-        );
+        const c = r.call;
+        setVerdict(rollHead.verdict, r.pill.text, r.pill.tone, c?.reason ?? "");
+        // Veredito e motivo: a regra única do servidor, em uma linha.
+        call.hidden = !c;
+        call.dataset.kind = c?.kind ?? "";
+        call.innerHTML = c
+          ? `<b>${richText(c.title)}</b><span title="${esc(c.reason)}">${richText(c.reason)}</span>`
+          : "";
         spend.hidden = !r.go;
         spend.innerHTML = r.go
-          ? `<b>${r.spend}g</b><span>até ${r.shops} lojas</span>${r.stop != null ? `<span class="knee" title="O piso deixaria rolar até ${r.max}g, mas depois de ${r.spend}g cada loja rende menos que a média do plano.">de ${r.max}g</span>` : ""}${r.keep != null ? `<span class="floor" title="pare quando chegar a ${r.keep}g">${glyph("flag")}${r.keep}g</span>` : ""}`
+          ? `<b>${r.spend}g</b><span>até ${r.shops} lojas</span>${r.stop != null ? `<span class="knee" title="O piso deixaria rolar até ${r.max}g, mas depois de ${r.spend}g cada loja rende menos que a média do plano.">de ${r.max}g</span>` : ""}${r.keep != null ? `<span class="floor" title="pare quando chegar a ${r.keep}g">${glyph("flag")}pare em ${r.keep}g</span>` : ""}`
+          : "";
+        // Juros só entram quando mudam a decisão.
+        note.hidden = !r.interest;
+        note.innerHTML = r.interest
+          ? `${glyph("coin")}<span>Rolar derruba os juros de +${r.interest.from} para +${r.interest.to} por rodada.</span>`
+          : "";
+        // Peças do time na loja agora e o que comprar delas.
+        shopHits.hidden = !r.shop.length;
+        shopHits.innerHTML = r.shop.length
+          ? `<span class="lbl">Na loja</span>${r.shop
+              .map(
+                (s) =>
+                  `<span class="hit" data-action="${esc(s.action ?? "")}" title="${esc(s.name)} no slot ${s.slots.join(", ")}${s.closes ? ` · ${esc(s.closes)}` : ""} · ${s.buy ? `compre ${s.buy} (${s.gold}g)` : esc(s.action ?? "não compre")}">${nameChip("champion", s.id, s.name, { size: 18 })}${s.buy ? ` ×${s.buy} · ${s.gold}g` : ` · ${esc(s.action ?? "–")}`}</span>`,
+              )
+              .join("")}`
+          : "";
+        // Indicador verde: dá para achar a peça rolando (só informação). ↑ = subir de nível leva a chance ao verde; ↓ = tira.
+        finds.hidden = !r.finds.length;
+        finds.innerHTML = r.finds.length
+          ? `<span class="lbl" title="Chance de ver pelo menos uma cópia rolando. Verde: 50% ou mais. Considera a pool, as cópias nos tabuleiros rivais e a estimativa dos bancos deles (não é leitura).">Achar rolando</span>${r.finds
+              .map(
+                (f) =>
+                  `<span class="find" data-go="${f.go ? 1 : 0}" data-mine="${f.mine ? 1 : 0}" title="${esc(f.title)}">${portrait(f.id, f.name, { size: 18 })}<i class="dot"></i>${Math.round(f.now * 100)}%${f.levelUp ? '<b class="lv" data-dir="up" title="Subir de nível leva a chance a 50% ou mais">↑</b>' : f.levelDown ? '<b class="lv" data-dir="down" title="Subir de nível reduz a chance abaixo de 50%">↓</b>' : ""}</span>`,
+              )
+              .join("")}`
           : "";
         curveBox.innerHTML = curveSVG(r.curve, r);
         curveBox.hidden = !r.curve;
         curveBox.title = r.curve
-          ? `${r.curve.name} ${r.curve.stars}★: chance de juntar ${plural(r.curve.k, "cópia", "cópias")} por ouro gasto, contando lojas e o preço das cópias${r.curve.exact ? " (a pool encolhe a cada compra)" : ""}${r.curve.level ? ` · nível ${r.curve.level}` : ""}${r.curve.q50 != null ? ` · ${r.curve.q50}g para 50%` : ""}`
+          ? r.curve.team
+            ? `Chance de pelo menos uma peça do time evoluir por ouro gasto${r.curve.level ? ` · nível ${r.curve.level}` : ""}${r.curve.q50 != null ? ` · ${r.curve.q50}g para 50%` : ""}`
+            : `${r.curve.name} ${r.curve.stars}★: chance de juntar ${plural(r.curve.k, "cópia", "cópias")} por ouro gasto, contando lojas e o preço das cópias${r.curve.exact ? " (a pool encolhe a cada compra)" : ""}${r.curve.level ? ` · nível ${r.curve.level}` : ""}${r.curve.q50 != null ? ` · ${r.curve.q50}g para 50%` : ""}`
           : "";
         reconcile(targets, r.targets, {
           key: (t) => t.id,
           create: tgNode,
           update: (node, t) => {
-            node.dataset.done = t.done ? "1" : "0";
-            node.title = `${t.name} ${t.goalStars}★ · ${t.own}/${t.goal} cópias · ${pct(t.chancePerShop)} por loja${t.chanceInRoll != null ? ` · ${pct(t.chanceInRoll)} de fechar com ${r.spend}g` : ""}${t.enemy ? ` · ${t.enemy} com rivais` : ""}`;
-            node.innerHTML = `${portrait(t.id, t.name, { size: 26, ring: t.done ? "is-done" : "is-pending" })}<span class="name">${esc(t.name)}<small>${t.goalStars}★</small></span>${pips(Math.min(t.own, t.need), t.need, t.done ? "" : "amber")}<span class="chance" title="chance por loja">${pct(t.chancePerShop)}</span>${t.chanceInRoll != null && !t.done ? `<span class="in-roll" title="chance de fechar com ${r.spend}g">→ ${pct(t.chanceInRoll)}</span>` : ""}${t.enemy ? `<span class="rivals" title="${t.enemy} cópia(s) com rivais">${glyph("swords")}${t.enemy}</span>` : ""}`;
+            const blocked = t.status === "inviavel";
+            node.dataset.status = t.status;
+            node.dataset.shop = t.shop?.buy ? "buy" : t.shop ? "seen" : "";
+            node.title = t.title;
+            node.innerHTML = `${portrait(t.id, t.name, { size: 26, ring: blocked ? "" : "is-pending" })}<span class="name">${t.core ? `<i class="core" title="core: pesa mais na decisão">${glyph("crown")}</i>` : ""}${esc(t.name)}<small>${esc(t.tag)}</small></span>${t.pips ? pips(Math.min(t.own, t.goal), t.goal, "amber") : `<span class="frac">${t.own}/${t.goal}</span>`}${
+              blocked
+                ? `<span class="bad">inviável${t.substitute ? ` · ${nameChip("champion", t.substitute.id, t.substitute.name, { size: 18 })}` : ""}</span>`
+                : `<span class="chance" title="chance por loja">${pct(t.chancePerShop)}</span>${t.chance != null ? `<span class="in-roll" title="chance de fechar com ${r.call?.budget}g">→ ${pct(t.chance)}</span>` : ""}`
+            }${t.enemy || t.hidden >= 1 ? `<span class="rivals">${glyph("swords")}${t.enemy}${t.hidden >= 1 ? `<small>+${Math.round(t.hidden)}</small>` : ""}</span>` : ""}${t.shop ? `<span class="in-shop" title="na loja agora">${glyph("eye")}${t.shop.buy ? `×${t.shop.buy}` : ""}</span>` : ""}`;
           },
         });
-      }
-
-      /* Ouro */
-      const e = p.economy;
-      eco.hidden = !e;
-      if (e) {
-        const known = e.gold != null;
-        eco.dataset.unknown = known ? "0" : "1";
-        setVerdict(
-          ecoHead.verdict,
-          e.saving
-            ? "poupar"
-            : e.keep != null && e.spend
-              ? `piso ${e.keep}g`
-              : "",
-          e.saving ? "go" : "wait",
-        );
-        const inc = e.income,
-          total = e.incomeParts.reduce((s, x) => s + x.value, 0) || 1;
-        sum.innerHTML = !known
-          ? `<b class="now">–</b><small class="unread" title="Ouro, juros, renda e projeção aparecem quando a leitura da tela estiver ativa durante a partida.">ouro não lido da tela</small>`
-          : `<div class="eco-now"><b class="now">${e.gold}<small>g</small></b>${e.spend ? `<span class="arrow" aria-hidden="true">→</span><b class="after" title="depois desta ação${e.shopSpend ? `, incluindo ${e.shopSpend}g da loja` : ""}">${e.after}<small>g</small></b>` : ""}</div>${inc ? `<div class="eco-inc" title="${esc(`Renda da próxima rodada: ${e.incomeParts.map((x) => `${x.value} ${x.label}`).join(" + ")}`)}"><span class="inc-total"><b>+${inc.total}</b><small>/rodada</small></span><span class="inc-bar">${e.incomeParts.map((x) => `<i data-kind="${x.kind}" style="--w:${x.value / total}"></i>`).join("")}</span></div>` : ""}`;
-        chart.hidden = !known || !e.projection.length;
-        chart.innerHTML = chart.hidden ? "" : goldSVG(e);
-        const chipList = [];
-        if (e.streak)
-          chipList.push(
-            `<span class="chip streak" data-kind="${esc(e.streak.kind)}" title="sequência inferida pela vida entre rodadas: +${e.streak.gold}g por rodada">${glyph("up")}${plural(e.streak.length, e.streak.kind === "win" ? "vitória" : "derrota", e.streak.kind === "win" ? "vitórias" : "derrotas")}</span>`,
-          );
-        if (e.sellable)
-          chipList.push(
-            `<span class="chip" title="venda do banco fora da comp: ${esc(e.sellable.units.map((u) => `${u.name} ${u.stars}★ (${u.value}g)`).join(", "))}">${glyph("coin")}banco +${e.sellable.gold}g</span>`,
-          );
-        if (e.shopSpend)
-          chipList.push(
-            `<span class="chip" title="cartas da loja que o plano manda comprar">${glyph("bank")}loja −${e.shopSpend}g</span>`,
-          );
-        chips.innerHTML = chipList.join("");
-        chips.hidden = !chipList.length;
+        more.hidden = !r.more;
+        more.textContent = r.more
+          ? `+${r.more} ${r.more === 1 ? "peça" : "peças"} do time fora desta lista`
+          : "";
       }
 
       /* Loja: odds do nível em uma barra só, com o custo do carry aceso */
@@ -380,7 +317,7 @@ export function mountPanel(root) {
       );
 
       /* Por quê */
-      whyBody.innerHTML = `${p.steps.length ? `<ol>${p.steps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : ""}${p.reasons.length ? `<ul>${p.reasons.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}`;
+      whyBody.innerHTML = `${p.steps.length ? `<ol>${p.steps.map((t) => `<li>${richText(t)}</li>`).join("")}</ol>` : ""}${p.reasons.length ? `<ul>${p.reasons.map((t) => `<li>${richText(t)}</li>`).join("")}</ul>` : ""}`;
       why.hidden = !p.steps.length && !p.reasons.length;
     },
   };

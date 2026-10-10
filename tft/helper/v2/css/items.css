@@ -5,7 +5,8 @@
     & .notice,
     & .deck,
     & .skeleton,
-    & .waiting {
+    & .waiting,
+    & .contest {
       display: none !important;
     }
   }

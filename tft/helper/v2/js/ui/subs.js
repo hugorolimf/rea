@@ -1,8 +1,9 @@
 import { esc } from "../dom.js";
-import { getCatalog, portrait, stars } from "./glyphs.js";
+import { getCatalog, stars, unitPortrait } from "./glyphs.js";
+import { nameChip } from "./rich-text.js";
 
-const unit = (id, name, cost, size = 32) =>
-  `<span class="sub-pt" style="--ring-c:var(--cost-${cost ?? 1})">${portrait(id, name, { size })}</span>`;
+// Retrato de campeão com o anel do custo: o padrão compartilhado (glyphs.js) que a interface toda usa.
+const unit = unitPortrait;
 
 /** Por que trocar a peça da comp: disputa, pool esgotada ou loja fora de alcance no nível alvo. */
 function pressure(f) {
@@ -24,6 +25,9 @@ function gains(o) {
   if (o.lost.length) out.push(`perde ${o.lost.join(", ")}`);
   if (o.gained.length) out.push(`ganha ${o.gained.join(", ")}`);
   if (!o.lost.length && !o.gained.length) out.push("mantém as sinergias");
+  // Medido com o seu trunfo: colocação média dos tabuleiros que tinham os dois.
+  if (o.withAsset != null)
+    out.push(`com seu trunfo: ${o.withAsset.toFixed(1).replace(".", ",")}º`);
   return out;
 }
 
@@ -56,19 +60,19 @@ export function mountSubs(root, list, { onUse, onUndo }) {
       const rows = subs.map((f) => {
         const o = f.pick,
           others = f.options.filter((x) => x !== o);
-        const why = `<small class="sub-why" data-tone="${f.contested || f.unreachable ? "warn" : "info"}">${esc(f.name)}: ${esc(pressure(f))}</small>`;
+        const why = `<small class="sub-why" data-tone="${f.contested || f.unreachable ? "warn" : "info"}">${nameChip("champion", f.id, f.name, { size: 16 })}: ${esc(pressure(f))}</small>`;
+        // Alternativas que o motor devolveu além da sugerida (ou todas, sem sugestão).
+        const alts = others.length
+          ? `<span class="sub-others"><small>ou</small>${others
+              .map(
+                (x) =>
+                  `<button type="button" class="sub-alt" data-out="${esc(f.id)}" data-use="${esc(x.id)}"${canUse ? "" : " disabled"} title="${esc(`${x.name}: ${gains(x).join(" · ")}`)}">${unit(x.id, x.name, x.cost, 30)}<span class="sub-alt-name">${esc(x.name)}</span></button>`,
+              )
+              .join("")}</span>`
+          : "";
         if (!o)
-          return `<li class="sub is-stuck">${unit(f.id, f.name, f.cost)}<p><b>${esc(f.name)}</b>${why}<small>Nenhuma alternativa mantém as sinergias; siga com ela ou repense a comp.</small></p></li>`;
-        return `<li class="sub">${unit(f.id, f.name, f.cost)}<span class="sub-arrow" aria-hidden="true">→</span>${unit(o.id, o.name, o.cost)}<p><b>${esc(f.name)} → ${esc(o.name)}</b>${why}<small>${gains(o).map(esc).join(" · ")}</small>${
-          others.length
-            ? `<small class="sub-others">ou ${others
-                .map(
-                  (x) =>
-                    `<button type="button" class="link" data-out="${esc(f.id)}" data-use="${esc(x.id)}"${canUse ? "" : " disabled"} title="${esc(gains(x).join(" · "))}">${esc(x.name)}</button>`,
-                )
-                .join(", ")}</small>`
-            : ""
-        }</p><button type="button" class="btn btn-go" data-out="${esc(f.id)}" data-use="${esc(o.id)}"${canUse ? "" : ' disabled title="Disponível para comps de meta"'}>Usar</button></li>`;
+          return `<li class="sub is-stuck">${unit(f.id, f.name, f.cost)}<p><b>${esc(f.name)}</b>${why}<small>Nenhuma alternativa claramente melhor; siga com ela ou repense a comp.</small>${alts}</p></li>`;
+        return `<li class="sub">${unit(f.id, f.name, f.cost)}<span class="sub-arrow" aria-hidden="true">→</span>${unit(o.id, o.name, o.cost)}<p><b>${esc(f.name)} → ${esc(o.name)}</b>${why}<small>${gains(o).map(esc).join(" · ")}</small>${alts}</p><button type="button" class="btn btn-go" data-out="${esc(f.id)}" data-use="${esc(o.id)}"${canUse ? "" : ' disabled title="Disponível para comps de meta"'}>Usar</button></li>`;
       });
       list.innerHTML = [...applied, ...rows].join("");
       root.hidden = !applied.length && !rows.length;

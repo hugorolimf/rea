@@ -5,6 +5,8 @@
 // Heurística; não simula combate.
 import { ODDS } from "./rules.mjs";
 import { lobbyStrength, pressureOf, tierFloor } from "./economy.mjs";
+import { wishlist } from "./tactics.mjs";
+import { baseItemId } from "./item-tiers.mjs";
 const MIN_ODDS = 10; // % por slot de loja a partir do qual um custo é tratado como comprável no nível
 const unlockLevel = (cost) => {
   for (let level = 1; level <= 11; level++)
@@ -223,23 +225,43 @@ export function stagePlan(plan, analysis, catalog, options) {
   for (const b of buyNow) b.inShop = shop.some((s) => s.id === b.id);
   // Item de cada unidade em campo: o que já dá para montar com o banco, ou o próximo da build.
   const advice = analysis.ownedItemAdvice;
+  // Item que já existe em outra peça (a que sai, por exemplo) e a comp passa para esta ("Passar itens"):
+  // não falta, não se monta de novo e já ocupa o slot de quem o recebe.
+  const movedIn = new Map();
+  for (const m of plan.itemMoves ?? [])
+    for (const x of m.moves ?? []) {
+      if (!movedIn.has(x.to.id)) movedIn.set(x.to.id, new Set());
+      movedIn.get(x.to.id).add(baseItemId(x.item.id));
+    }
   for (const u of board) {
     const ready = (advice?.ready ?? [])
       .filter((r) => r.championId === u.id)
-      .map((r) => ({ id: r.item.id, name: r.item.name }));
+      .map((r) => ({
+        id: r.item.id,
+        name: r.item.name,
+        usesHeld: r.item.usesHeld ?? null,
+      }));
     const build = (advice?.builds ?? []).find((b) => b.championId === u.id);
     const next = (build?.additions ?? [])
       .filter((i) => !ready.some((r) => r.id === i.id))
+      .filter((i) => !movedIn.get(u.id)?.has(baseItemId(i.id)))
       .slice(0, 1)
       .map((i) => ({
         id: i.id,
         name: i.name,
         missing: (i.missing ?? []).map((m) => m.name),
+        // Receita e situação de cada peça para a interface desenhar os componentes (só apresentação).
+        components: i.components ?? [],
+        missingIds: (i.missing ?? []).map((m) => m.id),
+        usesHeld: i.usesHeld ?? null,
       }));
     const stays = u.status === "meta";
     u.equipNow = stays ? ready : [];
     u.nextItem = stays ? (next[0] ?? null) : null;
-    u.slotsFree = build?.slotsFree ?? 0;
+    u.slotsFree = Math.max(
+      0,
+      (build?.slotsFree ?? 0) - (movedIn.get(u.id)?.size ?? 0),
+    );
   }
   // Item pronto no banco: vai para a unidade em campo que mais o usa. Ordem: está na build de meta dela
   // (melhor posição primeiro), depois papel compatível; peça da meta antes de temporária; precisa de slot livre.
@@ -258,13 +280,14 @@ export function stagePlan(plan, analysis, catalog, options) {
               )
             ? "ad"
             : "flex";
-  const wishOf = (id) => [
-      ...new Set([
-        ...(plan.meta?.builds?.[id] ?? []),
-        ...(options.metaBuilds?.get(id) ?? []),
+  // Mesma lista de desejo de build() e Passar itens (tactics.mjs); completar componente equipado não gasta slot.
+  const wishOf = (id) => wishlist(id, plan.meta?.builds, options.metaBuilds),
+    room = new Map(
+      board.map((u) => [
+        u.id,
+        u.slotsFree - u.equipNow.filter((e) => !e.usesHeld).length,
       ]),
-    ],
-    room = new Map(board.map((u) => [u.id, u.slotsFree - u.equipNow.length]));
+    );
   const bankItems = [];
   for (const id of (options.inventory ?? []).filter(
     (id) => !/Component_|Consumable_|Reforger/.test(id),

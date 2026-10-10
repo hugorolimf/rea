@@ -69,6 +69,10 @@ export function augStore(storage, name = "tft-compass-augments") {
       const v = read();
       return v && v.match === matchKey ? v.picks : [];
     },
+    /** Há registro desta partida (mesmo vazio, depois de remover): a lista enviada ao servidor vale como está. */
+    has(matchKey) {
+      return matchKey !== "lobby" && read()?.match === matchKey;
+    },
     add(matchKey, id, stage, name) {
       if (matchKey === "lobby") return;
       const picks = this.get(matchKey).filter((p) => p.id !== id);

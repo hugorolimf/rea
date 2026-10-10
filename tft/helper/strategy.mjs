@@ -1,17 +1,14 @@
 // Ação de agora: comprar, economizar, subir de nível ou rolar a loja, com quanto gastar e por quê.
 // Entradas: estágio, nível, XP e ouro (lidos da tela), HP e pool (arquivo do jogo), a loja lida, a sequência
 // inferida pelo servidor e o estilo da comp alvo vindo da meta ("lvl N" = reroll naquele nível, "Fast 8", ...).
-// Aqui fica a árvore de decisão; a matemática (chance de fechar, ganho por ouro, juros, renda) está em economy.mjs.
-// Não simula combate.
+// Aqui fica a árvore de decisão (nível, reroll, economia); a matemática (chance de fechar, ganho por ouro, juros,
+// renda) está em economy.mjs e a regra de "vale rolar para o time inteiro" em roll.mjs. Não simula combate.
 import { GAME, ODDS } from "./rules.mjs";
 import {
   POLICY,
   bestSpend,
-  closeCurve,
   curveLevel,
-  curveSummary,
   finalLevelOf,
-  freeByCost,
   incomeOf,
   interestOf,
   isContested,
@@ -22,78 +19,16 @@ import {
   projectGold,
   rerollLevelOf,
   rollLevelOf,
-  rollValue,
   sellValue,
   streakGold,
 } from "./economy.mjs";
+import { rollCurve, rollRows, rollRule, teamOf } from "./roll.mjs";
 
-const STAR = POLICY.star;
 const round1 = (v) => Math.round(v * 10) / 10;
-const pct = (p) => `${Math.round(p * 100)}%`;
 const shopsIn = (gold) => Math.floor(gold / GAME.shopCost);
-const CURVE_MAX = POLICY.simulation.maxGold;
-
-/**
- * Alvos da simulação de rolagem: upgrades das suas unidades (campo e banco, sem contar duplicatas) e as
- * peças novas da comp. O valor de cada degrau é custo × ganho de estrela, com peso extra para o carry e
- * para unidades com itens.
- */
-function rollTargets(plan, analysis, pool) {
-  const stars3 = new Set(plan.meta?.stars3 ?? []),
-    mine = new Map();
-  const note = (id, name, cost, stars, items) => {
-    const t = mine.get(name) ?? { id, name, cost, stars: 0, items: 0 };
-    t.stars = Math.max(t.stars, stars);
-    t.items += items;
-    mine.set(name, t);
-  };
-  for (const u of analysis.self.units ?? [])
-    note(
-      u.championName,
-      u.name,
-      u.price ?? 1,
-      u.starLevel ?? 1,
-      u.itemNames?.length ?? 0,
-    );
-  for (const u of analysis.self.reserve ?? [])
-    note(
-      u.championName ?? u.id,
-      u.name,
-      u.cost ?? 1,
-      u.stars ?? u.starLevel ?? 1,
-      0,
-    );
-  const targets = [];
-  for (const t of mine.values()) {
-    const p = pool.get(t.name);
-    if (!p || t.stars >= 3) continue;
-    const w =
-        (t.name === plan.carry ? POLICY.carryWeight : 1) *
-        (1 + POLICY.itemWeight * t.items),
-      own = p.own ?? 0,
-      steps = [];
-    if (own < 3)
-      steps.push({ copies: 3 - own, value: w * t.cost * (STAR[2] - STAR[1]) });
-    if (own < 9 && (stars3.has(t.id) || 9 - own <= 3))
-      steps.push({ copies: 9 - own, value: w * t.cost * (STAR[3] - STAR[2]) });
-    const free = p.remainingUpper ?? 0,
-      possible = steps.filter((s) => s.copies <= free);
-    if (possible.length)
-      targets.push({ name: t.name, cost: t.cost, free, steps: possible });
-  }
-  for (const b of plan.stage?.buyNow ?? []) {
-    const p = pool.get(b.name);
-    if (mine.has(b.name) || !p?.remainingUpper) continue;
-    const w = b.name === plan.carry ? POLICY.carryWeight : 1,
-      steps = [
-        { copies: 1, value: w * b.cost * STAR[1] * POLICY.newUnitWeight },
-      ];
-    if (b.name === plan.carry && p.remainingUpper >= 3)
-      steps.push({ copies: 3, value: w * b.cost * (STAR[2] - STAR[1]) });
-    targets.push({ name: b.name, cost: b.cost, free: p.remainingUpper, steps });
-  }
-  return targets;
-}
+// Tipo de cada passo/razão da decisão ("roll" manda rolar, "save" manda guardar; sem tipo = neutro). Chave
+// Symbol: acompanha a decisão entre decide() e settle() sem ir para o JSON da API.
+const KIND = Symbol("kind");
 
 /** Unidades do banco fora da comp alvo: o ouro que a venda libera num all-in. */
 function sellableOf(plan, analysis) {
@@ -114,7 +49,7 @@ function sellableOf(plan, analysis) {
   return { gold: units.reduce((n, u) => n + u.value, 0), units };
 }
 
-function decide(plan, analysis, options) {
+function decide(plan, analysis, options, team, sim) {
   const gold = options.gold,
     level = options.level,
     hp = analysis.self.health,
@@ -125,7 +60,6 @@ function decide(plan, analysis, options) {
     xpNeed = xp?.need ?? null,
     levelCost = xp?.cost ?? null;
   const pool = new Map(analysis.pool.map((p) => [p.name, p])),
-    denom = freeByCost(analysis.pool),
     board = plan.board;
   const carry = board.find((u) => u.name === plan.carry) ?? board[0];
   const rerollLevel = rerollLevelOf(meta, carry?.cost);
@@ -137,7 +71,13 @@ function decide(plan, analysis, options) {
   });
   const sellable = sellableOf(plan, analysis);
   const steps = [],
-    reasons = [];
+    reasons = [],
+    kinds = new Map();
+  // Registra o texto com o seu tipo, para a oportunidade filtrar por tipo e não pelo prefixo.
+  const mark = (list, kind, text) => {
+    list.push(text);
+    kinds.set(text, kind);
+  };
   let ev = null,
     lobbyInfo = null,
     pressure = null,
@@ -145,7 +85,9 @@ function decide(plan, analysis, options) {
     shopSpend = 0;
   const out = (action, headline, extra = {}) => {
     if (ev?.roll.gold >= GAME.shopCost)
-      reasons.push(
+      mark(
+        reasons,
+        "roll",
         `Ganho esperado de força: rolar ${ev.roll.gold}g ≈ +${ev.roll.gain}${levelCost ? `; subir de nível (${levelCost}g) ≈ +${ev.level.gain}` : ""}.`,
       );
     return {
@@ -156,6 +98,7 @@ function decide(plan, analysis, options) {
       ev,
       lobby: lobbyInfo,
       pressure: pressure?.band ?? null,
+      floor: pressure?.floor ?? null,
       style: meta?.levelling || null,
       rerollLevel,
       finalLevel,
@@ -167,6 +110,7 @@ function decide(plan, analysis, options) {
       cash,
       sellable,
       interestAt: gold === null ? null : (nextTier(gold) ?? 50),
+      [KIND]: kinds,
       ...extra,
     };
   };
@@ -181,13 +125,19 @@ function decide(plan, analysis, options) {
         shopBuys.map((s) => `${s.name} (${s.cost}g, ${s.reason})`).join("; ") +
         ".",
     );
-  if (gold === null) {
+  // Nível só estimado pelo tabuleiro não é leitura: as odds da loja e o nível de rolagem dependem dele.
+  const levelUnread = options.levelEstimated === true;
+  if (gold === null || levelUnread) {
     reasons.push(
-      "Ouro não lido da tela: sem ele não dá para calcular rolagem nem juros.",
+      gold === null
+        ? "Ouro não lido da tela: sem ele não dá para calcular rolagem nem juros."
+        : "Nível não lido da tela (só estimado pelo tabuleiro): sem ele não dá para calcular odds, rolagem nem XP.",
     );
     return out(
       shopBuys.length ? "COMPRAR" : "AGUARDAR",
-      "Compre o que o plano pede; ouro ainda não foi lido",
+      gold === null
+        ? "Compre o que o plano pede; ouro ainda não foi lido"
+        : "Compre o que o plano pede; nível ainda não foi lido",
     );
   }
   // O ouro das compras da loja sai antes de qualquer rolagem ou XP.
@@ -237,18 +187,25 @@ function decide(plan, analysis, options) {
     reasons.push(
       `Rivais: nível médio ${lobbyInfo.foeLevel} (você ${level}) e ${lobbyInfo.foeStars} unidades 2★+ em média (você ${lob.myStars}).`,
     );
-  pressure = pressureOf({ hp, stage, weak: lob.weak });
-  const levelGap = analysis.opponents?.length ? lob.foeLevel - level : 0;
-  // Ganho esperado de cada uso do ouro: rolar (simulado com a pool real) contra subir de nível.
-  const gain = rollValue({
-    level,
-    targets: rollTargets(plan, analysis, pool),
-    denom,
-    maxGold: Math.min(
-      CURVE_MAX,
-      cash + (pressure.critical ? sellable.gold : 0),
-    ),
+  // Estágio não lido da tela: estimado pelo nível médio dos rivais (a vida em perigo tarde depende dele).
+  const stageSeen =
+    stage ??
+    (lob.foeLevel >= 8
+      ? { stage: 5, round: 1 }
+      : lob.foeLevel >= 7
+        ? { stage: 4, round: 1 }
+        : lob.foeLevel >= 5.5
+          ? { stage: 3, round: 1 }
+          : null);
+  pressure = pressureOf({
+    hp,
+    stage: stageSeen,
+    weak: lob.weak,
+    trend: options.trend ?? null,
   });
+  const levelGap = analysis.opponents?.length ? lob.foeLevel - level : 0;
+  // Ganho esperado de cada uso do ouro: rolar pelo time inteiro (simulado com a pool real) contra subir de nível.
+  const gain = sim?.gain ?? new Float64Array(1);
   const nextOdds = ODDS[Math.min(11, level + 1)],
     levelGain = nextOdds.reduce((n, o, i) => n + (o / 100) * (i + 1), 0); // uma vaga a mais com uma unidade 1★ típica do nível seguinte
   const floor = pressure.floor,
@@ -270,7 +227,9 @@ function decide(plan, analysis, options) {
       gainMax: round1(choice.gainMax),
     };
     if (choice.spend >= GAME.shopCost && choice.spend < choice.max)
-      reasons.push(
+      mark(
+        reasons,
+        "roll",
         `Pare em ${choice.spend}g: depois disso cada loja rende menos que a média do plano (${choice.max}g renderiam +${round1(choice.gainMax)} de força; ${choice.spend}g já rendem +${round1(choice.gain)}).`,
       );
     return choice.spend;
@@ -345,15 +304,25 @@ function decide(plan, analysis, options) {
         sell.push(`${u.name} ${u.stars}★`);
         got += u.value;
       }
-      steps.push(
+      mark(
+        steps,
+        "roll",
         `Venda ${sell.join(", ")} do banco (+${got}g) antes de rolar.`,
       );
     }
     const keep = Math.max(0, before + got - spend);
-    steps.push(
-      `Role cerca de ${spend}g (até ${shopsIn(spend)} lojas) buscando 2★ na frontline e no carry; pare em ${keep}g.`,
+    mark(
+      steps,
+      "roll",
+      `Role cerca de ${spend}g (até ${shopsIn(spend)} lojas) buscando ${team.lookFor() || "2★ no time"}; pare em ${keep}g.`,
     );
-    return out("ROLAR", `Estabilize agora: role até ${keep}g`, { spend, keep });
+    // XP e venda junto da rolagem: os quadros de nível e do ouro mostram os três gastos.
+    return out("ROLAR", `Estabilize agora: role até ${keep}g`, {
+      spend,
+      keep,
+      levelUp: lvlUp ? levelCost : 0,
+      sold: got,
+    });
   }
   // 2) Comp de reroll: economizar, rolar o excedente no nível certo até fechar os 3★.
   if (rerollLevel && open3.length && level <= rerollLevel + 1) {
@@ -368,7 +337,9 @@ function decide(plan, analysis, options) {
           keep: cash - levelCost,
         });
       }
-      steps.push(
+      mark(
+        steps,
+        "save",
         `Economize: junte até 50g antes de chegar no nível ${rerollLevel}, onde começa o reroll.`,
       );
       return out("ECONOMIZAR", `Economize até ${nextTier(cash) ?? 50}g`, {
@@ -377,7 +348,7 @@ function decide(plan, analysis, options) {
     }
     for (const p of open3)
       reasons.push(
-        `${p.name}: ${p.own}/9 cópias para 3★, ${p.left} livres na pool${p.enemy ? `, ${p.enemy} com rivais` : ""}.`,
+        `${p.name}: ${p.own}/9 cópias para 3★, ${p.left} fora dos tabuleiros${p.enemy ? `, ${p.enemy} com rivais` : ""}.`,
       );
     if (blocked.length === open3.length) {
       steps.push(
@@ -405,7 +376,9 @@ function decide(plan, analysis, options) {
       const spend = commit(budget(cash - rerollFloor));
       if (spend >= GAME.shopCost) {
         const keep = cash - spend;
-        steps.push(
+        mark(
+          steps,
+          "roll",
           `Role ${spend}g (até ${shopsIn(spend)} lojas) no nível ${level} buscando ${open3
             .filter((p) => p.possible)
             .map((p) => p.name)
@@ -418,17 +391,20 @@ function decide(plan, analysis, options) {
           fast
             ? `Reroll rápido: role ${spend}g e pare em ${keep}g`
             : `Reroll lento: role ${spend}g e volte a ${keep}g`,
-          { spend, keep },
+          // O piso do reroll (não o da faixa de vida) é o que a oportunidade e o veredito do core usam.
+          { spend, keep, floor: rerollFloor },
         );
       }
     }
-    steps.push(
+    mark(
+      steps,
+      "save",
       `Economize até ${rerollFloor}g; depois role só o que passar disso buscando ${open3.map((p) => p.name).join(", ")}.`,
     );
     return out(
       "ECONOMIZAR",
       `Economize até ${rerollFloor}g para o reroll ${fast ? "rápido" : "lento"}`,
-      { keep: cash },
+      { keep: cash, floor: rerollFloor },
     );
   }
   // 3) Comp de nível (Fast 8, Fast 9, Standard): subir no tempo certo e rolar no nível do carry.
@@ -453,10 +429,14 @@ function decide(plan, analysis, options) {
       if (rate > ev.level.perGold) {
         const spend = commit(first),
           keep = cash - spend;
-        steps.push(
+        mark(
+          steps,
+          "roll",
           `Você é o ${lob.rank}º de ${lob.size} em força: role ${spend}g (até ${shopsIn(spend)} lojas) para fechar os 2★ que já têm pares; pare em ${keep}g.`,
         );
-        reasons.push(
+        mark(
+          reasons,
+          "roll",
           "Rolar agora rende mais força por ouro do que subir de nível.",
         );
         return out(
@@ -469,7 +449,9 @@ function decide(plan, analysis, options) {
         );
       }
     }
-    steps.push(
+    mark(
+      steps,
+      "save",
       `Economize: o carry ${carry?.name ?? ""} (custo ${carry?.cost ?? "?"}) só aparece bem a partir do nível ${rollAt}. Não role agora.`,
     );
     return out(
@@ -480,20 +462,28 @@ function decide(plan, analysis, options) {
   }
   if (carryOwn < 3) {
     reasons.push(
-      `${carry.name}: ${carryOwn}/3 cópias para 2★, ${carryPool?.remainingUpper ?? 0} livres na pool${carryPool?.enemy ? `, ${carryPool.enemy} com rivais` : ""}.`,
+      `${carry.name}: ${carryOwn}/3 cópias para 2★, ${carryPool?.remainingUpper ?? 0} fora dos tabuleiros${carryPool?.enemy ? `, ${carryPool.enemy} com rivais` : ""}.`,
     );
     const spend = spare >= GAME.shopCost ? commit(first) : 0;
     if (spend >= GAME.shopCost) {
       const keep = cash - spend;
-      steps.push(
-        `Role ${spend}g (até ${shopsIn(spend)} lojas) no nível ${level} buscando ${carry.name} 2★ e a frontline 2★; pare em ${keep}g.`,
+      mark(
+        steps,
+        "roll",
+        `Role ${spend}g (até ${shopsIn(spend)} lojas) no nível ${level} buscando ${team.lookFor() || `${carry.name} 2★`}; pare em ${keep}g.`,
       );
-      return out("ROLAR", `Role ${spend}g por ${carry.name} 2★`, {
-        spend,
-        keep,
-      });
+      return out(
+        "ROLAR",
+        `Role ${spend}g por ${team.lookFor() || `${carry.name} 2★`}`,
+        {
+          spend,
+          keep,
+        },
+      );
     }
-    steps.push(
+    mark(
+      steps,
+      "save",
       spare >= GAME.shopCost
         ? `Rolar agora quase não melhora a board: economize e role na próxima rodada.`
         : `Ouro no piso (${floor}g): economize mais uma rodada e role depois.`,
@@ -513,7 +503,7 @@ function decide(plan, analysis, options) {
         keep: cash - levelCost,
       });
     }
-    steps.push(`Núcleo pronto: economize para o nível ${level + 1}.`);
+    mark(steps, "save", `Núcleo pronto: economize para o nível ${level + 1}.`);
     return out("ECONOMIZAR", `Economize para o nível ${level + 1}`, {
       keep: cash,
     });
@@ -521,25 +511,127 @@ function decide(plan, analysis, options) {
   const spend = spare >= GAME.shopCost ? commit(first) : 0;
   if (spend >= GAME.shopCost) {
     const keep = cash - spend;
-    steps.push(
+    mark(
+      steps,
+      "roll",
       `Nível final: role ${spend}g melhorando estrelas e buscando unidades de custo alto; pare em ${keep}g.`,
     );
     return out("ROLAR", `Role ${spend}g para fechar upgrades`, { spend, keep });
   }
-  steps.push("Mantenha a economia e ajuste posicionamento e itens.");
+  mark(steps, "save", "Mantenha a economia e ajuste posicionamento e itens.");
   return out("ECONOMIZAR", "Economize e ajuste o campo", { keep: cash });
+}
+
+// Título curto do veredito de rolagem, por tipo.
+const TITLE = {
+  go: "Vale rolar",
+  danger: "Role para estabilizar",
+  wait: "Espere para rolar",
+  hold: "Não vale rolar agora",
+  blocked: "Sem peça viável",
+  none: "Nada a evoluir",
+  unknown: "Ouro ou nível não lido",
+  ended: "Partida encerrada",
+};
+
+/** Veredito de rolagem sem objetos internos (vai para o JSON da API). `changed`: o que a regra mudou na decisão. */
+const publicCall = (v, changed = null) => ({
+  kind: v.kind,
+  title:
+    v.kind === "wait"
+      ? `Espere o nível ${v.at.level} para rolar`
+      : TITLE[v.kind],
+  go: v.go,
+  reason: v.reason,
+  budget: v.budget ?? null,
+  any: v.any ?? null,
+  gain: v.gain ?? null,
+  main: v.main
+    ? { id: v.main.id, name: v.main.name, stars: v.main.goalStars }
+    : null,
+  mainChance: v.mainChance ?? null,
+  need: v.need ?? null,
+  at: v.at ?? null,
+  changed,
+});
+
+/**
+ * Aplica a regra única de rolagem (roll.mjs) à decisão da árvore de economia: rolar sem chance boa de evoluir o
+ * time vira guardar; guardar com chance boa (e ganho) vira rolar o menor ouro que passa na regra. Devolve a
+ * decisão com o veredito (`call`) explicado.
+ */
+function settle(d, analysis, options, team, sim) {
+  const gold = options.gold;
+  if (
+    gold == null ||
+    options.levelEstimated === true ||
+    !(analysis.self.health > 0)
+  )
+    return d;
+  const cash = d.cash ?? gold,
+    floor = d.floor ?? 0,
+    danger = d.pressure === "danger" || d.pressure === "critical",
+    v = rollRule(team, sim, {
+      level: options.level,
+      cash,
+      floor,
+      planned: d.action === "ROLAR" ? (d.spend ?? 0) : 0,
+      danger,
+      rollAt: d.rollAt,
+    }),
+    kinds = d[KIND] ?? new Map(),
+    // Tira os passos/razões do tipo que a regra contradiz.
+    drop = (list, kind) => list.filter((t) => kinds.get(t) !== kind);
+  if (d.action === "ROLAR" && !v.go)
+    return {
+      ...d,
+      action: "ECONOMIZAR",
+      headline:
+        v.kind === "wait"
+          ? `Espere o nível ${v.at.level} para rolar`
+          : "Rolar não compensa agora: guarde",
+      steps: [`Não role: ${v.reason}`, ...drop(d.steps, "roll")],
+      reasons: drop(d.reasons, "roll"),
+      spend: 0,
+      sold: 0,
+      keep: cash - (d.levelUp ?? 0),
+      call: publicCall(v, "hold"),
+    };
+  if (d.action === "ECONOMIZAR" && v.go) {
+    const spend = v.spend;
+    return {
+      ...d,
+      action: "ROLAR",
+      headline: `Vale rolar: ${spend}g por ${team.lookFor()}`,
+      steps: [
+        `Role até ${spend}g (até ${shopsIn(spend)} lojas) buscando ${team.lookFor()}: ${v.reason} Pare em ${cash - spend}g ou assim que fechar.`,
+        ...drop(d.steps, "save"),
+      ],
+      reasons: drop(d.reasons, "save"),
+      spend,
+      keep: cash - spend,
+      call: publicCall(v, "roll"),
+    };
+  }
+  return { ...d, call: publicCall(v) };
 }
 
 /** Devolve a ação de agora e os quadros de economia, nível e roll para a comp `plan` no estado atual. */
 export function strategy(plan, analysis, options) {
-  const d = decide(plan, analysis, options),
+  // O time e a simulação de rolagem não dependem do ouro: uma vez por chamada, e reaproveitada entre chamadas.
+  const team = teamOf(plan, analysis, options),
+    sim = analysis.self.health > 0 ? team.simulate() : null;
+  const d = settle(
+      decide(plan, analysis, options, team, sim),
+      analysis,
+      options,
+      team,
+      sim,
+    ),
     gold = options.gold,
     level = options.level,
     stage = options.stage ?? null,
     streak = options.streak ?? null;
-  const pool = new Map(analysis.pool.map((p) => [p.name, p])),
-    denom = freeByCost(analysis.pool),
-    carry = plan.board.find((u) => u.name === plan.carry) ?? plan.board[0];
   const xp = levelCostOf(options.xp);
   // Ouro depois da ação recomendada (loja + rolagem ou XP) e o que ele rende nas próximas rodadas.
   const after = gold === null ? null : (d.keep ?? d.cash ?? gold);
@@ -561,6 +653,9 @@ export function strategy(plan, analysis, options) {
         : (projection.find((r) => r.gold >= 50)?.label ?? null),
     streak: streak ? { ...streak, gold: streakGold(streak.length) } : null,
     sellable: d.sellable,
+    // Ouro da venda do banco que entra nesta ação (all-in crítico) e o piso que a decisão respeita.
+    sold: d.sold ?? 0,
+    floor: d.floor ?? null,
     pressure: d.pressure,
     value: gold === null ? "–" : gold + "g",
     verdict:
@@ -581,19 +676,21 @@ export function strategy(plan, analysis, options) {
             : ""),
   };
   const curve = curveLevel(stage);
+  // Sobe agora: ação de nível com XP comprado, ou XP junto da rolagem no perigo.
+  const lvGo =
+    (d.action === "SUBIR NÍVEL" && (d.spend ?? 0) > 0) || (d.levelUp ?? 0) > 0;
   const leveling = {
     level,
     xp: xp ? { have: xp.have, total: xp.total, max: xp.max } : null,
     cost: d.levelCost ?? null,
     passive: d.passiveLevel,
-    go: d.action === "SUBIR NÍVEL" && (d.spend ?? 0) > 0,
+    go: lvGo,
     curve,
     finalLevel: d.finalLevel,
     value: "Nível " + level,
-    verdict:
-      d.action === "SUBIR NÍVEL" && (d.spend ?? 0) > 0
-        ? "SUBIR AGORA" + (d.levelCost != null ? " · " + d.levelCost + "g" : "")
-        : "não subir agora",
+    verdict: lvGo
+      ? "SUBIR AGORA" + (d.levelCost != null ? " · " + d.levelCost + "g" : "")
+      : "não subir agora",
     text:
       (xp?.max
         ? "Nível máximo."
@@ -608,47 +705,43 @@ export function strategy(plan, analysis, options) {
         : "") +
       ` Nível final desta comp: ${d.finalLevel}.`,
   };
-  // Alvos da rolagem: os 3★ da comp de reroll, ou o carry 2★ nas comps de nível. Rolando agora, a curva é a
-  // do nível atual (o gasto recomendado cai sobre ela); esperando, é a do nível em que se vai rolar.
-  const stars3 = (plan.meta?.stars3 ?? [])
-      .map((id) => plan.board.find((u) => u.id === id))
-      .filter(Boolean),
-    rolling = d.action === "ROLAR" && d.spend >= GAME.shopCost,
-    shops = rolling ? shopsIn(d.spend) : 0,
-    curveAt = rolling ? level : Math.max(level, d.rollAt ?? level);
-  const targets = (
-    d.rerollLevel && stars3.length
-      ? stars3.map((u) => ({ u, goal: 9 }))
-      : carry
-        ? [{ u: carry, goal: 3 }]
-        : []
-  ).map(({ u, goal }) => {
-    const p = pool.get(u.name),
-      own = p?.own ?? 0,
-      left = p?.remainingUpper ?? 0,
-      args = { cost: u.cost, own, goal, free: left, denom: denom[u.cost] ?? 0 };
-    const atRoll = closeCurve({ ...args, level: curveAt });
-    return {
-      id: u.id,
-      name: u.name,
-      cost: u.cost,
-      goalStars: goal === 9 ? 3 : 2,
-      own,
-      goal,
-      left,
-      enemy: p?.enemy ?? 0,
-      chancePerSlot: p?.chancePerSlot ?? 0,
-      chancePerShop: p?.chancePerShop ?? 0,
-      // Chance de fechar com o gasto recomendado agora (lojas + cópias, pool encolhendo).
-      chanceInRoll: rolling ? atRoll[Math.min(d.spend, CURVE_MAX)] : null,
-      curve:
-        own >= goal
-          ? null
-          : curveSummary(atRoll, curveAt, rolling ? d.spend : null),
-      done: own >= goal,
-    };
-  });
+
+  // Rolagem do time inteiro. O veredito é o de settle(); a lista tem uma linha por peça (campo, banco e comp),
+  // com a chance de fechar a próxima estrela dividindo ouro e pool com as demais, e a curva de "pelo menos uma
+  // peça evolui" por ouro gasto (a do nível atual: o gasto recomendado cai sobre ela).
+  const rolling = d.action === "ROLAR" && d.spend >= GAME.shopCost,
+    // Rolagem vinda da regra (era "guardar"): o gasto é o menor que passa nela, não o joelho da curva de ganho.
+    byChance = rolling && d.call?.changed === "roll",
+    shops = rolling ? shopsIn(d.spend) : 0;
+  const call =
+    d.call ??
+    publicCall({
+      kind:
+        gold === null || options.levelEstimated === true ? "unknown" : "ended",
+      go: false,
+      reason:
+        gold === null
+          ? "Ouro não lido da tela: sem ele não dá para calcular o orçamento da rolagem."
+          : options.levelEstimated === true
+            ? "Nível não lido da tela (só estimado pelo tabuleiro): sem ele não dá para calcular as odds da loja nem a rolagem."
+            : "",
+    });
+  const rows = rollRows(team, { budget: call.budget ?? 0 }),
+    shopHits = rows
+      .filter((r) => r.shop)
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        cost: r.cost,
+        slots: r.shop.slots,
+        buy: r.shop.buy,
+        gold: r.shop.gold,
+        action: r.shop.action,
+        closes: r.shop.closes,
+      }));
+  const lostInterest = rolling ? interestOf(d.cash) - interestOf(d.keep) : 0;
   const rollingPanel = {
+    call,
     level,
     at: d.rollAt,
     go: rolling,
@@ -656,8 +749,13 @@ export function strategy(plan, analysis, options) {
     shops,
     keep: d.keep ?? null,
     // Até onde valia gastar (piso) e onde a curva de ganho manda parar.
-    max: d.ev?.roll.max ?? null,
-    stop: rolling && d.ev?.roll.max > d.spend ? d.spend : null,
+    max: byChance ? d.spend : (d.ev?.roll.max ?? null),
+    stop: !byChance && rolling && d.ev?.roll.max > d.spend ? d.spend : null,
+    // Juros só entram quando mudam a decisão: rolar derruba o patamar de juros.
+    interest:
+      lostInterest > 0
+        ? { from: interestOf(d.cash), to: interestOf(d.keep) }
+        : null,
     ev: d.ev,
     value: "Nível de roll " + d.rollAt,
     verdict: rolling
@@ -669,7 +767,12 @@ export function strategy(plan, analysis, options) {
         : level === d.rollAt
           ? "Este é o nível de rolagem da comp."
           : "Você já passou do nível de rolagem; role só para fechar upgrades.",
-    targets,
+    // Peças do time que estão na loja agora e o que comprar delas.
+    shop: shopHits,
+    curve: sim ? rollCurve(team, sim, rolling ? d.spend : null) : null,
+    total: rows.length,
+    targets: rows.slice(0, POLICY.roll.rows),
   };
-  return { ...d, panels: { economy, leveling, rolling: rollingPanel } };
+  const { call: _call, ...decision } = d;
+  return { ...decision, panels: { economy, leveling, rolling: rollingPanel } };
 }
