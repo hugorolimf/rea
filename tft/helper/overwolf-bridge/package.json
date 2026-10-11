@@ -1,0 +1,26 @@
+{
+  "name": "tft-helper-bridge",
+  "productName": "TFT Helper Bridge",
+  "version": "0.1.0",
+  "description": "Ponte local e minima do Overwolf GEP para o TFT helper: grava, so no seu computador, os dados do proprio jogador.",
+  "author": {
+    "name": "TFT Helper"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.cjs",
+  "overwolf": {
+    "packages": [
+      "gep"
+    ]
+  },
+  "scripts": {
+    "start": "ow-electron .",
+    "build:ow-electron": "ow-electron-builder --publish=never",
+    "test": "node --test test/bridge.test.mjs"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": ">=39.8.10",
+    "@overwolf/ow-electron-builder": ">=26.9.0"
+  }
+}

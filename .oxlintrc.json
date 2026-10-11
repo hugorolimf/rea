@@ -28,6 +28,7 @@
     {
       "files": [
         "scripts/electron-active-hook*.cjs",
+        "tft/helper/**/*.cjs",
         "tests/conformance/readiness/electron/*.js",
         "website/public/examples/notes-electron/*.js"
       ],
