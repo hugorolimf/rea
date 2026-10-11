@@ -68,6 +68,17 @@ export function showsWhy(hint, settings) {
 /** Largura estimada de um texto em px da escala base. */
 export const textWidth = (text) => String(text ?? "").length * LABEL.charW;
 
+/** Verbosidade mínima: a etiqueta mostra a forma curta (ícone + número/retratos), sem ação nem porquê. */
+export const isCompact = (settings) => settings?.verbosity === "minimal";
+
+/** Texto visível da dica: a forma curta na verbosidade mínima (quando existe); senão a frase. */
+export const shownText = (hint, settings) =>
+  isCompact(settings) && hint?.short ? hint.short : hint?.text;
+
+/** Frase completa para a dica do mouse (modo interativo): texto, ação e porquê. */
+export const fullText = (hint) =>
+  [hint?.text, hint?.action, hint?.why].filter(Boolean).join(" · ");
+
 /**
  * Tamanho da etiqueta de um grupo de dicas, em px do palco (já com `k`). `measure(texto)` mede um trecho (a página passa
  * uma que conta cada nome trocado por imagem como um retrato); `cap` é a largura máxima na escala base.
@@ -82,10 +93,11 @@ export function labelSize(
   let width = 0,
     height = LABEL.padY * 2,
     why = false;
+  const compact = isCompact(settings);
   for (const h of hints) {
-    let w = LABEL.icon + LABEL.gap + measure(h.text);
+    let w = LABEL.icon + LABEL.gap + measure(shownText(h, settings));
     if (h.probable) w += 14;
-    if (h.action) w += 22 + measure(h.action);
+    if (h.action && !compact) w += 22 + measure(h.action);
     if (h.parts?.length) w += 8 + h.parts.length * LABEL.part;
     width = Math.max(width, w);
     height += LABEL.line;
@@ -125,7 +137,8 @@ export function avoidOverlap(pos, size, taken, stage, pad = 0) {
 
 /**
  * Marcas das dicas. `hints`: lista de `buildHints`; `rects`: `anchorRects(stage, calibração)`; `stage`: `{width,height}`
- * da janela. `opts`: `{ k, settings, measure }` (`k` = altura do palco/1080 x escala do usuário).
+ * da janela. `opts`: `{ k, settings, measure, avoid }` (`k` = `--k`, ver `fit.mjs`; `avoid` = retângulos em px do palco que as
+ * etiquetas evitam cobrir, opcional).
  *
  * Devolve uma entrada por (dica, âncora com retângulo): `{ hintId, hint, rect, anchor, group, label, lead, count }`.
  * `label` é compartilhada pelas dicas do mesmo alvo (`{ x, y, side, width, height, pointer }`, px do palco; `pointer` =
@@ -151,7 +164,16 @@ export function placeMarkers(hints, rects, stage, opts = {}) {
       if (!g.hints.includes(hint)) g.hints.push(hint);
     }
   }
-  const taken = [];
+  // `opts.avoid`: retângulos que as etiquetas não devem cobrir (os elementos do overlay já posicionados).
+  const taken = (Array.isArray(opts.avoid) ? opts.avoid : [])
+    .filter(
+      (r) =>
+        r &&
+        [r.x, r.y, r.width, r.height].every((n) => finite(n) !== null) &&
+        r.width > 0 &&
+        r.height > 0,
+    )
+    .map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }));
   for (const g of groups.values()) {
     // Etiqueta de loja não passa da largura do cartão (as vizinhas não se cobrem); o resto usa o teto padrão.
     const cap =
@@ -206,7 +228,7 @@ function iconHtml(hint, ui) {
     ic = hint.icon,
     mentioned =
       !!ic?.name &&
-      String(hint.text ?? "")
+      String(shownText(hint, ui.settings) ?? "")
         .toLowerCase()
         .includes(String(ic.name).toLowerCase());
   let inner;
@@ -240,8 +262,11 @@ function partsHtml(hint, ui) {
  * a verbosidade, o porquê. `ui`: `{ esc, richText, glyph, unitPortrait, itemPortrait, settings }`.
  */
 export function hintLine(hint, ui) {
-  const { esc, richText } = ui;
-  return `<div class="hl" data-id="${esc(hint.id)}" data-tone="${esc(hint.tone)}" data-category="${esc(hint.category)}" data-stale="${hint.stale ? 1 : 0}" data-probable="${hint.probable ? 1 : 0}"><div class="hl-main">${iconHtml(hint, ui)}<span class="hl-tx">${richText(hint.text, { size: 18 })}</span>${hint.probable ? '<i class="hl-q" title="Leitura provável da loja: confira na tela do jogo">?</i>' : ""}${partsHtml(hint, ui)}${hint.action ? `<b class="hl-act">${esc(hint.action)}</b>` : ""}</div>${showsWhy(hint, ui.settings) ? `<p class="hl-why">${richText(hint.why, { size: 16 })}</p>` : ""}</div>`;
+  const { esc, richText } = ui,
+    compact = isCompact(ui.settings);
+  // Na mínima a frase inteira (com ação e porquê) fica na dica do mouse, visível no modo interativo.
+  const title = compact ? ` title="${esc(fullText(hint))}"` : "";
+  return `<div class="hl" data-id="${esc(hint.id)}" data-tone="${esc(hint.tone)}" data-category="${esc(hint.category)}" data-stale="${hint.stale ? 1 : 0}" data-probable="${hint.probable ? 1 : 0}"${compact ? ' data-compact="1"' : ""}${title}><div class="hl-main">${iconHtml(hint, ui)}<span class="hl-tx">${richText(shownText(hint, ui.settings), { size: 18 })}</span>${hint.probable ? '<i class="hl-q" title="Leitura provável da loja: confira na tela do jogo">?</i>' : ""}${partsHtml(hint, ui)}${hint.action && !compact ? `<b class="hl-act">${esc(hint.action)}</b>` : ""}</div>${!compact && showsWhy(hint, ui.settings) ? `<p class="hl-why">${richText(hint.why, { size: 16 })}</p>` : ""}</div>`;
 }
 
 /** Agrupa as entradas de `placeMarkers` por alvo, na ordem em que aparecem. */
@@ -302,11 +327,24 @@ export function drawMarkers(placed, ui) {
  * `result`: `{ hints, total, hidden }` de `buildHints`.
  */
 export function drawHintList(result, ui) {
-  const hints = result?.hints ?? [];
+  const anchored = (h) => !!h.anchor?.kind && h.anchor.kind !== "none";
+  // Compacto com as marcas sobre o jogo: a lista só traz o que NÃO tem marca (o resto já está no alvo; não repete).
+  const hints = (result?.hints ?? []).filter(
+    (h) => !(ui.onlyUnanchored && anchored(h)),
+  );
   if (!hints.length) return "";
   const { esc } = ui,
-    hidden = finite(result.hidden) ?? 0;
-  return `<header><span class="eyebrow">Dicas</span>${hidden > 0 ? `<small class="chip" title="${esc(hidden)} dica(s) fora do filtro de verbosidade; aumente a verbosidade na ajuda para vê-las">+${esc(hidden)}</small>` : ""}</header><ul class="hl-list">${hints
+    hidden = finite(result.hidden) ?? 0,
+    more =
+      hidden > 0
+        ? `<small class="chip" title="${esc(hidden)} dica(s) fora do filtro de verbosidade; aumente a verbosidade na ajuda para vê-las">+${esc(hidden)}</small>`
+        : "";
+  const head = isCompact(ui.settings)
+    ? more
+      ? `<header>${more}</header>`
+      : ""
+    : `<header><span class="eyebrow">Dicas</span>${more}</header>`;
+  return `${head}<ul class="hl-list">${hints
     .map(
       (h) =>
         `<li data-anchored="${h.anchor?.kind && h.anchor.kind !== "none" ? 1 : 0}">${hintLine(h, ui)}</li>`,

@@ -205,6 +205,40 @@ function nextOf(model, deps) {
   });
 }
 
+/** Quantos campeões o cartão de itens mostra (o carry primeiro); o espaço do overlay é o limite, a interface lista todos. */
+export const CHAMPS_SHOWN = 4;
+
+/**
+ * Itens recomendados de cada campeão em campo (passo "Itens dos campeões" do modelo): todos os até 3 itens da build, na
+ * ordem, cada um com a situação segundo o banco (equipado, no banco, monta agora, mover, falta N); `next` marca o destaque.
+ */
+function champsOf(model) {
+  return stepRows(model, "builds")
+    .slice(0, CHAMPS_SHOWN)
+    .map((r) => ({
+      key: r.key,
+      unit: {
+        ...brief(r.unit),
+        cost: num(r.unit?.cost),
+        stars: num(r.unit?.stars) ?? 0,
+      },
+      carry: !!r.carry,
+      // Build de reserva (a comp não publica build para o campeão): o overlay a marca, como a interface.
+      reserve: r.reserve === true,
+      note: r.note ?? "",
+      items: (r.items ?? []).map((i) => ({
+        item: brief(i.item),
+        kind: i.kind,
+        text: i.text ?? "",
+        label: i.label ?? "",
+        mark: i.mark ?? "plus",
+        tone: i.tone ?? "wait",
+        from: i.from ? brief(i.from) : null,
+        next: !!i.next,
+      })),
+    }));
+}
+
 /** "Equipar" (peça em campo e banco) em versão resumida. */
 function equipOf(model) {
   return stepRows(model, "equip").map((r) =>
@@ -277,6 +311,9 @@ function planOf(model, rec, deps) {
     sc = model.plan.score;
   return {
     title: view?.title ?? model.plan.title,
+    // Código do Planejador do jogo da comp exibida (botão "Copiar comp", keys.mjs); null com o motivo em `teamCodeError`.
+    teamCode: model.plan.teamCode ?? null,
+    teamCodeError: model.plan.teamCodeError ?? null,
     carry: model.plan.carry
       ? { id: model.plan.carryId, name: model.plan.carry }
       : null,
@@ -292,6 +329,8 @@ function planOf(model, rec, deps) {
         }
       : null,
     challenger: view?.challenger ?? null,
+    // Alcance do plano em uma linha (peças que tem, em campo e na reserva, o que falta e a chance no prazo).
+    reach: view?.reach ?? null,
     next: (view?.next ?? []).map((s) => ({ kind: s.kind, text: s.text })),
     units: (view?.units ?? []).map((u) => ({
       id: u.id,
@@ -320,6 +359,72 @@ function planOf(model, rec, deps) {
 /** Texto não vazio ou null. */
 const str = (v) => (typeof v === "string" && v ? v : null);
 
+/** Quantas peças do carrossel o cartão mostra (o resto vira "+N"); o espaço do overlay é o limite, não o servidor. */
+export const CAROUSEL_SHOWN = 5;
+
+/**
+ * Carrossel (`state.carousel` do servidor, app/carousel-view.mjs): só enquanto o servidor diz que estamos nele
+ * (`active === true`) e a leitura do estado não está velha. `from`: "reading" (peças lidas do carrossel, em ordem de valor)
+ * ou "priority" (o carrossel NÃO foi lido: lista do que pegar se aparecer); o cartão diz qual das duas é. Nada é recalculado
+ * aqui. Devolve `{ from, stage, source, confidence, note, total, picks, more }` ou null.
+ */
+function carouselOf(stateBody, stateStale, deps) {
+  const c = stateBody?.carousel;
+  if (stateStale || c?.active !== true) return null;
+  // O servidor manda ids (e o nome só quando o plano o conhece): o nome que falta vem do catálogo da interface.
+  const champ = (id, name) => ({
+      id,
+      name: name || deps?.catalog?.champions?.get(id)?.name || "",
+    }),
+    thing = (id, name) => ({
+      id,
+      name: name || deps?.catalog?.items?.get(id)?.name || "",
+    });
+  const picks = (Array.isArray(c.picks) ? c.picks : []).map((p) => ({
+    rank: num(p?.rank),
+    slot: num(p?.slot),
+    champion: p?.championId ? champ(p.championId, p.championName) : null,
+    item: thing(p?.itemId ?? null, p?.itemName),
+    kind: str(p?.kind) ?? "unknown",
+    score: num(p?.score),
+    reason: str(p?.reason) ?? "",
+    completes: p?.completesNow === true,
+    target: p?.target?.id ? thing(p.target.id, p.target.name) : null,
+    forChampion: p?.forChampionId
+      ? champ(p.forChampionId, p.forChampion)
+      : null,
+  }));
+  return {
+    from: c.from === "reading" || c.from === "priority" ? c.from : null,
+    stage: str(c.stage),
+    source: str(c.source),
+    confidence: str(c.confidence),
+    note: str(c.note),
+    total: picks.length,
+    picks: picks.slice(0, CAROUSEL_SHOWN),
+    more: Math.max(0, picks.length - CAROUSEL_SHOWN),
+  };
+}
+
+/**
+ * Aprimoramentos (oferta lida do jogo pelo GEP, `state.screen.augmentOffer`): o cartão aparece enquanto a escolha está aberta
+ * no jogo, com as cartas na ordem da última análise (`rec.augmentAdvice`, só se for desta mesma oferta). Sem fonte (GEP
+ * fora), aparece só na rodada de aprimoramento, dizendo "sem fonte". A regra é a da interface (`deps.augOfferView`, de
+ * /v2/js/augs.js); sem ela, ou com a leitura velha, não há cartão. Devolve o modelo de `augOfferView` ou null.
+ */
+function augmentsOf(stateBody, recBody, stateStale, deps) {
+  if (stateStale || typeof deps?.augOfferView !== "function") return null;
+  const screen = stateBody?.screen ?? null;
+  try {
+    const v = deps.augOfferView(screen, recBody?.augmentAdvice ?? null);
+    if (v.open) return v;
+    // Sem fonte, só na rodada de aprimoramento (`augmentRound`, da trilha da interface) vale um cartão.
+    return v.source?.state === "sem-fonte" && v.augmentRound ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Campeão referido por nome (`replaces` do servidor é o nome) ou por objeto: sempre `{ id, name }` ou null. */
 const refOf = (x) =>
   !x
@@ -344,6 +449,8 @@ function buyOf(model) {
       broke: !!r.broke,
       want: num(r.want) ?? 1,
       reason: str(r.reason) ?? str(r.unit?.reason),
+      // Cópia de peça que você já tem (`how: "copy"`): o que ela fecha (core/pool/buy-copies.mjs); null para peça nova.
+      copy: r.copy ?? null,
       shop: r.shop ?? null,
     })),
     status: step.note
@@ -385,6 +492,9 @@ function economyOf(rec) {
     after: num(e.after),
     pressure: str(e.pressure),
     text: str(e.text),
+    // Aviso de vida do servidor (só na faixa de perigo): a linha "Vida 28: role por upgrades do plano…" e o gatilho.
+    alert: str(e.alert?.text),
+    alertWhy: str(e.alert?.why),
   };
 }
 
@@ -425,7 +535,7 @@ function sourcesOf(model, screen, bar) {
  * `nextItemRecipe`, `partState`, `buildStates`, `catalogItems`; opcionais: `wispsView` e `catalog`, para os Wisps).
  *
  * Devolve `{ status, message, notices, dim, bar, roll, items, builds, plan, sections, buy, wisps, economy, level,
- * sources }` (os quatro últimos e `buy`/`wisps` alimentam as dicas ancoradas de `hints.mjs`):
+ * sources, carousel }` (os quatro últimos e `buy`/`wisps` alimentam as dicas ancoradas de `hints.mjs`):
  * - `status`: "loading" | "no-state" | "waiting" | "ended" | "idle" | "ready";
  * - `message`: texto central dos estados sem plano (`{ text, detail, title }`) ou null;
  * - `notices`: avisos discretos (`{ kind, text, title }`): servidor sem resposta, leitura ou análise velhas, outro jogo;
@@ -434,9 +544,12 @@ function sourcesOf(model, screen, bar) {
  * - `buy`: `{ rows: [{ key, unit, how, replaces, broke, want, reason, shop }], status }` ou null (`shop` = cruzamento
  *   com a loja de `shop-match.js`);
  * - `wisps`: `[]` ou o resultado de `deps.wispsView` (só ao vivo);
- * - `economy` e `level`: `{ gold, interest, next, keep, after, pressure, text }` e `{ level, go, cost, passive,
+ * - `economy` e `level`: `{ gold, interest, next, keep, after, pressure, text, alert, alertWhy }` e `{ level, go, cost, passive,
  *   finalLevel, verdict, text }` do plano exibido, ou null;
- * - `sources`: `{ gep, reader, shopSource, goldSource, levelSource }` (de onde vem cada leitura).
+ * - `sources`: `{ gep, reader, shopSource, goldSource, levelSource }` (de onde vem cada leitura);
+ * - `carousel`: o cartão do carrossel enquanto o servidor diz que estamos nele (ver `carouselOf`), ou null;
+ * - `augments`: o cartão dos aprimoramentos enquanto a escolha está aberta no jogo (ou "sem fonte" na rodada dela; ver
+ *   `augmentsOf`), ou null.
  */
 export function overlayView(
   feed,
@@ -464,12 +577,16 @@ export function overlayView(
     economy: null,
     level: null,
     sources: null,
+    carousel: null,
+    augments: null,
   };
   const notices = [];
+  // Selo discreto com a idade da última resposta: a página continua com os últimos dados (o overlay não troca de página).
+  const silentMs = Math.max(0, now - receivedAt);
   if (offline)
     notices.push({
       kind: "offline",
-      text: "sem resposta do servidor",
+      text: `sem resposta do servidor${silentMs >= 1000 ? ` há ${ageText(silentMs)}` : ""}`,
       title:
         "O helper não respondeu às últimas consultas. O desenho abaixo é a última leitura recebida.",
     });
@@ -525,6 +642,10 @@ export function overlayView(
       bar,
       dim: stateStale || recStale,
       sources: sourcesOf(model, stateBody?.screen, bar),
+      // O carrossel vem do estado, não da análise: aparece mesmo sem plano (ver carouselOf).
+      carousel: carouselOf(stateBody, stateStale, deps),
+      // Aprimoramentos também vêm do estado (a oferta do GEP); a análise só ordena as cartas.
+      augments: augmentsOf(stateBody, usable, stateStale, deps),
     };
   if (status.sameGame === false)
     notices.push({
@@ -536,6 +657,8 @@ export function overlayView(
   if (status.waiting)
     return {
       ...base,
+      carousel: null,
+      augments: null,
       status: "waiting",
       message: {
         text: "Nova partida",
@@ -550,6 +673,8 @@ export function overlayView(
   if (status.ended)
     return {
       ...base,
+      carousel: null,
+      augments: null,
       status: "ended",
       message: {
         text: status.placement
@@ -580,8 +705,14 @@ export function overlayView(
       next: nextOf(model, deps),
       equip: equipOf(model),
       moves: movesOf(model),
+      champs: champsOf(model),
+      champsMore: Math.max(0, stepRows(model, "builds").length - CHAMPS_SHOWN),
     },
-    hasItems = items.next.length || items.equip.length || items.moves.length,
+    hasItems =
+      items.next.length ||
+      items.equip.length ||
+      items.moves.length ||
+      items.champs.length,
     builds = buildsOf(model, bank, deps),
     plan = planOf(model, rec, deps);
   return {
@@ -596,6 +727,8 @@ export function overlayView(
     economy: economyOf(rec),
     level: levelOf(model),
     sections: [
+      base.augments && "augments",
+      base.carousel && "carousel",
       roll && "roll",
       hasItems && "items",
       builds.length && "builds",

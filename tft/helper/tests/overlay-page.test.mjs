@@ -76,7 +76,8 @@ const draw = createDraw({
 const STAGE = { width: 1920, height: 1080 };
 const rects = anchorRects(STAGE, DEFAULT_CALIBRATION);
 const detailed = parseHintSettings({ verbosity: "detailed" });
-const normal = parseHintSettings({});
+// A verbosidade normal (o padrão do jogador agora é a mínima, com a etiqueta compacta testada à parte).
+const normal = parseHintSettings({ verbosity: "normal" });
 
 /** Dica no formato de `hints.mjs`. */
 function hint(over = {}) {
@@ -528,8 +529,18 @@ test("dock: botão '?' só com host, um ponto por fonte, texto escapado e aviso 
   assert.equal((withHost.match(/class="dot"/g) ?? []).length, 4);
   assert.match(withHost, />interativo</);
   assert.match(
-    draw.dock({ health, mode: { ...mode, interactive: false }, hasHost: true }),
+    draw.dock({
+      health,
+      mode: { ...mode, interactive: false, hints: normal },
+      hasHost: true,
+    }),
     />integrado</,
+  );
+  // Compacto (verbosidade mínima, o padrão): o estado normal "integrado" não ocupa a tela; só os pontos e o "?".
+  assert.ok(
+    !draw
+      .dock({ health, mode: { ...mode, interactive: false }, hasHost: true })
+      .includes(">integrado<"),
   );
   assert.ok(
     !draw.dock({ health, mode, hasHost: false }).includes("dock-help"),
@@ -677,6 +688,7 @@ const integratedMode = (over = {}) =>
       quit: "F12",
       help: "Control+Shift+F8",
       calibrate: "Control+Shift+F7",
+      copyComp: "Control+Shift+F6",
     },
     game: { found: true, width: 1920, height: 1080 },
     ...over,
@@ -873,6 +885,11 @@ const HOST_METHODS = [
   "setMode",
   "setFollow",
   "refreshGame",
+  // v3: "Copiar comp" e regiões quentes.
+  "copyTeamCode",
+  "setHot",
+  "setHotRects",
+  "onCopyRequest",
 ];
 
 test("página: só chama métodos do host do contrato e o preload os expõe todos", () => {

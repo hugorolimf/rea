@@ -652,6 +652,8 @@ test("layout: padrão completo, congelado, rotulado, com builds e plan ocultos",
     "items",
     "builds",
     "plan",
+    "carousel",
+    "keys",
   ]);
   assert.deepEqual(Object.keys(DEFAULT_LAYOUT), [...ELEMENT_IDS]);
   assert.ok(Object.isFrozen(DEFAULT_LAYOUT));

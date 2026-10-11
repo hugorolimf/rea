@@ -1,35 +1,40 @@
 /**
  * Elementos posicionáveis do modo integrado (dock, barra, dicas, rolagem, itens, formação, plano): normalização do
  * modo recebido do host, criação dos invólucros, aplicação do layout, arrastar e redimensionar com o ponteiro e o
- * teste de acerto que liga e desliga o click-through. As contas de posição (`moveElement`, `resizeElement`,
- * `clampElement`) são de `layout.mjs`; aqui só se ligam ao DOM. A página só MOSTRA: nada aqui envia entrada ao jogo.
+ * teste de acerto que liga e desliga o click-through. As contas de posição (`moveElement`, `resizeElement`) são de
+ * `layout.mjs` e a adaptação ao tamanho do jogo (escala, colisões, recolhimento) é de `fit.mjs`; aqui só se ligam ao DOM.
+ * A página só MOSTRA: nada aqui envia entrada ao jogo.
  */
+import {
+  BASE_HEIGHT,
+  arrangeElements,
+  scaleFactor,
+  stageFrame,
+  wantedRect,
+} from "./fit.mjs";
 import { parseCalibration } from "./geometry.mjs";
 import { parseHintSettings } from "./hints.mjs";
+import { HOTKEY_IDS, parseShortcuts } from "./hotkeys.mjs";
 import {
   ELEMENT_IDS,
   ELEMENT_LABELS,
-  clampElement,
   moveElement,
   parseLayout,
   resizeElement,
   setHidden,
 } from "./layout.mjs";
 
-/** Altura de referência do HUD do jogo: `--k` = altura do palco / 1080 x escala do usuário. */
-export const BASE_HEIGHT = 1080;
+export { BASE_HEIGHT };
 
 const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const word = (v) => (typeof v === "string" ? v : "");
 
-/** Fator de escala do conteúdo (`--k`) para um palco `{width,height}` e a escala escolhida pelo usuário. */
+/**
+ * Fator de escala do conteúdo (`--k`) para um palco `{width,height}` e a escala escolhida pelo usuário: a do HUD 16:9
+ * (o menor dos eixos: altura/1080 ou largura/1920) vezes a do usuário, com piso e teto de legibilidade (`fit.mjs`).
+ */
 export function stageScale(stage, scale = 1) {
-  const h = finite(stage?.height),
-    s = finite(scale);
-  return Math.max(
-    0.2,
-    ((h && h > 0 ? h : BASE_HEIGHT) / BASE_HEIGHT) * (s && s > 0 ? s : 1),
-  );
+  return scaleFactor(stage, scale);
 }
 
 /**
@@ -56,14 +61,9 @@ export function normalizeMode(raw) {
     follow: m.follow !== false,
     scale: finite(m.scale) !== null && m.scale > 0 ? m.scale : 1,
     opacity: finite(m.opacity) !== null ? m.opacity : 1,
-    hotkeys: {
-      toggle: word(keys.toggle),
-      interactive: word(keys.interactive),
-      anchor: word(keys.anchor),
-      quit: word(keys.quit),
-      help: word(keys.help),
-      calibrate: word(keys.calibrate),
-    },
+    hotkeys: Object.fromEntries(HOTKEY_IDS.map((id) => [id, word(keys[id])])),
+    // Atalhos como o main os registrou (tecla + registrou/falhou); a legenda e a ajuda só leem daqui.
+    shortcuts: parseShortcuts(m.shortcuts, keys),
     layout: parseLayout(m.layout),
     calibration: parseCalibration(m.calibration),
     hints: parseHintSettings(m.hints),
@@ -105,14 +105,29 @@ export function gestureResult(kind, start, dxPx, dyPx, stage, heightPx = 0) {
 }
 
 /** Retângulos dos elementos que ficam clicáveis no modo interativo (`[data-hit]` visíveis). */
-function hitRects(root) {
+function hitRects(root, selector = "[data-hit]") {
   const out = [];
-  for (const n of root.querySelectorAll("[data-hit]")) {
+  for (const n of root.querySelectorAll(selector)) {
     if (n.getClientRects().length === 0) continue;
     out.push(n.getBoundingClientRect());
   }
   return out;
 }
+
+/** Regiões quentes (`[data-hot]` visíveis e habilitados): clicáveis mesmo FORA do modo interativo. */
+const hotRects = (root) =>
+  hitRects(root, "[data-hot]:not([disabled])").filter(
+    (r) => r.width > 0 && r.height > 0,
+  );
+
+/** Retângulos quentes no formato do host (`{x,y,width,height}` em px CSS, arredondados). */
+export const hotRectList = (rects) =>
+  rects.map((r) => ({
+    x: Math.round(r.left),
+    y: Math.round(r.top),
+    width: Math.round(r.right - r.left),
+    height: Math.round(r.bottom - r.top),
+  }));
 
 /**
  * Liga e desliga o click-through conforme o ponteiro: sobre um `[data-hit]` (ou durante um arrasto) a janela passa a
@@ -129,7 +144,9 @@ export function mountHitTest({
 }) {
   let ignoring = null,
     point = null,
-    frame = 0;
+    frame = 0,
+    hot = null,
+    hotSig = "";
   const set = (value) => {
     if (ignoring === value) return;
     ignoring = value;
@@ -139,13 +156,26 @@ export function mountHitTest({
       // Sem o canal, o host decide sozinho.
     }
   };
+  /** Ponteiro sobre uma região quente (fora do modo interativo); o host confere o cursor antes de capturar. */
+  const setHot = (value) => {
+    if (hot === value) return;
+    hot = value;
+    try {
+      if (typeof host?.setHot === "function") host.setHot(value);
+    } catch {
+      // Host sem regiões quentes (contrato antigo): o botão só funciona no modo interativo.
+    }
+  };
   const evaluate = () => {
     frame = 0;
-    // Fora do modo interativo integrado o host manda no click-through (inclusive o painel interativo, que não passa por aqui).
+    // Fora do modo interativo integrado o host manda no click-through (inclusive o painel interativo, que não passa por aqui);
+    // só as regiões quentes ([data-hot], como "Copiar comp") pedem captura, e o host confere a posição do cursor.
     if (!isActive()) {
       ignoring = null;
+      setHot(!!point && pointInRects(point.x, point.y, hotRects(root), 0));
       return;
     }
+    setHot(false);
     if (isBusy()) return set(false);
     if (!point) return;
     set(!pointInRects(point.x, point.y, hitRects(root), 2));
@@ -163,6 +193,7 @@ export function mountHitTest({
     window.addEventListener(type, see, { capture: true, passive: true });
   root.addEventListener("mouseleave", () => {
     point = null;
+    setHot(false);
     if (isActive()) set(true);
   });
   return {
@@ -171,7 +202,25 @@ export function mountHitTest({
       if (!isActive()) {
         point = null;
         ignoring = null;
+        setHot(false);
       } else queue();
+    },
+    /**
+     * Informa ao host onde estão as regiões quentes (depois de cada desenho; só quando mudam) e reavalia o ponteiro: um
+     * botão que apareceu, sumiu ou mudou de lugar sob o cursor liga ou desliga a captura sem esperar o próximo movimento.
+     */
+    reportHot() {
+      const list = hotRectList(hotRects(root));
+      const sig = JSON.stringify(list);
+      if (sig !== hotSig) {
+        hotSig = sig;
+        try {
+          if (typeof host?.setHotRects === "function") host.setHotRects(list);
+        } catch {
+          // Host antigo: sem regiões quentes.
+        }
+      }
+      queue();
     },
   };
 }
@@ -235,11 +284,23 @@ export function buildElements(stage) {
 const hasContent = (body) => [...body.children].some((c) => !c.hidden);
 
 /**
- * Aplica o layout (frações do palco) aos invólucros: esconde o que o usuário escondeu e, fora do modo interativo, o que
- * está vazio (no interativo o vazio aparece tracejado para poder ser posicionado). Devolve as alturas visuais.
+ * Aplica o layout (frações do HUD 16:9, ver `fit.mjs`) aos invólucros: esconde o que o usuário escondeu e, fora do modo
+ * interativo, o que está vazio (no interativo o vazio aparece tracejado para poder ser posicionado). Fora do modo
+ * interativo a posição final é a EFETIVA: `arrangeElements` empilha o que colide, usa as faixas livres e recolhe o de menor
+ * prioridade que não cabe; o layout salvo não é alterado. No interativo mostra-se o salvo, para editar o que se vê.
+ *
+ * `opts`: `{ interactive, k, keepOut, sticky }` (`k` = `--k`; `keepOut` = `keepOutRects`; `sticky` = recolhidos do desenho
+ * anterior). Devolve `{ heights, arrangement }` (alturas visuais em px e o resultado de `arrangeElements`).
  */
-export function applyLayout(map, layout, stage, { interactive = false } = {}) {
-  const heights = {};
+export function applyLayout(
+  map,
+  layout,
+  stage,
+  { interactive = false, k = 1, keepOut = [], sticky = [] } = {},
+) {
+  const heights = {},
+    shownIds = [];
+  const frame = stageFrame(stage);
   for (const id of ELEMENT_IDS) {
     const item = map[id],
       cfg = layout[id];
@@ -248,27 +309,54 @@ export function applyLayout(map, layout, stage, { interactive = false } = {}) {
       shown = !cfg.hidden && (filled || interactive);
     item.wrap.hidden = !shown;
     item.wrap.dataset.empty = filled ? "0" : "1";
+    delete item.wrap.dataset.collapsed;
     if (!shown) continue;
-    // A largura entra antes da medida: a altura do conteúdo depende dela. A altura visual (já com a escala) serve para
-    // manter o elemento dentro do palco.
-    item.wrap.style.width = `${clampElement(cfg, stage, 0).w * 100}%`;
-    const height = item.inner.getBoundingClientRect().height;
-    const el = clampElement(cfg, stage, height);
-    item.wrap.style.left = `${el.x * 100}%`;
-    item.wrap.style.top = `${el.y * 100}%`;
-    item.wrap.style.width = `${el.w * 100}%`;
-    item.wrap.style.height = `${height}px`;
-    heights[id] = height;
+    shownIds.push(id);
   }
-  return heights;
+  // Primeira passada: a largura desejada entra antes da medida (a altura do conteúdo depende dela).
+  for (const id of shownIds) {
+    const want = wantedRect(id, layout[id], frame, k, 0, !interactive);
+    if (want) map[id].wrap.style.width = `${want.width}px`;
+  }
+  for (const id of shownIds)
+    heights[id] = map[id].inner.getBoundingClientRect().height;
+  // Segunda: a posição efetiva, já com as alturas medidas.
+  const arrangement = arrangeElements({
+    stage,
+    layout,
+    heights,
+    ids: shownIds,
+    k,
+    keepOut,
+    sticky,
+    auto: !interactive,
+  });
+  for (const id of shownIds) {
+    const item = map[id],
+      rect = arrangement.rects[id];
+    if (!rect) {
+      // Recolhido por falta de espaço (ou palco inválido): sai de cena; o dock e a ajuda dizem qual.
+      item.wrap.hidden = true;
+      if (frame.width) item.wrap.dataset.collapsed = "1";
+      continue;
+    }
+    item.wrap.dataset.moved = arrangement.moved.includes(id) ? "1" : "0";
+    item.wrap.style.left = `${rect.x}px`;
+    item.wrap.style.top = `${rect.y}px`;
+    item.wrap.style.width = `${rect.width}px`;
+    item.wrap.style.height = `${heights[id]}px`;
+  }
+  return { heights, arrangement };
 }
 
 /* ---------- Arrastar e redimensionar ---------- */
 
 /**
  * Arrastar (alça) e redimensionar (canto) dos elementos com captura do ponteiro. `getState()`:
- * `{ interactive, layout, stage }` atuais; `preview(layout)`: redesenha a posição durante o gesto; ao soltar, salva
- * pelo host (`saveLayout`). O botão "×" esconde o elemento. Devolve `{ busy() }`.
+ * `{ interactive, layout, stage }` atuais, onde `stage` = `{width,height}` do QUADRO do layout (o HUD 16:9, `stageFrame().hud`):
+ * o layout é fração dele, então os deslocamentos em px viram fração dividindo por essas medidas. `preview(layout)`:
+ * redesenha a posição durante o gesto; ao soltar, salva pelo host (`saveLayout`). O botão "×" esconde o elemento.
+ * Devolve `{ busy() }`.
  */
 export function mountWidgets({ stage, host, getState, preview, map }) {
   let gesture = null;

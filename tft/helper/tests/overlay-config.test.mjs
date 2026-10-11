@@ -66,12 +66,15 @@ test("parseConfig: caminho feliz preserva valores válidos (objeto ou texto JSON
       anchor: "Control+Alt+G",
       help: "Control+Alt+H",
       calibrate: "Control+Alt+K",
+      copyComp: "Control+Alt+C",
     },
     mode: "panel",
     follow: false,
     layout: parseLayout({ plan: { x: 0.3, y: 0.3, w: 0.2, hidden: false } }),
     calibration: parseCalibration({ dx: 0.01, dy: -0.02, scale: 1.1 }),
     hints: parseHintSettings({ verbosity: "detailed" }),
+    devReload: true,
+    defaultsVersion: 2,
   };
   const expected = { ...raw };
   assert.deepEqual(parseConfig(raw), expected);
@@ -189,6 +192,7 @@ test("hotkeys: aceleradores inválidos ou repetidos voltam ao padrão da ação"
     "anchor",
     "help",
     "calibrate",
+    "copyComp",
   ]);
   assert.equal(hk.help, DEFAULT_HOTKEYS.help);
   assert.equal(hk.calibrate, DEFAULT_HOTKEYS.calibrate);
@@ -371,15 +375,13 @@ test("mouseIgnore: click-through por padrão; captura só com interativo ligado"
         true,
         `${mode} ${pageCapture}`,
       );
-  // Integrado interativo: ignora até a página pedir captura (ponteiro sobre elemento interativo).
-  assert.equal(
-    mouseIgnore({ interactive: true, mode: "integrated", pageCapture: false }),
-    true,
-  );
-  assert.equal(
-    mouseIgnore({ interactive: true, mode: "integrated", pageCapture: true }),
-    false,
-  );
+  // Integrado interativo (modo de edição): a janela inteira captura, sem depender do movimento encaminhado à página
+  // (com o TFT em primeiro plano ele não chega e o clique ia para o jogo).
+  for (const pageCapture of [true, false])
+    assert.equal(
+      mouseIgnore({ interactive: true, mode: "integrated", pageCapture }),
+      false,
+    );
   // Painel interativo captura tudo (arrastar e redimensionar).
   assert.equal(
     mouseIgnore({ interactive: true, mode: "panel", pageCapture: false }),
@@ -419,6 +421,7 @@ test("buildMode: objeto Mode completo, sem aliasing com a configuração", () =>
     "mode",
     "opacity",
     "scale",
+    "shortcuts",
   ]);
   assert.equal(mode.interactive, true);
   assert.equal(mode.help, true);

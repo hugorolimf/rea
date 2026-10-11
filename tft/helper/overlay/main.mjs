@@ -4,12 +4,14 @@
 // PowerShell persistente) e "panel" (painel pequeno da fase 1).
 // Sem injeção, sem hook, sem leitura de memória, sem captura de tela e sem automatizar entrada.
 // Nunca rouba o foco do jogo (focusable:false) e nunca encerra por causa do servidor.
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   screen,
@@ -22,36 +24,78 @@ import {
   SCALE_RANGE,
   buildMode,
   configSnapshot,
+  cursorInHotRects,
   defaultBounds,
   fitBounds,
+  isTeamCode,
+  loadAndMigrateConfig,
   loadConfig,
   mouseIgnore,
   nextUi,
+  parseConfig,
+  parseHotRects,
   resolvePort,
   saveConfig,
 } from "./config.mjs";
+import {
+  classifyChange,
+  createApplyGate,
+  createChangeBatcher,
+  localImportGraph,
+  pathKey,
+  watchTrees,
+} from "./dev-reload.mjs";
 import {
   gameUserSettingsPath,
   describeFullscreen,
   readFullscreenMode,
 } from "./display-mode.mjs";
+import {
+  RECT_TOLERANCE_PX,
+  createGameFollower,
+  nearlySameRect,
+} from "./follow.mjs";
 import { findGameRect } from "./game-window.mjs";
 import { createGameTracker } from "./game-tracker.mjs";
 import { parseCalibration } from "./hud/geometry.mjs";
 import { parseHintSettings } from "./hud/hints.mjs";
+import { HOTKEY_ACTIONS } from "./hud/hotkeys.mjs";
+import { PROBE_TIMEOUT_MS, probeResult, probeStep } from "./probe.mjs";
 import { parseLayout } from "./hud/layout.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const MAIN_FILE = fileURLToPath(import.meta.url);
+const here = path.dirname(MAIN_FILE);
+const HELPER_DIR = path.dirname(here);
 const CONFIG_FILE = path.join(here, "overlay.config.json");
 const LOG_FILE = path.join(here, "overlay.log");
 const OFFLINE_FILE = path.join(here, "offline.html");
 const PRELOAD_FILE = path.join(here, "preload.cjs");
+const DEV_CHECK_FILE = path.join(here, "dev-check.mjs");
+/** Pastas que a página do HUD carrega do servidor (static-files.mjs as lê do disco a cada pedido). */
+const PAGE_ROOTS = [
+  path.join(here, "hud"),
+  path.join(HELPER_DIR, "v2"),
+  path.join(HELPER_DIR, "core"),
+];
+/** Enquanto a página diz que o ponteiro está numa região quente, o main reconfere o cursor neste intervalo. */
+const HOT_POLL_MS = 100;
+/** Teto da verificação do código novo antes de reiniciar o Electron. */
+const CHECK_TIMEOUT_MS = 60000;
+/**
+ * Reinício automático do Electron quando muda o código do processo principal: DESLIGADO por padrão (só registra no log
+ * que é preciso reiniciar o overlay); `devReload: true` no overlay.config.json ou TFT_OVERLAY_RELAUNCH=1 o ligam. A
+ * recarga da página do HUD continua automática fora de partida.
+ */
+const autoRelaunch = () =>
+  process.env.TFT_OVERLAY_RELAUNCH === "1" || cfg?.devReload === true;
 
 const PROBE_INTERVAL_MS = 3000;
-const PROBE_TIMEOUT_MS = 2500;
+// PROBE_TIMEOUT_MS e a regra de "fora do ar" vêm de probe.mjs.
 const GESTURE_INTERVAL_MS = 16;
 const GESTURE_MAX_MS = 30000;
 const SAVE_DEBOUNCE_MS = 500;
+/** Troca de monitor/DPI dispara várias notificações seguidas; reage uma vez depois delas. */
+const REFIT_DEBOUNCE_MS = 150;
 const LOG_MAX_BYTES = 200 * 1024;
 
 // --- log pequeno em arquivo (truncado acima de ~200 KB) ---
@@ -114,11 +158,27 @@ let gesture = null;
 let gestureTimer = null;
 let lastLoadError = "";
 let tracker = null;
+/** Filtra as leituras do rastreador: ignora tremida de 1-2 px, aplica ao vivo e dá o ajuste exato quando assenta. */
+let follower = null;
+/** O overlay foi escondido porque o jogo sumiu (minimizado/fechado); volta sozinho quando o jogo voltar. */
+let lostHidden = false;
+let refitTimer = null;
 /** Área cliente do jogo em pixels físicos (do rastreador) ou null. */
 let gameRect = null;
 let stage = NO_STAGE;
 /** FullscreenMode do ini: undefined = ainda não lido, null = desconhecido, 0..2. */
 let iniMode;
+/** Resultado do registro de cada atalho global (id -> true/false); vai à página na lista `shortcuts`. */
+const hotkeyStatus = {};
+/** Regiões quentes ("Copiar comp"): a página pede, o main confere o cursor e só então tira o click-through. */
+let hotWanted = false;
+let hotRects = [];
+let hotCapture = false;
+let hotTimer = null;
+/** Texto do overlay.config.json que este processo leu ou gravou: distingue a própria gravação de uma edição externa. */
+let lastConfigText = null;
+let reloadWatch = null;
+let relaunching = false;
 
 const hudUrl = () => `http://127.0.0.1:${port}/overlay/index.html`;
 
@@ -161,7 +221,8 @@ function gameState() {
   };
 }
 
-const currentMode = () => buildMode({ ui, cfg, game: gameState() });
+const currentMode = () =>
+  buildMode({ ui, cfg, game: gameState(), hotkeyStatus });
 
 function broadcastMode() {
   if (!alive()) return;
@@ -186,11 +247,79 @@ function applyIgnore() {
     interactive: ui.interactive,
     mode: cfg.mode,
     pageCapture,
+    hotCapture,
   });
   if (ignore === appliedIgnore) return;
+  const first = appliedIgnore === null;
   appliedIgnore = ignore;
   if (ignore) win.setIgnoreMouseEvents(true, { forward: true });
   else win.setIgnoreMouseEvents(false);
+  // Diagnóstico sem screenshot: cada mudança de captura vai ao log com o motivo.
+  if (!first || !ignore)
+    log(
+      ignore
+        ? "captura: liberada (mouse vai para o jogo)"
+        : ui.interactive
+          ? "captura: janela inteira (modo de edição)"
+          : "captura: botão do overlay sob o cursor (Copiar comp/Atalhos)",
+    );
+}
+
+/**
+ * Reaplica o click-through do zero. Depois de carregar ou recarregar a página o encaminhamento do movimento do mouse
+ * (`forward`) pode deixar de chegar à página nova; sem movimento ela nunca pede captura e os cliques vão para o jogo.
+ */
+function rearmIgnore() {
+  if (!alive()) return;
+  appliedIgnore = null;
+  applyIgnore();
+}
+
+// --- regiões quentes: só o botão "Copiar comp" (e o de recolher a legenda) recebe clique fora do modo interativo ---
+
+/** O cursor real está sobre uma região quente declarada pela página? */
+function cursorOnHot() {
+  if (!alive() || !hotRects.length) return false;
+  try {
+    return cursorInHotRects(
+      screen.getCursorScreenPoint(),
+      win.getContentBounds(),
+      win.webContents.getZoomFactor(),
+      hotRects,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reavalia a captura das regiões quentes pelo cursor REAL (`screen.getCursorScreenPoint`), não pelo movimento
+ * encaminhado à página (que não chega com o jogo em primeiro plano). O vigia de HOT_POLL_MS só roda com o overlay
+ * visível, fora do modo de edição e com alguma região quente declarada; o cursor sair devolve o click-through.
+ */
+function syncHot() {
+  const watching =
+    hotRects.length > 0 && !ui.interactive && alive() && win.isVisible();
+  const next = watching && cursorOnHot();
+  if (next !== hotCapture) {
+    hotCapture = next;
+    applyIgnore();
+  }
+  if (watching) {
+    if (!hotTimer) hotTimer = setInterval(syncHot, HOT_POLL_MS);
+  } else if (hotTimer) {
+    clearInterval(hotTimer);
+    hotTimer = null;
+  }
+}
+
+/** Página nova (ou recarregada): esquece as regiões e a captura da anterior. */
+function resetHot() {
+  hotWanted = false;
+  hotRects = [];
+  pageCapture = false;
+  syncHot();
+  applyIgnore();
 }
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
@@ -218,6 +347,10 @@ function flushSave() {
   cfg = { ...cfg, bounds: snap.bounds };
   savePromise = savePromise
     .then(() => saveConfig(CONFIG_FILE, snap))
+    .then((body) => {
+      // O observador de arquivos vai ver esta gravação: ela não é uma edição externa.
+      if (typeof body === "string") lastConfigText = body;
+    })
     .catch((err) => log(`falha ao salvar configuração: ${errText(err)}`));
   return savePromise;
 }
@@ -313,12 +446,16 @@ const sameBounds = (a, b) =>
 
 /**
  * setBounds com repetição: com DPI misto o primeiro setBounds usa a escala do monitor onde a janela estava e o
- * tamanho sai errado; o segundo, já no monitor de destino, acerta.
+ * tamanho sai errado; o segundo, já no monitor de destino, acerta. `tol` > 0 (acompanhamento ao vivo): diferença de até
+ * `tol` px conta como igual e não mexe na janela (evita piscar); o ajuste exato (tol 0) vem quando a janela assenta.
  */
-function setBoundsExact(target) {
-  if (!alive() || sameBounds(win.getBounds(), target)) return;
+function setBoundsExact(target, tol = 0) {
+  if (!alive()) return;
+  const close = (a) =>
+    tol > 0 ? nearlySameRect(a, target, tol) : sameBounds(a, target);
+  if (close(win.getBounds())) return;
   win.setBounds(target);
-  if (!sameBounds(win.getBounds(), target)) win.setBounds(target);
+  if (!close(win.getBounds())) win.setBounds(target);
 }
 
 /** Recoloca a janela do PAINEL dentro de algum monitor atual (após arrastar, trocar monitor ou resolução). */
@@ -415,30 +552,89 @@ function setStage(next) {
   return changed;
 }
 
-/** Posiciona a janela integrada sobre o jogo (ou o monitor) e avisa a página se o palco mudou. */
-function applyPlacement() {
+/**
+ * Posiciona a janela integrada sobre o jogo (ou o monitor) e avisa a página se o palco mudou. `live`: acompanhamento
+ * durante uma mudança (arrastar a borda do jogo): diferença de até `RECT_TOLERANCE_PX` não reposiciona nem avisa; sem
+ * `live` o ajuste é exato.
+ */
+function applyPlacement({ live = false } = {}) {
   if (!alive()) return;
   if (cfg.mode !== "integrated") {
     if (setStage(NO_STAGE)) broadcastMode();
     return;
   }
+  const tol = live ? RECT_TOLERANCE_PX : 0;
   const target = stageTarget();
-  setBoundsExact(target.bounds);
+  setBoundsExact(target.bounds, tol);
+  let width = target.found ? target.bounds.width : null;
+  let height = target.found ? target.bounds.height : null;
+  // Tamanho que oscila 1-2 px não vale um redesenho da página; o ajuste exato vem quando a janela assenta.
+  if (
+    tol > 0 &&
+    stage.found &&
+    target.found &&
+    Math.abs(width - stage.width) <= tol &&
+    Math.abs(height - stage.height) <= tol
+  ) {
+    width = stage.width;
+    height = stage.height;
+  }
   const changed = setStage({
     found: target.found,
-    width: target.found ? target.bounds.width : null,
-    height: target.found ? target.bounds.height : null,
+    width,
+    height,
     covers: target.covers,
   });
   if (changed) broadcastMode();
 }
 
-/** Alteração do rastreador (só quando o retângulo muda). */
-function onGameChange(rect) {
-  const appeared = rect !== null && gameRect === null;
+/** Escondeu o overlay porque o jogo sumiu (minimizado, fechado ou recriado); não mexe em `cfg.visible`. */
+function hideForLoss() {
+  if (!alive() || cfg.mode !== "integrated" || !cfg.follow || !win.isVisible())
+    return;
+  stopGesture();
+  applyUi(nextUi(ui, "exitInteractive"));
+  win.hide();
+  lostHidden = true;
+  log("jogo sumiu (minimizado ou fechado): overlay escondido até ele voltar");
+}
+
+/** O jogo voltou (ou o acompanhamento acabou): reexibe o que `hideForLoss` escondeu, se o usuário o quer visível. */
+function revealAfterLoss() {
+  if (!lostHidden) return;
+  lostHidden = false;
+  if (!alive() || !cfg.visible) return;
+  win.showInactive();
+  win.setAlwaysOnTop(true, "screen-saver");
+  log("jogo de volta: overlay reexibido");
+}
+
+/** Retângulo novo do jogo, já filtrado (mudança maior que a tolerância): acompanha ao vivo. */
+function onGameRect(rect, info) {
+  const appeared = gameRect === null;
   gameRect = rect;
   if (appeared) void refreshFullscreen();
+  if (info.first || info.recovered)
+    log(`jogo em ${rect.x},${rect.y} ${rect.width}x${rect.height}`);
+  // Primeiro a janela vai para cima do jogo; só então reaparece (sem um quadro cobrindo o monitor inteiro).
+  applyPlacement({ live: true });
+  revealAfterLoss();
+}
+
+/** O jogo ficou quieto: ajuste exato (DPI misto) e releitura do modo de tela, que pode ter mudado. */
+function onGameSettle(rect) {
   applyPlacement();
+  log(`jogo assentou em ${rect.x},${rect.y} ${rect.width}x${rect.height}`);
+  void refreshFullscreen();
+}
+
+/** O jogo sumiu além do prazo de tolerância. */
+function onGameLost() {
+  gameRect = null;
+  hideForLoss();
+  applyPlacement();
+  // A partida acabou (ou o jogo sumiu): a recarga adiada, se houver, sai agora, uma vez.
+  applyGate?.retry();
 }
 
 /** O rastreador só roda no integrado, seguindo o jogo ou com display "game" (que precisa saber onde ele está). */
@@ -448,7 +644,9 @@ function syncTracker() {
     tracker.start();
   } else {
     tracker.stop();
+    follower?.reset();
     gameRect = null;
+    revealAfterLoss();
   }
 }
 
@@ -472,6 +670,7 @@ function stopGesture() {
   if (had) {
     settleBounds();
     scheduleSave();
+    applyGate?.retry();
   }
 }
 
@@ -544,17 +743,26 @@ function applyUi(next) {
     return;
   const wasInteractive = ui.interactive;
   ui = next;
+  log(
+    `modo: interativo=${ui.interactive ? "ligado" : "desligado"} ajuda=${ui.help ? "sim" : "não"} calibração=${ui.calibrating ? "sim" : "não"}`,
+  );
   if (wasInteractive !== ui.interactive) {
     stopGesture();
     if (!ui.interactive) scheduleSave();
+    syncEscape();
   }
   if (!ui.interactive) pageCapture = false;
+  // No modo interativo a página manda por [data-hit]; fora dele voltam a valer as regiões quentes.
+  syncHot();
   applyIgnore();
   broadcastMode();
+  // Saiu do interativo/ajuda/calibração: a recarga adiada (se houver) sai agora, uma vez.
+  applyGate?.retry();
 }
 
 function showOverlay() {
   if (!alive()) return;
+  lostHidden = false;
   win.showInactive();
   win.setAlwaysOnTop(true, "screen-saver");
   cfg.visible = true;
@@ -563,6 +771,7 @@ function showOverlay() {
 
 function hideOverlay() {
   if (!alive()) return;
+  lostHidden = false;
   stopGesture();
   applyUi(nextUi(ui, "exitInteractive"));
   win.hide();
@@ -635,7 +844,8 @@ function anchorAction() {
 
 // --- servidor do helper ---
 
-async function serverOnline() {
+/** Sonda: "ok" | "refused" (porta fechada) | "timeout" (lento ou conexão perdida) | "bad" (resposta não-200). */
+async function probeServer() {
   try {
     // A própria página do HUD (arquivo pequeno): prova que o servidor responde e já conhece o prefixo /overlay/
     // (servidor iniciado antes desta versão devolve 404 e precisa ser reiniciado).
@@ -647,26 +857,31 @@ async function serverOnline() {
     } catch {
       // Corpo já consumido ou fechado.
     }
-    return res.ok;
-  } catch {
-    return false;
+    return probeResult(null, res);
+  } catch (err) {
+    return probeResult(err);
   }
 }
 
-/** Carrega o HUD ou o aviso offline, só quando o estado muda (ou na primeira vez). */
-async function syncTarget(online) {
-  if (!alive() || online === lastOnline) return;
-  const previous = lastOnline;
-  lastOnline = online;
+/** Estado da sonda (probe.mjs): falhas seguidas e se o servidor está considerado fora do ar. */
+let probe = { fails: 0, down: false };
+
+/** Carrega o HUD ou o aviso offline. `lastOnline`: true = HUD carregado; false = offline.html; null = nada/carregando. */
+async function loadTarget(online) {
+  if (!alive()) return;
+  lastOnline = online ? null : false;
   log(
     online
       ? "servidor online: carregando o HUD"
-      : "servidor offline: exibindo aviso",
+      : "servidor fora do ar e HUD não carregado: exibindo aviso",
   );
-  if (online && previous === false) lastLoadError = "";
+  if (online) lastLoadError = "";
+  resetHot();
   try {
-    if (online) await win.loadURL(hudUrl());
-    else await win.loadFile(OFFLINE_FILE, { query: { port: String(port) } });
+    if (online) {
+      await win.loadURL(hudUrl());
+      lastOnline = true;
+    } else await win.loadFile(OFFLINE_FILE, { query: { port: String(port) } });
   } catch (err) {
     // Navegação substituída ou falha de rede: tenta de novo no próximo ciclo.
     lastOnline = null;
@@ -676,8 +891,30 @@ async function syncTarget(online) {
   }
 }
 
+/**
+ * Uma sonda. Com o HUD carregado a página nunca é trocada (ele guarda os últimos dados e mostra o próprio selo de
+ * "servidor sem resposta"); só as mudanças de estado vão ao log.
+ */
 async function probeOnce() {
-  await syncTarget(await serverOnline());
+  const result = await probeServer();
+  const next = probeStep(
+    {
+      ...probe,
+      hudLoaded: lastOnline === true,
+      showingOffline: lastOnline === false,
+    },
+    result,
+  );
+  if (next.down !== probe.down)
+    log(
+      next.down
+        ? `servidor sem resposta (${result === "refused" ? "porta fechada" : `${next.fails} sondas sem resposta em ${PROBE_TIMEOUT_MS / 1000} s`})${lastOnline === true ? "; o HUD fica com os últimos dados" : ""}`
+        : "servidor respondeu de novo",
+    );
+  probe = { fails: next.fails, down: next.down };
+  // As sondas são sequenciais (a próxima só é agendada quando esta termina): não há duas cargas ao mesmo tempo.
+  if (next.action === "load-hud") await loadTarget(true);
+  else if (next.action === "show-offline") await loadTarget(false);
 }
 
 function scheduleProbe() {
@@ -740,6 +977,7 @@ async function createWindow() {
   ui = { ...IDLE_UI };
   pageCapture = false;
   lastOnline = null;
+  lostHidden = false;
   self.setAlwaysOnTop(true, "screen-saver");
   appliedIgnore = null;
   applyIgnore();
@@ -749,10 +987,23 @@ async function createWindow() {
 
   const reapply = () => {
     applyAppearance();
+    // Página nova: arma de novo o click-through com encaminhamento do mouse (ver rearmIgnore).
+    rearmIgnore();
     broadcastMode();
   };
   wc.on("dom-ready", reapply);
-  wc.on("did-finish-load", reapply);
+  wc.on("did-finish-load", () => {
+    reapply();
+    try {
+      const url = wc.getURL();
+      if (url.startsWith(hudUrl())) {
+        lastOnline = true;
+        log(`HUD carregado: ${url}`);
+      }
+    } catch {
+      // Só log.
+    }
+  });
   wc.on("did-fail-load", (_e, code, description, url, isMainFrame) => {
     if (isMainFrame && code !== -3) {
       log(`did-fail-load ${code} ${description} ${url}`);
@@ -762,6 +1013,7 @@ async function createWindow() {
   wc.on("render-process-gone", (_e, details) => {
     log(`render-process-gone: ${details.reason}`);
     lastOnline = null;
+    resetHot();
   });
   self.on("closed", () => {
     stopGesture();
@@ -791,6 +1043,50 @@ async function createWindow() {
 
 // --- atalhos globais ---
 
+/**
+ * Esc sai do modo de edição. A janela não é focável (o foco fica sempre no jogo), então Esc é um atalho global
+ * registrado SÓ enquanto o modo de edição está ligado; ao sair ele é liberado e volta a ser do jogo.
+ */
+let escapeOn = false;
+function syncEscape() {
+  const want = ui.interactive && !quitting;
+  if (want === escapeOn) return;
+  try {
+    if (want) {
+      escapeOn = globalShortcut.register("Escape", () =>
+        applyUi(nextUi(ui, "exitInteractive")),
+      );
+      if (!escapeOn)
+        log(
+          "Esc não registrado (em uso); use Ctrl+Shift+F10 para sair do modo de edição",
+        );
+    } else {
+      globalShortcut.unregister("Escape");
+      escapeOn = false;
+    }
+  } catch (err) {
+    log(`falha com o atalho Esc: ${errText(err)}`);
+    escapeOn = false;
+  }
+}
+
+/** Atalho "Copiar comp": a página copia o código que ela já mostra, pelo mesmo caminho do botão. */
+function requestCopy() {
+  if (!alive() || lastOnline !== true) {
+    log("copiar comp: o HUD não está carregado");
+    return;
+  }
+  try {
+    win.webContents.send("overlay:copyRequest");
+  } catch (err) {
+    log(`falha ao pedir a cópia: ${errText(err)}`);
+  }
+}
+
+/**
+ * Registra os atalhos na ordem da lista única (`hud/hotkeys.mjs`) e guarda o resultado de cada um em `hotkeyStatus`,
+ * que vai à página: a legenda e a ajuda mostram exatamente o que foi registrado e marcam o que falhou.
+ */
 function registerHotkeys() {
   const actions = {
     toggle: toggleOverlay,
@@ -801,16 +1097,19 @@ function registerHotkeys() {
     anchor: anchorAction,
     help: () => toggleUi("toggleHelp"),
     calibrate: () => toggleUi("toggleCalibrating"),
+    copyComp: requestCopy,
   };
   const parts = [];
-  for (const [name, run] of Object.entries(actions)) {
+  for (const { id: name } of HOTKEY_ACTIONS) {
+    const run = actions[name];
     const accelerator = cfg.hotkeys[name];
     let ok = false;
     try {
-      ok = globalShortcut.register(accelerator, run);
+      if (run && accelerator) ok = globalShortcut.register(accelerator, run);
     } catch (err) {
       log(`erro ao registrar ${name} (${accelerator}): ${errText(err)}`);
     }
+    hotkeyStatus[name] = ok;
     parts.push(`${name}=${accelerator}${ok ? "" : " (FALHOU)"}`);
     if (!ok) {
       log(
@@ -822,6 +1121,7 @@ function registerHotkeys() {
     }
   }
   console.log(`[overlay] atalhos: ${parts.join("  ")}`);
+  log(`atalhos registrados: ${parts.join("  ")}`);
 }
 
 // --- IPC (somente do webContents da janela do overlay, quadro principal, origem permitida) ---
@@ -921,6 +1221,254 @@ function setupIpc() {
     if (typeof on === "boolean") changeFollow(on);
   });
   onOverlay("overlay:refreshGame", anchorAction);
+  // --- v3: "Copiar comp" e regiões quentes ---
+  ipcMain.handle("overlay:copyTeamCode", (event, code) => {
+    if (!fromOverlay(event)) throw new Error("origem não permitida");
+    // Só um código de equipe bem formado vai para a área de transferência (a janela não é focável: é o main quem copia).
+    if (!isTeamCode(code)) {
+      log("copiar comp: código recusado (formato inesperado)");
+      return { ok: false, reason: "código inválido" };
+    }
+    try {
+      clipboard.writeText(code);
+      log(`código da comp copiado (${code.length} caracteres)`);
+      return { ok: true };
+    } catch (err) {
+      log(`falha ao copiar o código da comp: ${errText(err)}`);
+      return { ok: false, reason: "falha ao gravar na área de transferência" };
+    }
+  });
+  onOverlay("overlay:setHot", (on) => {
+    if (typeof on !== "boolean") return;
+    hotWanted = on;
+    syncHot();
+  });
+  onOverlay("overlay:setHotRects", (raw) => {
+    hotRects = parseHotRects(raw);
+    syncHot();
+  });
+}
+
+// --- recarregamento automático (dev-reload.mjs) ---
+
+const rel = (f) => path.relative(HELPER_DIR, f).replace(/\\/g, "/");
+
+/** Recarrega só a página do HUD (o main guarda layout, modo e estado de interação e os reenvia ao carregar). */
+function reloadHud(files) {
+  if (!alive() || quitting) return;
+  const what = files.map(rel).join(", ");
+  if (lastOnline !== true) {
+    log(`arquivos do HUD mudaram (${what}); o HUD não está carregado agora`);
+    return;
+  }
+  log(`recarregando o HUD: ${what}`);
+  resetHot();
+  try {
+    // Ignorando o cache: o servidor já lê do disco a cada pedido, mas nada de cópia velha no Chromium.
+    win.webContents.reloadIgnoringCache();
+  } catch (err) {
+    log(`falha ao recarregar o HUD: ${errText(err)}`);
+  }
+}
+
+/** Confere num processo filho (Electron como Node) que o código novo do processo principal carrega; devolve os problemas. */
+function checkNewCode(mainFiles) {
+  const others = mainFiles.filter((f) => pathKey(f) !== pathKey(MAIN_FILE));
+  return new Promise((resolve) => {
+    let err = "";
+    let child;
+    try {
+      child = spawn(process.execPath, [DEV_CHECK_FILE, MAIN_FILE, ...others], {
+        cwd: here,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    } catch (e) {
+      resolve([`não foi possível conferir o código novo: ${errText(e)}`]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // Já saiu.
+      }
+    }, CHECK_TIMEOUT_MS);
+    child.stderr?.on("data", (d) => {
+      if (err.length < 4000) err += String(d);
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve([errText(e)]);
+    });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      resolve(
+        code === 0
+          ? []
+          : [
+              err.trim() ||
+                (code === null
+                  ? `a verificação não terminou em ${CHECK_TIMEOUT_MS / 1000} s (sinal ${signal ?? "?"}); nada foi reiniciado`
+                  : `a verificação saiu com ${code}`),
+            ],
+      );
+    });
+  });
+}
+
+/**
+ * Reinicia só o Electron (o servidor do helper não é tocado) para valer o código novo do processo principal, do preload
+ * ou uma configuração editada por fora. Código que não carrega NÃO reinicia: o overlay atual segue até a próxima mudança.
+ * `keepConfigFile`: a configuração foi editada por fora; nada é gravado por cima dela antes de reiniciar.
+ */
+async function relaunchOverlay(
+  reason,
+  mainFiles,
+  { keepConfigFile = false } = {},
+) {
+  if (quitting || relaunching) return;
+  relaunching = true;
+  const problems = await checkNewCode(mainFiles);
+  if (problems.length) {
+    relaunching = false;
+    log(
+      `NÃO reiniciei o overlay (${reason}): o código novo não carrega; sigo com o atual até a próxima mudança. ${problems.join(" | ").slice(0, 1500)}`,
+    );
+    return;
+  }
+  if (quitting) return;
+  log(
+    `reiniciando o overlay (só o Electron; o servidor não é tocado): ${reason}`,
+  );
+  quitting = true;
+  stopGesture();
+  clearTimeout(probeTimer);
+  reloadWatch?.close();
+  tracker?.stop();
+  if (keepConfigFile) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    await savePromise.catch(() => {});
+  } else await flushSave();
+  app.relaunch({ args: [here] });
+  app.quit();
+}
+
+/** Lote de mudanças já agrupado: recarrega a página, reinicia o Electron ou ignora a própria gravação da configuração. */
+async function onFilesChanged(batch, mainFiles) {
+  if (quitting || relaunching) return;
+  const configKey = pathKey(CONFIG_FILE);
+  const mainKeys = new Set(mainFiles.map((f) => pathKey(f)));
+  const code = batch.files.filter((f) => pathKey(f) !== configKey);
+  const mainChanged = code.filter((f) => mainKeys.has(pathKey(f)));
+  const pageChanged = code.filter((f) => !mainKeys.has(pathKey(f)));
+  let externalConfig = false;
+  if (batch.config) {
+    let text = null;
+    try {
+      text = await fs.promises.readFile(CONFIG_FILE, "utf8");
+    } catch {
+      // Arquivo apagado: o overlay segue com o que tem em memória.
+    }
+    externalConfig =
+      text !== null &&
+      text !== lastConfigText &&
+      JSON.stringify(parseConfig(text)) !==
+        JSON.stringify(parseConfig(lastConfigText ?? ""));
+    if (text !== null && !externalConfig) lastConfigText = text;
+  }
+  if (mainChanged.length || externalConfig)
+    applyGate?.request({
+      kind: "relaunch",
+      config: externalConfig,
+      files: [
+        ...mainChanged,
+        ...pageChanged,
+        ...(externalConfig ? [CONFIG_FILE] : []),
+      ],
+    });
+  else if (pageChanged.length)
+    applyGate?.request({ kind: "reload", config: false, files: pageChanged });
+}
+
+/**
+ * O usuário está mexendo no overlay (modo interativo, ajuda, calibração ou arraste do painel): nenhuma recarga nem
+ * reinício agora, porque derrubaria o arraste. O pedido espera e sai uma vez só ao sair desses modos.
+ */
+const userBusy = () =>
+  gameRect !== null
+    ? "partida em andamento"
+    : ui.interactive || ui.help || ui.calibrating || gesture !== null
+      ? "modo de edição/ajuda/calibração ou arraste"
+      : false;
+
+/** Portão das recargas (dev-reload.mjs `createApplyGate`); criado em `startAutoReload`. */
+let applyGate = null;
+
+/**
+ * Observa o HUD, a interface web e o núcleo (o que a página carrega) e o código do próprio processo principal. Desligado
+ * com TFT_OVERLAY_WATCH=0.
+ */
+function startAutoReload() {
+  if (process.env.TFT_OVERLAY_WATCH === "0") {
+    log("recarregamento automático desligado (TFT_OVERLAY_WATCH=0)");
+    return;
+  }
+  const mainFiles = [
+    ...localImportGraph(MAIN_FILE, (f) => fs.readFileSync(f, "utf8")),
+    PRELOAD_FILE,
+  ];
+  applyGate = createApplyGate({
+    isBlocked: userBusy,
+    onDefer: (batch, why) =>
+      log(
+        `recarga adiada: ${why} (${batch.files.length} arquivo${batch.files.length === 1 ? "" : "s"}: ${batch.files.map(rel).join(", ")}); sai uma vez quando acabar`,
+      ),
+    run: (batch) => {
+      if (batch.kind !== "relaunch") return reloadHud(batch.files);
+      const what = batch.files.map(rel).join(", ");
+      if (autoRelaunch())
+        void relaunchOverlay(what, mainFiles, { keepConfigFile: batch.config });
+      else {
+        // Sem reinício automático: o que é da página ainda recarrega; o código do main espera o próximo início.
+        log(
+          `código do processo principal mudou (${what}): vale no próximo início do overlay (reinício automático desligado; TFT_OVERLAY_RELAUNCH=1 liga)`,
+        );
+        // Módulos do HUD que o main também importa (layout, dicas, geometria) valem já na página.
+        const page = batch.files.filter((f) =>
+          PAGE_ROOTS.some((r) => pathKey(f).startsWith(pathKey(r) + path.sep)),
+        );
+        if (page.length) reloadHud(page);
+      }
+    },
+  });
+  const batcher = createChangeBatcher({
+    onFlush: (batch) => {
+      onFilesChanged(batch, mainFiles).catch((err) =>
+        log(`falha no recarregamento automático: ${errText(err)}`),
+      );
+    },
+  });
+  reloadWatch = watchTrees({
+    roots: [
+      { dir: here, recursive: false },
+      ...PAGE_ROOTS.map((dir) => ({ dir, recursive: true })),
+    ],
+    onEvent: (file) => {
+      const kind = classifyChange(file, {
+        mainFiles,
+        configFile: CONFIG_FILE,
+        pageRoots: PAGE_ROOTS,
+      });
+      if (kind) batcher.push(kind, file);
+    },
+    log,
+  });
+  log(
+    `recarregamento automático ligado: mudanças em ${PAGE_ROOTS.map(rel).join(", ")} recarregam o HUD (3 s de silêncio, no máximo 1 a cada 10 s, nunca em partida nem com o modo de edição, a ajuda ou a calibração abertos); ${mainFiles.length} arquivos do processo principal (${mainFiles.map(rel).join(", ")}) e a configuração ${autoRelaunch() ? "reiniciam só o Electron" : "valem no próximo início (reinício automático desligado)"}`,
+  );
 }
 
 // --- segurança de navegação ---
@@ -945,7 +1493,23 @@ app.on("web-contents-created", (_event, contents) => {
 // --- inicialização ---
 
 async function start() {
-  cfg = await loadConfig(CONFIG_FILE);
+  try {
+    const loaded = await loadAndMigrateConfig(CONFIG_FILE);
+    cfg = loaded.cfg;
+    lastConfigText = loaded.text;
+    if (loaded.migration)
+      log(
+        `configuração migrada para os padrões v${cfg.defaultsVersion} (backup: ${path.basename(loaded.migration.backup)}): ${loaded.migration.changes.join("; ") || "só a versão (nada estava no padrão antigo)"}`,
+      );
+  } catch (err) {
+    log(
+      `falha ao migrar a configuração (segue com o arquivo como está): ${errText(err)}`,
+    );
+    cfg = await loadConfig(CONFIG_FILE);
+    lastConfigText = await fs.promises
+      .readFile(CONFIG_FILE, "utf8")
+      .catch(() => null);
+  }
   port = resolvePort(cfg, process.env);
   await app.whenReady();
   session.defaultSession.setPermissionRequestHandler(
@@ -957,22 +1521,34 @@ async function start() {
     "[overlay] iniciando (janela transparente, sem foco, sem captura nem injeção)",
   );
   registerHotkeys();
+  follower = createGameFollower({
+    onRect: onGameRect,
+    onLost: onGameLost,
+    onSettle: onGameSettle,
+  });
   tracker = createGameTracker({
     parentPid: process.pid,
-    onChange: onGameChange,
+    onChange: (rect) => follower.push(rect),
     log,
   });
   syncTracker();
   void refreshFullscreen();
   await createWindow();
 
+  // Troca de monitor, de resolução ou de escala (DPI) manda várias notificações em seguida: reage uma vez, no fim,
+  // com o ajuste exato (o segundo setBounds do DPI misto).
   const refit = () => {
-    if (cfg.mode === "integrated") applyPlacement();
-    else settleBounds();
+    clearTimeout(refitTimer);
+    refitTimer = setTimeout(() => {
+      refitTimer = null;
+      if (cfg.mode === "integrated") applyPlacement();
+      else settleBounds();
+    }, REFIT_DEBOUNCE_MS);
   };
   screen.on("display-added", refit);
   screen.on("display-removed", refit);
   screen.on("display-metrics-changed", refit);
+  startAutoReload();
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -981,7 +1557,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", () => {
     log("segunda instância ignorada");
-    if (alive() && cfg.visible) win.showInactive();
+    if (alive() && cfg.visible && !lostHidden) win.showInactive();
   });
   // Fechar janelas não encerra o processo: só o atalho/HUD de sair.
   app.on("window-all-closed", () => {});
@@ -991,6 +1567,10 @@ if (!app.requestSingleInstanceLock()) {
   app.on("will-quit", () => {
     quitting = true;
     clearTimeout(probeTimer);
+    clearTimeout(refitTimer);
+    if (hotTimer) clearInterval(hotTimer);
+    reloadWatch?.close();
+    follower?.reset();
     tracker?.stop();
     globalShortcut.unregisterAll();
   });

@@ -17,10 +17,15 @@ import {
   DEFAULT_HINT_SETTINGS,
   HINT_CATEGORIES,
   VERBOSITY_LEVELS,
-  buildHints,
+  buildHints as buildHintsWith,
   filterHints,
   parseHintSettings,
 } from "../overlay/hud/hints.mjs";
+
+// Os geradores são testados na verbosidade normal (a do padrão antigo); o padrão do jogador agora é a mínima
+// (overlay compacto) e tem teste próprio abaixo. Quem passa ajustes explícitos continua passando.
+const NORMAL = Object.freeze({ verbosity: "normal" });
+const buildHints = (view, settings = NORMAL) => buildHintsWith(view, settings);
 
 const catalog = realCatalog();
 const deps = {
@@ -612,6 +617,7 @@ test("dicas: o contrato de uma dica (campos, âncora única = primeira, 'none' s
     "priority",
     "probable",
     "pulse",
+    "short",
     "stale",
     "text",
     "tone",
@@ -1099,7 +1105,7 @@ test("dicas: filtros por categoria; 'aprender' vem desligada e, ligada, ignora o
     "padrão: 'aprender' desligada",
   );
   for (const off of ["buy", "items", "gold", "wisp"]) {
-    const got = cats({ categories: { [off]: false } });
+    const got = cats({ verbosity: "normal", categories: { [off]: false } });
     assert.ok(!got.includes(off), off);
     assert.equal(got.length, 3, `desligar ${off} não desliga as outras`);
   }
@@ -1165,9 +1171,13 @@ test("dicas: verbosidade fixa o piso e o teto (minimal 3, normal 5, detailed 8);
     det.hints.some((h) => h.id === "level:seal"),
     false,
   );
-  // Sem ajustes, ajustes inválidos ou verbosidade desconhecida: o padrão (normal).
+  // Sem ajustes, ajustes inválidos ou verbosidade desconhecida: o padrão (mínima, overlay compacto).
   for (const bad of [undefined, null, 7, "detailed", { verbosity: "ultra" }])
-    assert.equal(buildHints(view, bad).hints.length, 5, JSON.stringify(bad));
+    assert.equal(
+      buildHintsWith(view, bad).hints.length,
+      min.hints.length,
+      JSON.stringify(bad),
+    );
   // Piso de prioridade: com poucas dicas, minimal só deixa passar o que vale 70 ou mais e normal, 40 ou mais.
   const mixed = viewWith({
     roll: rollOf({ kind: "hold", spend: null }),
@@ -1262,7 +1272,8 @@ test("parseHintSettings: padrão completo, lixo vira padrão, sempre um objeto n
       wisp: true,
       learn: false,
     },
-    verbosity: "normal",
+    // Overlay compacto: o padrão é a verbosidade mínima; o jogador aumenta no "?".
+    verbosity: "minimal",
   });
   assert.deepEqual(HINT_CATEGORIES, ["buy", "items", "gold", "wisp", "learn"]);
   assert.deepEqual(VERBOSITY_LEVELS, ["minimal", "normal", "detailed"]);
@@ -1320,7 +1331,7 @@ test("parseHintSettings: aproveita o que é válido, descarta o resto e não dei
     verbosity: "detailed",
   });
   assert.deepEqual(Object.keys(parsed.categories), HINT_CATEGORIES);
-  assert.equal(parseHintSettings({ verbosity: "ultra" }).verbosity, "normal");
+  assert.equal(parseHintSettings({ verbosity: "ultra" }).verbosity, "minimal");
   assert.equal(
     parseHintSettings({ verbosity: "minimal" }).verbosity,
     "minimal",
@@ -1339,4 +1350,27 @@ test("hints.mjs: puro (sem imports, sem node:*, sem DOM, sem relógio) e sem reg
   );
   assert.ok(!/\bDate\.now\b|\bnew Date\b|\bMath\.random\b/.test(code));
   assert.deepEqual(importsOf("overlay/hud/view.mjs"), []);
+});
+
+test("dicas: peça do plano que você já tem (2★) na loja também gera 'Compre', com o que a cópia fecha", () => {
+  const input = withShop(liveInput(), [
+    null,
+    null,
+    card("DA_18_Varus", "Varus"),
+    null,
+    card("DA_Sentinel18", "Sentinel"),
+  ]);
+  const v = viewOf(feedOf(input)),
+    copy = v.buy.rows.find((r) => r.unit.id === "DA_18_Varus");
+  assert.equal(copy.how, "copy");
+  assert.match(copy.copy.text, /cópia · sobe para 3★/);
+  const h = byId(buildHints(v));
+  assert.equal(h["buy:DA_18_Varus"].category, "buy");
+  assert.deepEqual(h["buy:DA_18_Varus"].anchors, [{ kind: "shop", slot: 3 }]);
+  assert.match(h["buy:DA_18_Varus"].text, /Compre .*\(cópia · sobe para 3★/);
+  assert.equal(h["buy:DA_18_Varus"].pulse, true);
+  assert.deepEqual(h["buy:DA_Sentinel18"].anchors, [{ kind: "shop", slot: 5 }]);
+  // Peça nova segue sem rótulo de cópia.
+  const nova = byId(buildHints(viewOf(feedOf(withShop(liveInput())))));
+  assert.equal(nova["buy:DA_18_Aphelios"].text.includes("cópia"), false);
 });

@@ -14,7 +14,10 @@ export const HINT_CATEGORIES = ["buy", "items", "gold", "wisp", "learn"];
 /** Quantidade de dicas: pouca, normal ou tudo. */
 export const VERBOSITY_LEVELS = ["minimal", "normal", "detailed"];
 
-/** Padrão: tudo ligado, menos "learn" (textos explicativos longos); verbosidade normal. */
+/**
+ * Padrão: tudo ligado, menos "learn" (textos explicativos longos); verbosidade MÍNIMA (leitura de relance: ícones,
+ * retratos e números; as frases vão para a dica do mouse no modo interativo e para o "?"). O jogador aumenta no "?".
+ */
 export const DEFAULT_HINT_SETTINGS = Object.freeze({
   categories: Object.freeze({
     buy: true,
@@ -23,7 +26,7 @@ export const DEFAULT_HINT_SETTINGS = Object.freeze({
     wisp: true,
     learn: false,
   }),
-  verbosity: "normal",
+  verbosity: "minimal",
 });
 
 /** Por verbosidade: prioridade mínima e teto de dicas mostradas. */
@@ -79,6 +82,8 @@ function make(h, stale) {
     anchor: anchors[0] ?? NONE,
     anchors,
     text: h.text,
+    // Forma curta (ícone + número/imagens) da verbosidade mínima; a frase inteira (`text`) vai para a dica do mouse.
+    short: text(h.short),
     why: text(h.why),
     action: text(h.action),
     icon: h.icon ?? null,
@@ -112,8 +117,12 @@ function alertHints(view, mk) {
       priority: 100,
       tone: "danger",
       anchors: stabilize ? [{ kind: "gold" }] : [],
-      text: `${pressure === "critical" ? "Vida crítica" : "Vida em perigo"}${hp !== null ? ` (${hp} de vida)` : ""}`,
-      why: roll?.reason,
+      // A linha do servidor diz o que fazer pela decisão tomada, sem contradizer o plano; sem ela, só a faixa.
+      text:
+        text(view.economy?.alert) ??
+        `${pressure === "critical" ? "Vida crítica" : "Vida em perigo"}${hp !== null ? ` (${hp} de vida)` : ""}`,
+      short: `❤ ${hp ?? "!"}`,
+      why: text(view.economy?.alertWhy) ?? roll?.reason,
       action: stabilize ? roll.title : null,
       icon: glyphIcon("warn", "Vida em perigo"),
       pulse: true,
@@ -137,7 +146,9 @@ function buyHints(view, mk) {
         priority: 90,
         tone: broke ? "amber" : "go",
         anchors: slots.slice(0, n).map((slot) => ({ kind: "shop", slot })),
-        text: `Compre ${row.unit?.name ?? ""}`.trim(),
+        text: `Compre ${row.unit?.name ?? ""}${row.copy?.text ? ` (${row.copy.text})` : ""}`.trim(),
+        // O retrato do campeão vem do ícone; a palavra só confirma a ação.
+        short: broke ? "sem ouro" : "Comprar",
         why: row.reason ?? firstLine(shop.title),
         action: broke ? "sem ouro" : shop.buyText,
         icon: {
@@ -177,6 +188,7 @@ function wispHints(view, mk) {
         tone: spec.tone,
         anchors: slot === null ? [] : [{ kind: "shop", slot }],
         text: `Wisp ${w.name ?? ""}: ${w.vereditoTexto ?? w.veredito ?? "incerto"}`,
+        short: w.vereditoTexto ?? w.veredito ?? "?",
         why: w.motivo,
         icon: { kind: "wisp", id: w.id ?? null, name: w.name ?? "" },
         pulse: !!spec.pulse,
@@ -211,6 +223,7 @@ function goldHints(view, mk) {
         tone: ROLL_TONE[roll.tone] ?? "amber",
         anchors: [{ kind: "gold" }],
         text: `Role até ${spend.gold}g`,
+        short: `${spend.gold}g${spend.keep != null ? ` ⚑${spend.keep}g` : ""}`,
         why,
         action: spend.keep != null ? `pare em ${spend.keep}g` : null,
         icon: glyphIcon("coin", "Rolar"),
@@ -229,6 +242,7 @@ function goldHints(view, mk) {
           roll.at != null
             ? `Vale esperar o nível ${roll.at}`
             : "Vale esperar o próximo nível",
+        short: roll.at != null ? `Nv ${roll.at}` : "Nv +1",
         why: roll.reason,
         icon: glyphIcon("clock", "Esperar"),
       }),
@@ -242,6 +256,7 @@ function goldHints(view, mk) {
         tone: "info",
         anchors: [{ kind: "gold" }],
         text: "Não role",
+        short: "não role",
         why: roll.reason,
         icon: glyphIcon("pause", "Não rolar"),
       }),
@@ -257,6 +272,7 @@ function goldHints(view, mk) {
         tone: "info",
         anchors: [{ kind: "gold" }],
         text: `Juros: +${interest}g por rodada`,
+        short: `+${interest}g`,
         action:
           view.economy?.next != null
             ? `próximo patamar em ${view.economy.next}g`
@@ -275,6 +291,7 @@ function goldHints(view, mk) {
         tone: "go",
         anchors: [{ kind: "level" }],
         text: "Suba de nível",
+        short: level.cost != null ? `Nv↑ ${level.cost}g` : "Nv↑",
         why: level.text,
         action: level.cost != null ? `${level.cost}g` : null,
         icon: glyphIcon("up", "Subir de nível"),
@@ -291,6 +308,7 @@ function goldHints(view, mk) {
         tone: "info",
         anchors: [{ kind: "level" }],
         text: `Nível ${shown}${view.bar?.xp?.text ? ` · XP ${view.bar.xp.text}` : ""}`,
+        short: `Nv ${shown}`,
         icon: glyphIcon("up", "Nível"),
         min: "detailed",
       }),
@@ -313,6 +331,8 @@ function itemHints(view, mk) {
           tone: row.now ? "go" : "info",
           anchors: bank,
           text: `Passe ${m.item?.name ?? ""} de ${row.from?.name ?? ""} para ${m.to?.name ?? ""}`,
+          // Nomes viram retratos no desenho: [item] [de] → [para].
+          short: `${m.item?.name ?? ""} ${row.from?.name ?? ""} → ${m.to?.name ?? ""}`,
           why: row.method,
           action: row.now ? "passar agora" : null,
           icon: {
@@ -339,6 +359,7 @@ function itemHints(view, mk) {
         tone: "go",
         anchors: bank,
         text: `Equipe ${names(list)} em ${target.name ?? ""}`,
+        short: `${names(list)} → ${target.name ?? ""}`,
         why: r.kind === "bank" ? r.reason : null,
         icon: {
           kind: "item",
@@ -358,6 +379,7 @@ function itemHints(view, mk) {
         tone: r.complete ? "go" : "info",
         anchors: bank,
         text: `Monte ${r.item?.name ?? ""} em ${r.unit?.name ?? ""}`,
+        short: `${r.item?.name ?? ""} → ${r.unit?.name ?? ""}`,
         action: r.note,
         icon: {
           kind: "item",

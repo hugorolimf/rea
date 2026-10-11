@@ -1,10 +1,14 @@
 // Layout dos elementos posicionáveis e redimensionáveis do overlay integrado (puro: sem DOM, sem node:*).
 //
-// Coordenadas = frações do palco (a janela do overlay, que cobre a área cliente do jogo): `x`,`y` = canto superior esquerdo,
-// `w` = largura; a altura é do conteúdo (a página a mede e a passa em `heightPx`). `hidden` oculta o elemento.
+// Coordenadas = frações do RETÂNGULO 16:9 DO HUD (`hudRect` de geometry.mjs, ancorado embaixo), não do palco inteiro: `x`,`y` =
+// canto superior esquerdo, `w` = largura; a altura é do conteúdo (a página a mede e a passa em `heightPx`). `hidden` oculta
+// o elemento. Numa janela 16:9 o HUD é o palco inteiro (os números antigos, que eram frações do palco, continuam valendo);
+// numa mais larga (ultrawide) ou mais alta (4:3, retrato) a coluna acompanha o HUD do jogo em vez de flutuar nas barras.
 // Os padrões ficam numa coluna à direita (x ~ 0.735, w ~ 0.19) que não cobre o HUD do jogo: a loja e o ouro embaixo (x de
 // ~0.29 a ~0.79, y > 0.80), o banco de itens à esquerda (x < 0.05) e o estágio no topo-centro. Os elementos de dica ficam
 // sobre os alvos do jogo (loja, banco, ouro, nível), não aqui; `builds` e `plan` começam ocultos para não poluir.
+// O que o usuário salva é só isto; a ADAPTAÇÃO automática ao espaço (empilhar, usar barras livres, recolher) é de fit.mjs
+// e nunca grava nada no layout.
 
 /** Ids dos elementos, na ordem de exibição. */
 export const ELEMENT_IDS = Object.freeze([
@@ -15,6 +19,8 @@ export const ELEMENT_IDS = Object.freeze([
   "items",
   "builds",
   "plan",
+  "carousel",
+  "keys",
 ]);
 
 /** Rótulo em pt-BR de cada elemento (painel de ajuda). */
@@ -23,10 +29,33 @@ export const ELEMENT_LABELS = Object.freeze({
   bar: "Barra de estado (ouro, nível, fase)",
   hints: "Dicas sem alvo no jogo",
   roll: "Vale rolar?",
-  items: "Itens: próximo e movimentos",
+  items: "Itens: próximo, por campeão e movimentos",
   builds: "Itens da formação",
   plan: "Plano da composição",
+  carousel: "Carrossel e aprimoramentos: o que pegar",
+  keys: "Atalhos e Copiar comp",
 });
+
+/**
+ * Prioridade de cada elemento quando o espaço não basta (menor = mais importante; mantém-se onde o usuário o pôs e é o
+ * último a ser recolhido). O dock (controles e saúde das fontes) nunca é recolhido.
+ */
+export const ELEMENT_PRIORITY = Object.freeze({
+  dock: 0,
+  bar: 1,
+  // Só tem conteúdo durante o carrossel, quando é o que importa (a rolagem e as dicas da loja não valem ali).
+  carousel: 1.5,
+  roll: 2,
+  items: 3,
+  hints: 4,
+  // Legenda de atalhos e "Copiar comp": informação fixa, cede lugar às dicas; mora no canto livre à direita da loja.
+  keys: 4.5,
+  plan: 5,
+  builds: 6,
+});
+
+/** Elementos que nunca são recolhidos automaticamente. */
+export const PROTECTED_IDS = Object.freeze(["dock"]);
 
 const freezeEl = (el) => Object.freeze({ ...el });
 
@@ -39,7 +68,30 @@ export const DEFAULT_LAYOUT = Object.freeze({
   items: freezeEl({ x: 0.735, y: 0.5, w: 0.19, hidden: false }),
   builds: freezeEl({ x: 0.735, y: 0.6, w: 0.19, hidden: true }),
   plan: freezeEl({ x: 0.735, y: 0.3, w: 0.19, hidden: true }),
+  carousel: freezeEl({ x: 0.735, y: 0.15, w: 0.19, hidden: false }),
+  // À direita da loja (que vai até x ~0,80), abaixo da lista de jogadores (borda direita, estimada até y ~0,74) e longe
+  // do centro (cartas de aprimoramento e carrossel). `folded` = legenda recolhida (só os botões); `seen` = já foi
+  // exibida aberta uma vez (depois disso o padrão é recolhida).
+  keys: freezeEl({
+    x: 0.82,
+    y: 0.745,
+    w: 0.17,
+    hidden: false,
+    folded: false,
+    seen: false,
+  }),
 });
+
+/** Campos booleanos opcionais: só existem nos elementos cujo padrão os tem (hoje, a legenda `keys`). */
+const OPTIONAL_FLAGS = Object.freeze(["folded", "seen"]);
+const flagsOf = (src, fallback) => {
+  const out = {};
+  for (const f of OPTIONAL_FLAGS)
+    if (fallback && f in fallback)
+      out[f] = typeof src?.[f] === "boolean" ? src[f] : fallback[f];
+    else if (!fallback && typeof src?.[f] === "boolean") out[f] = src[f];
+  return out;
+};
 
 /** Largura permitida (fração do palco). */
 export const W_RANGE = Object.freeze({ min: 0.08, max: 0.5 });
@@ -64,6 +116,8 @@ function clampFraction(el, hFrac) {
     y: r4(clampNum(el.y, EDGE_MARGIN, maxY)),
     w: r4(w),
     hidden: el.hidden === true,
+    // Só os elementos que se recolhem (a legenda `keys`) têm `folded`/`seen`; nos outros os campos não existem.
+    ...flagsOf(el, null),
   };
 }
 
@@ -86,6 +140,7 @@ export function parseLayout(raw) {
         y: isNum(e.y) ? e.y : d.y,
         w: isNum(e.w) ? e.w : d.w,
         hidden: typeof e.hidden === "boolean" ? e.hidden : d.hidden,
+        ...flagsOf(e, d),
       },
       MIN_VISIBLE_HEIGHT,
     );
@@ -103,6 +158,8 @@ const asElement = (el) => ({
   y: isNum(el?.y) ? el.y : EDGE_MARGIN,
   w: isNum(el?.w) ? el.w : W_RANGE.min,
   hidden: el?.hidden === true,
+  // Mover ou redimensionar não desfaz o recolhimento.
+  ...flagsOf(el, null),
 });
 
 /**
@@ -142,6 +199,28 @@ export function setHidden(layout, id, hidden) {
     next[id] = { ...next[id], hidden: hidden === true };
   return next;
 }
+
+/**
+ * Layout novo com `id` recolhido (true) ou aberto (false), marcado como já visto (a escolha passa a valer). Só vale para
+ * elementos que se recolhem (têm `folded` no padrão, como `keys`); nos outros só devolve o layout normalizado.
+ */
+export function setFolded(layout, id, folded) {
+  const next = parseLayout(layout);
+  if (ELEMENT_IDS.includes(id) && "folded" in DEFAULT_LAYOUT[id])
+    next[id] = {
+      ...next[id],
+      folded: folded === true,
+      ...("seen" in DEFAULT_LAYOUT[id] ? { seen: true } : {}),
+    };
+  return next;
+}
+
+/**
+ * Recolhido na tela? Antes da primeira exibição (`seen` falso) a legenda aparece aberta, para o jogador conhecer os
+ * atalhos; depois vale `folded` (que a página grava como true ao marcá-la vista: recolhida por padrão).
+ */
+export const isFolded = (el) =>
+  el?.seen === false ? false : el?.folded === true;
 
 /** Cópia editável do layout padrão. */
 export function resetLayout() {

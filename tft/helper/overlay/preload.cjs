@@ -1,6 +1,6 @@
 "use strict";
-// Ponte mínima e fixa entre o HUD e o processo principal (contrato `window.overlayHost`, versão 2).
-// A versão 2 só ACRESCENTA métodos à 1; todos os nomes antigos continuam. O main revalida tudo com os parsers:
+// Ponte mínima e fixa entre o HUD e o processo principal (contrato `window.overlayHost`, versão 3).
+// Cada versão só ACRESCENTA métodos à anterior (a 3: copiar comp e regiões quentes); todos os nomes antigos continuam. O main revalida tudo com os parsers:
 // as checagens daqui só evitam enviar lixo. A ponte nunca envia entrada ao jogo; só pede ajustes da própria janela.
 // `require` é obrigatório: o preload do Electron roda em CommonJS (e em sandbox não aceita `import`).
 // oxlint-disable-next-line typescript/no-var-requires
@@ -17,7 +17,7 @@ const send = (channel, ...args) => {
 contextBridge.exposeInMainWorld(
   "overlayHost",
   Object.freeze({
-    version: 2,
+    version: 3,
     getMode: () => ipcRenderer.invoke("overlay:getMode"),
     onMode(cb) {
       if (typeof cb !== "function") return () => {};
@@ -74,5 +74,46 @@ contextBridge.exposeInMainWorld(
       if (isBool(on)) send("overlay:setFollow", on);
     },
     refreshGame: () => send("overlay:refreshGame"),
+    // --- v3 ---
+    /**
+     * Copia o código de equipe pelo processo principal (a janela não é focável, então `navigator.clipboard` não serve).
+     * Devolve `{ ok, reason? }`; o main revalida o formato antes de gravar na área de transferência.
+     */
+    copyTeamCode: (code) =>
+      typeof code === "string" && code.length <= 64
+        ? ipcRenderer.invoke("overlay:copyTeamCode", code)
+        : Promise.resolve({ ok: false, reason: "código inválido" }),
+    /** Ponteiro sobre uma região quente (`[data-hot]`): o main confere o cursor e só então tira o click-through. */
+    setHot: (on) => {
+      if (isBool(on)) send("overlay:setHot", on);
+    },
+    /** Onde estão as regiões quentes (`[{x,y,width,height}]` em px CSS); o main limita a quantidade e o tamanho. */
+    setHotRects: (rects) => {
+      if (Array.isArray(rects) && rects.length <= 8)
+        send(
+          "overlay:setHotRects",
+          rects.filter(isObj).map((r) => ({
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+          })),
+        );
+    },
+    /** Atalho global "Copiar comp": o main pede e a página copia pelo mesmo caminho do botão. */
+    onCopyRequest(cb) {
+      if (typeof cb !== "function") return () => {};
+      const handler = () => {
+        try {
+          cb();
+        } catch {
+          // Erro do HUD não deve derrubar a ponte.
+        }
+      };
+      ipcRenderer.on("overlay:copyRequest", handler);
+      return () => {
+        ipcRenderer.removeListener("overlay:copyRequest", handler);
+      };
+    },
   }),
 );

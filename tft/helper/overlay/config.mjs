@@ -4,7 +4,11 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { parseCalibration } from "./hud/geometry.mjs";
 import { parseHintSettings } from "./hud/hints.mjs";
+import { DEFAULT_HOTKEYS, shortcutList } from "./hud/hotkeys.mjs";
 import { parseLayout } from "./hud/layout.mjs";
+
+/** Atalhos globais padrão (a lista única mora em hud/hotkeys.mjs, que a página também usa). */
+export { DEFAULT_HOTKEYS };
 
 /** Porta padrão do servidor do helper. */
 export const DEFAULT_PORT = 3218;
@@ -16,18 +20,6 @@ export const OPACITY_RANGE = Object.freeze({ min: 0.2, max: 1 });
 export const MIN_SIZE = Object.freeze({ width: 240, height: 160 });
 /** Tamanho inicial da janela, em DIP. */
 export const DEFAULT_SIZE = Object.freeze({ width: 420, height: 640 });
-/**
- * Atalhos globais padrão. Teclas de função, de propósito: Ctrl+Alt equivale ao AltGr de teclados como o ABNT2 e um
- * atalho global com ele engoliria caracteres digitados (ex.: Ctrl+Alt+Q é "/").
- */
-export const DEFAULT_HOTKEYS = Object.freeze({
-  toggle: "Control+Shift+F9",
-  interactive: "Control+Shift+F10",
-  quit: "Control+Shift+F12",
-  anchor: "Control+Shift+F11",
-  help: "Control+Shift+F8",
-  calibrate: "Control+Shift+F7",
-});
 /** Modos de exibição: "integrated" cobre a janela do jogo; "panel" é o painel pequeno da fase 1. */
 export const MODES = Object.freeze(["integrated", "panel"]);
 
@@ -59,7 +51,71 @@ export function defaultConfig() {
     layout: parseLayout(undefined),
     calibration: parseCalibration(undefined),
     hints: parseHintSettings(undefined),
+    devReload: false,
+    defaultsVersion: DEFAULTS_VERSION,
   };
+}
+
+/**
+ * Versão dos PADRÕES com que a configuração foi gravada (a origem dos valores). Um arquivo sem o campo é da versão 1 (antes
+ * de existir). Quando um padrão muda, a versão sobe e `DEFAULT_CHANGES` diz qual era o valor antigo: na migração, o que
+ * está gravado igual ao padrão antigo (o usuário nunca mexeu) passa ao novo; o que o usuário mudou nunca é tocado.
+ */
+export const DEFAULTS_VERSION = 2;
+
+/**
+ * O que mudou nos padrões ao sair de cada versão. `hints`: campo -> { old, now }; `layout`: elemento -> { old, now }
+ * (elemento inteiro, comparado campo a campo).
+ * - v1 -> v2: overlay compacto, verbosidade das dicas "normal" -> "minimal". O layout dos elementos existentes não mudou
+ *   (a legenda `keys` é nova e já entra com o padrão).
+ */
+const DEFAULT_CHANGES = Object.freeze([
+  Object.freeze({
+    from: 1,
+    hints: { verbosity: { old: "normal", now: "minimal" } },
+    layout: {},
+  }),
+]);
+
+const sameFields = (a, b) =>
+  isObject(a) &&
+  isObject(b) &&
+  Object.keys(b).every((k) => a[k] === b[k]) &&
+  Object.keys(a).every((k) => k in b);
+
+/**
+ * Migra o objeto CRU do arquivo (antes de `parseConfig`) para a versão atual dos padrões. Idempotente: na versão atual
+ * não muda nada. Devolve `{ raw, migrated, changes }` (`raw` novo quando migrou; `changes` = textos do que mudou).
+ * Nunca lança.
+ */
+export function migrateConfig(
+  raw,
+  changesTable = DEFAULT_CHANGES,
+  version = DEFAULTS_VERSION,
+) {
+  if (!isObject(raw)) return { raw, migrated: false, changes: [] };
+  const from =
+    Number.isInteger(raw.defaultsVersion) && raw.defaultsVersion >= 1
+      ? raw.defaultsVersion
+      : 1;
+  if (from >= version) return { raw, migrated: false, changes: [] };
+  const next = JSON.parse(JSON.stringify(raw));
+  const changes = [];
+  for (const step of changesTable) {
+    if (step.from < from || step.from >= version) continue;
+    for (const [k, { old, now }] of Object.entries(step.hints ?? {}))
+      if (isObject(next.hints) && next.hints[k] === old) {
+        next.hints[k] = now;
+        changes.push(`hints.${k}: ${old} -> ${now}`);
+      }
+    for (const [id, { old, now }] of Object.entries(step.layout ?? {}))
+      if (isObject(next.layout) && sameFields(next.layout[id], old)) {
+        next.layout[id] = { ...now };
+        changes.push(`layout.${id}: padrão antigo -> padrão novo`);
+      }
+  }
+  next.defaultsVersion = version;
+  return { raw: next, migrated: true, changes };
 }
 
 /** "integrated" ou "panel"; qualquer outra coisa vira "integrated". */
@@ -193,6 +249,13 @@ export function parseConfig(raw) {
     layout: parseLayout(src.layout),
     calibration: parseCalibration(src.calibration),
     hints: parseHintSettings(src.hints),
+    // Reinício automático do Electron quando muda o código do processo principal (desenvolvimento): opt-in.
+    devReload: parseFlag(src.devReload, false),
+    // Ausente = já na versão atual (arquivo novo); arquivos antigos passam por `migrateConfig` antes daqui.
+    defaultsVersion:
+      Number.isInteger(src.defaultsVersion) && src.defaultsVersion >= 1
+        ? src.defaultsVersion
+        : DEFAULTS_VERSION,
   };
 }
 
@@ -253,18 +316,80 @@ export function nextUi(ui, action, value) {
 }
 
 /**
- * Decide se a janela ignora o mouse (click-through). Fora do modo interativo sempre ignora. No painel interativo captura
- * tudo. No integrado interativo a janela continua ignorando, a menos que a página peça captura (ponteiro sobre um
- * elemento interativo): assim o resto da tela continua clicável no jogo.
+ * Decide se a janela ignora o mouse (click-through). Fora do modo interativo ignora, exceto com `hotCapture` (o cursor
+ * REAL está sobre uma região quente, como o botão "Copiar comp", conferido pelo processo principal). No modo interativo
+ * (modo de edição, também com a ajuda ou a calibração) a janela captura o mouse INTEIRA, no painel e no integrado: com o
+ * jogo em primeiro plano o movimento encaminhado (`forward`) não chega à página, então depender dele mandava o clique
+ * para o jogo. Nesse modo o jogo não recebe cliques (é o esperado); Ctrl+Shift+F10 ou Esc voltam ao jogo.
+ * `mode` e `pageCapture` ficam no contrato por compatibilidade; não mudam mais a decisão.
  */
-export function mouseIgnore({ interactive, mode, pageCapture }) {
-  if (interactive !== true) return true;
-  if (mode === "panel") return false;
-  return pageCapture !== true;
+export function mouseIgnore({ interactive, hotCapture }) {
+  if (interactive === true) return false;
+  return hotCapture !== true;
 }
 
-/** Objeto `Mode` completo enviado à página (`window.overlayHost`). `game` = { found, width, height, fullscreen }. */
-export function buildMode({ ui, cfg, game }) {
+/** No máximo tantas regiões quentes por página, cada uma com no máximo este tamanho (px CSS). */
+export const HOT_LIMITS = Object.freeze({ count: 4, width: 640, height: 200 });
+
+/**
+ * Regiões quentes declaradas pela página (`[{x,y,width,height}]` em px CSS da janela): só as válidas, no máximo
+ * `HOT_LIMITS.count`, cada uma limitada ao tamanho máximo. Lixo vira []. Nunca lança.
+ */
+export function parseHotRects(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    if (out.length >= HOT_LIMITS.count) break;
+    if (!isObject(r)) continue;
+    const { x, y, width, height } = r;
+    if (![x, y, width, height].every(finite) || width <= 0 || height <= 0)
+      continue;
+    if (Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) continue;
+    out.push({
+      x,
+      y,
+      width: Math.min(width, HOT_LIMITS.width),
+      height: Math.min(height, HOT_LIMITS.height),
+    });
+  }
+  return out;
+}
+
+/**
+ * O cursor (DIP da tela) está sobre alguma região quente? `bounds`: área de conteúdo da janela (DIP); `zoom`: zoom do
+ * webContents (px CSS x zoom = DIP); `pad`: folga em px CSS. É a conferência do processo principal: a página só pede.
+ */
+export function cursorInHotRects(cursor, bounds, zoom, rects, pad = 2) {
+  if (!isObject(cursor) || !isObject(bounds) || !Array.isArray(rects))
+    return false;
+  if (![cursor.x, cursor.y, bounds.x, bounds.y].every(finite)) return false;
+  const z = finite(zoom) && zoom > 0 ? zoom : 1;
+  const x = (cursor.x - bounds.x) / z,
+    y = (cursor.y - bounds.y) / z;
+  return rects.some(
+    (r) =>
+      x >= r.x - pad &&
+      x <= r.x + r.width + pad &&
+      y >= r.y - pad &&
+      y <= r.y + r.height + pad,
+  );
+}
+
+/**
+ * Código de equipe do Planejador do jogo como `team-code.mjs` o monta: "02" + 10 ids de 3 dígitos hexa + sufixo do set
+ * ("TFTSet18"). O processo principal só grava na área de transferência o que passa por aqui.
+ */
+export function isTeamCode(v) {
+  return (
+    typeof v === "string" && /^02[0-9a-f]{30}TFTSet[0-9A-Za-z_]{1,8}$/.test(v)
+  );
+}
+
+/**
+ * Objeto `Mode` completo enviado à página (`window.overlayHost`). `game` = { found, width, height, fullscreen };
+ * `hotkeyStatus[id]` = resultado do registro de cada atalho (true/false), que vai na lista `shortcuts`.
+ */
+export function buildMode({ ui, cfg, game, hotkeyStatus = {} }) {
   return {
     interactive: ui.interactive === true,
     help: ui.help === true,
@@ -274,6 +399,7 @@ export function buildMode({ ui, cfg, game }) {
     scale: cfg.scale,
     opacity: cfg.opacity,
     hotkeys: { ...cfg.hotkeys },
+    shortcuts: shortcutList(cfg.hotkeys, hotkeyStatus),
     layout: cfg.layout,
     calibration: cfg.calibration,
     hints: cfg.hints,
@@ -350,9 +476,46 @@ export async function loadConfig(file) {
   }
 }
 
+/** Sufixo do backup: AAAAMMDD-HHMMSS (hora local). */
+export function backupStamp(date = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`;
+}
+
+/**
+ * Lê o arquivo e, se ele é de uma versão antiga dos padrões, migra (`migrateConfig`): faz o backup
+ * `overlay.config.json.bak-AAAAMMDD-HHMMSS` ao lado e grava o migrado. Devolve `{ cfg, text, migration }`: `text` é o
+ * que ficou no disco (para o main distinguir a própria gravação), `migration` = `{ backup, changes }` ou null.
+ * Arquivo ausente ou corrompido: padrão, sem migrar nem gravar.
+ */
+export async function loadAndMigrateConfig(file, now = new Date()) {
+  let text;
+  try {
+    text = await fsp.readFile(file, "utf8");
+  } catch {
+    return { cfg: defaultConfig(), text: null, migration: null };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { cfg: parseConfig(text), text, migration: null };
+  }
+  const m = migrateConfig(raw);
+  if (!m.migrated) return { cfg: parseConfig(raw), text, migration: null };
+  const backup = `${file}.bak-${backupStamp(now)}`;
+  await fsp.copyFile(file, backup);
+  const cfg = parseConfig(m.raw);
+  const written = await saveConfig(file, cfg);
+  return { cfg, text: written, migration: { backup, changes: m.changes } };
+}
+
 let tmpCounter = 0;
 
-/** Grava de forma atômica (arquivo temporário na mesma pasta + rename). */
+/**
+ * Grava de forma atômica (arquivo temporário na mesma pasta + rename) e devolve o texto gravado (o main o guarda para
+ * distinguir a própria gravação de uma edição externa do arquivo).
+ */
 export async function saveConfig(file, cfg) {
   const body = `${JSON.stringify(parseConfig(cfg), null, 2)}\n`;
   const tmp = `${file}.${process.pid}.${++tmpCounter}.tmp`;
@@ -364,4 +527,5 @@ export async function saveConfig(file, cfg) {
     await fsp.rm(tmp, { force: true }).catch(() => {});
     throw err;
   }
+  return body;
 }

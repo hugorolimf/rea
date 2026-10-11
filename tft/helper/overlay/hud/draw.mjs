@@ -31,8 +31,69 @@ export function createDraw(ui) {
     unknown: "clock",
   };
 
-  /** Faixa superior e avisos discretos. */
-  function bar(view) {
+  /**
+   * Faixa compacta (verbosidade mínima): uma linha de ícone + número (fase, ouro, nível, vida); XP, juros e a origem de
+   * cada leitura vão na dica do mouse. Chips só quando dizem algo: partida não ao vivo e GEP fora do normal.
+   */
+  function compactBar(view) {
+    const b = view.bar;
+    const cell = (icon, value, title, extra = "") =>
+      `<span class="cell cell-c"${extra} title="${esc(title)}">${icon}<b>${esc(value)}</b></span>`;
+    const cells = b
+      ? [
+          b.stage ? cell(glyph("flag"), b.stage, "Estágio e rodada") : "",
+          b.gold
+            ? cell(
+                glyph("coin"),
+                b.gold.value,
+                [
+                  b.gold.title,
+                  b.gold.interest != null
+                    ? `+${b.gold.interest} de juros`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                ` data-stale="${b.gold.stale ? 1 : 0}"`,
+              )
+            : "",
+          b.level
+            ? cell(
+                glyph("up"),
+                b.level.text,
+                [
+                  b.level.title,
+                  b.xp
+                    ? `XP ${b.xp.text}${b.xp.cost != null ? ` · ${b.xp.cost}g` : ""}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                ` data-uncertain="${b.level.uncertain ? 1 : 0}"`,
+              )
+            : "",
+          b.hp != null
+            ? cell('<span class="op" aria-hidden="true">❤</span>', b.hp, "Vida")
+            : "",
+        ].join("")
+      : "";
+    const chips = b
+      ? `${b.live.kind !== "live" ? `<span class="chip live-chip" data-kind="${esc(b.live.kind)}">${esc(b.live.text)}</span>` : ""}${b.gep && b.gep.state !== "ativo" ? `<span class="chip gep-chip" data-state="${esc(b.gep.state)}" title="${esc(b.gep.label)}">${esc(b.gep.short)}</span>` : ""}`
+      : "";
+    const notes = view.notices
+      .map(
+        (n) =>
+          `<span class="chip note" data-kind="${esc(n.kind)}" title="${esc(n.title)}">${glyph("warn")}${esc(n.text)}</span>`,
+      )
+      .join("");
+    return b || notes
+      ? `${cells ? `<div class="cells cells-c" data-stale="${b?.stale ? 1 : 0}">${cells}</div>` : ""}${chips || notes ? `<div class="chips">${chips}${notes}</div>` : ""}`
+      : "";
+  }
+
+  /** Faixa superior e avisos discretos. `o.compact`: forma de relance (`compactBar`). */
+  function bar(view, o = {}) {
+    if (o.compact) return compactBar(view);
     const b = view.bar;
     const cells = b
       ? [
@@ -65,16 +126,38 @@ export function createDraw(ui) {
   }
 
   /** Estados sem plano (carregando, aguardando análise, partida encerrada ou nova partida). */
-  function message(view) {
+  function message(view, o = {}) {
     const m = view.message;
     if (!m) return "";
+    // Compacto: só a frase curta; o detalhe vai para a dica do mouse.
+    if (o.compact)
+      return `<p class="msg" title="${esc([m.detail, m.title].filter(Boolean).join(" · "))}">${esc(m.text)}</p>`;
     return `<p class="msg" title="${esc(m.title)}">${esc(m.text)}</p>${m.detail ? `<p class="detail">${esc(m.detail)}</p>` : ""}`;
   }
 
   /** Veredito de rolagem (cartão com `aria-live` fixo no contêiner). */
-  function roll(view) {
+  function roll(view, o = {}) {
     const r = view.roll;
     if (!r) return "";
+    if (o.compact) {
+      // Uma linha: ícone de rolar, o selo (rolar/segurar) e os números; o porquê vai na dica do mouse.
+      const nums = r.spend
+        ? `<b>${esc(r.spend.gold)}g</b>${r.spend.keep != null ? `<span>${glyph("flag")}${esc(r.spend.keep)}g</span>` : ""}`
+        : r.budget != null
+          ? `<span>${esc(r.budget)}g</span>`
+          : "";
+      const why = [
+        r.title,
+        r.reason,
+        r.spend ? `até ${r.spend.shops} lojas` : null,
+        r.interest
+          ? `rolar derruba os juros de +${r.interest.from} para +${r.interest.to}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<p class="spend roll-c" data-kind="${esc(r.kind)}" title="${esc(why)}">${glyph("roll")}${r.pill ? `<b class="pill" data-tone="${esc(r.tone)}">${esc(r.pill)}</b>` : ""}${nums}</p>`;
+    }
     const spend = r.spend
       ? `<p class="spend"><b>${esc(r.spend.gold)}g</b><span>até ${esc(r.spend.shops)} lojas</span>${r.spend.keep != null ? `<span>${glyph("flag")}pare em ${esc(r.spend.keep)}g</span>` : ""}</p>`
       : r.budget != null
@@ -85,6 +168,119 @@ export function createDraw(ui) {
         ? `<p class="call" data-kind="${esc(r.kind)}">${r.title ? `<b>${richText(r.title)}</b> ` : ""}${richText(r.reason)}</p>`
         : ""
     }${spend}${r.interest ? `<p class="detail">Rolar derruba os juros de +${esc(r.interest.from)} para +${esc(r.interest.to)} por rodada.</p>` : ""}`;
+  }
+
+  /**
+   * Carrossel: o que pegar. Com a leitura do carrossel (`from: "reading"`) cada linha é a peça (campeão + item que ele
+   * traz) em ordem de valor para o plano; sem ela (`"priority"`) é a lista do que pegar SE aparecer, e o selo diz isso.
+   * Tudo em imagens: o motivo vai no tooltip da linha.
+   */
+  function carousel(view, o = {}) {
+    const c = view.carousel;
+    if (!c) return "";
+    if (o.compact) return compactCarousel(c);
+    const reading = c.from === "reading",
+      ranked = c.picks.some((p) => p.score !== null),
+      tag = reading
+        ? ranked
+          ? "lido do jogo"
+          : "lido, sem nota"
+        : c.from === "priority"
+          ? "prioridade"
+          : "";
+    const title = [
+      reading
+        ? "Peças do carrossel lidas do jogo (GEP), em ordem de valor para o plano."
+        : "O carrossel não foi lido: lista do que pegar se aparecer.",
+      c.note,
+      c.source === "schedule"
+        ? "Carrossel estimado pelo calendário (x-4)."
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const row = (p) => {
+      const target =
+        !reading || p.kind === "component"
+          ? p.target
+            ? `${op("→")}<span class="car-target${p.completes ? " is-close" : ""}">${item(p.target, 24)}</span>`
+            : ""
+          : "";
+      const who = p.forChampion
+        ? `<span class="car-for">${mini(p.forChampion, 22)}</span>`
+        : "";
+      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc(p.reason)}">${p.rank != null ? `<b class="rank">${esc(p.rank)}</b>` : ""}${p.champion ? mini(p.champion, 30) : ""}${p.item.id ? item(p.item, 30) : ""}${target}${who}</li>`;
+    };
+    return `<header><span class="eyebrow">Carrossel</span>${tag ? `<b class="pill" data-tone="${reading && ranked ? "go" : "amber"}" title="${esc(title)}">${esc(tag)}</b>` : ""}</header>${
+      c.picks.length
+        ? `<ul class="lines car-list" aria-label="Peças do carrossel em ordem de valor">${c.picks.map(row).join("")}</ul>${c.more ? `<p class="detail">+${esc(c.more)} peça${c.more > 1 ? "s" : ""}</p>` : ""}`
+        : `<p class="detail" title="${esc(title)}">${esc(c.note ?? "sem recomendação agora")}</p>`
+    }`;
+  }
+
+  /** Carrossel compacto: só as imagens (peça + item → alvo), sem cabeçalho; a origem e o porquê vão na dica do mouse. */
+  function compactCarousel(c) {
+    if (!c.picks.length)
+      return `<p class="msg" title="${esc(c.note ?? "")}">${glyph("eye")} carrossel</p>`;
+    const reading = c.from === "reading";
+    const row = (p) => {
+      const target =
+        (!reading || p.kind === "component") && p.target
+          ? `${op("→")}<span class="car-target${p.completes ? " is-close" : ""}">${item(p.target, 24)}</span>`
+          : "";
+      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc([p.reason, reading ? null : "o carrossel não foi lido: pegue se aparecer"].filter(Boolean).join(" · "))}">${p.rank != null ? `<b class="rank">${esc(p.rank)}</b>` : ""}${p.champion ? mini(p.champion, 30) : ""}${p.item.id ? item(p.item, 30) : ""}${target}</li>`;
+    };
+    return `<ul class="lines car-list" aria-label="Carrossel: o que pegar">${c.picks.slice(0, 3).map(row).join("")}</ul>`;
+  }
+
+  /**
+   * Aprimoramentos compactos: as cartas em uma linha cada (nome curto), a recomendada marcada, "troque" como ícone; o
+   * porquê, a colocação esperada e a comp vão na dica do mouse. Sem fonte: um selo curto.
+   */
+  function compactAugments(a) {
+    if (!a.open)
+      return `<p class="msg" title="${esc([a.source?.text, a.source?.title].filter(Boolean).join(" · "))}">${glyph("warn")} aprim.: sem fonte</p>`;
+    const row = (c) => {
+      const why = [
+        c.reasons?.[0],
+        c.expected != null
+          ? `colocação esperada ${c.expected.toFixed(2).replace(".", ",")}º`
+          : null,
+        c.reroll ? "troque esta carta" : c.rerolled ? "já trocada" : null,
+        c.unknown ? "fora do catálogo" : null,
+        a.comp ? `para ${a.comp}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<li class="line aug-row" data-best="${c.best ? 1 : 0}" data-unknown="${c.unknown ? 1 : 0}" title="${esc(`${c.name}${why ? ` · ${why}` : ""}`)}">${c.best ? glyph("check") : ""}<span class="aug-name">${esc(c.name)}</span>${c.reroll ? `<span class="aug-swap" aria-label="troque">${glyph("roll")}</span>` : ""}</li>`;
+    };
+    return `<ul class="lines aug-list" aria-label="Cartas da oferta, da melhor para a pior">${a.cards.map(row).join("")}</ul>`;
+  }
+
+  /**
+   * Aprimoramentos: enquanto a escolha está aberta no jogo, as cartas (lidas pelo GEP) na ordem da análise, com a
+   * recomendada em destaque e o aviso de troca; sem fonte, só o aviso. O texto é o nome do aprimoramento (não é campeão
+   * nem item); o porquê vai no tooltip da linha.
+   */
+  function augments(view, o = {}) {
+    const a = view.augments;
+    if (!a) return "";
+    if (o.compact) return compactAugments(a);
+    if (!a.open)
+      return `<header><span class="eyebrow">Aprimoramentos</span><b class="pill" data-tone="amber" title="${esc(a.source?.title ?? "")}">sem fonte</b></header><p class="detail" title="${esc(a.source?.title ?? "")}">${esc(a.source?.text ?? "aprimoramentos: sem fonte")}</p>`;
+    const row = (c) => {
+      const why = [c.reasons?.[0], c.unknown ? "fora do catálogo" : null]
+        .filter(Boolean)
+        .join(" ");
+      const swap = c.reroll
+        ? `<span class="aug-swap">${glyph("roll")}troque</span>`
+        : c.rerolled
+          ? `<span class="aug-swapped">trocado</span>`
+          : "";
+      return `<li class="line aug-row" data-best="${c.best ? 1 : 0}" data-unknown="${c.unknown ? 1 : 0}" title="${esc(why)}">${c.rank != null ? `<b class="rank">${esc(c.rank)}</b>` : ""}<span class="aug-name">${c.best ? glyph("check") : ""}${esc(c.name)}</span>${c.expected != null ? `<small class="aug-exp">${esc(c.expected.toFixed(2).replace(".", ","))}º</small>` : ""}${swap}</li>`;
+    };
+    const tag = a.pending ? "analisando" : "lido do jogo";
+    return `<header><span class="eyebrow">Aprimoramento${a.stage ? ` ${esc(a.stage)}` : ""}</span><b class="pill" data-tone="${a.pending ? "amber" : "go"}" title="${esc(a.source?.title ?? "")}">${tag}</b></header><ul class="lines aug-list" aria-label="Cartas da oferta, da melhor para a pior">${a.cards.map(row).join("")}</ul>${a.comp ? `<p class="detail">para ${richText(a.comp)}</p>` : ""}`;
   }
 
   /** Linha do "Próximo item": quem recebe, o item e a receita com a situação de cada componente. */
@@ -109,15 +305,51 @@ export function createDraw(ui) {
   const moveRow = (r) =>
     `<li class="line">${mini(r.from)}${r.moves.map((m) => `<span class="mv">${item(m.item, 24)}${op("→")}${mini(m.to, 22)}</span>`).join("")}<i class="mark ${r.now ? "ok" : "wait"}" title="${r.now ? "agora" : "planejar"}">${glyph(r.now ? "check" : "clock")}</i></li>`;
 
-  /** Itens: próximo item, equipar e passar itens. */
-  function items(view) {
+  const PART_TONE = { done: "equipped", go: "bank", wait: "missing" };
+
+  /**
+   * Itens recomendados de um campeão em campo: todos (até 3), na ordem da build, cada um com a marca da situação (equipado,
+   * no banco, monta agora, mover, falta N) e a palavra curta; o próximo a resolver ganha destaque. Estado nunca só por cor.
+   */
+  function champRow(r) {
+    const cells = r.items
+      .map((i) => {
+        const label = `${i.item.name}: ${i.text || i.label}`,
+          from = i.from?.id
+            ? `<span class="bi-from" aria-hidden="true">${portrait(i.from.id, i.from.name, { size: 14, hidden: true })}</span>`
+            : "";
+        return `<span class="bi" data-kind="${esc(i.kind)}" data-next="${i.next ? 1 : 0}" role="img" aria-label="${esc(label)}" title="${esc(label)}"><span class="nx-part" data-state="${PART_TONE[i.tone] ?? "missing"}">${item(i.item, 24, { hidden: true })}<i class="nx-mark">${glyph(i.mark)}</i></span><small class="bi-lbl" data-tone="${esc(i.tone)}">${from}${esc(i.label)}</small></span>`;
+      })
+      .join("");
+    return `<li class="line" data-carry="${r.carry ? 1 : 0}">${mini(r.unit)}<span class="bi-list" role="group" aria-label="Itens recomendados de ${esc(r.unit.name)}">${cells}</span>${r.reserve ? `<small class="bi-src" title="${esc(r.note ?? "")}">reserva</small>` : ""}</li>`;
+  }
+
+  /** Itens: próximo item, itens de cada campeão, equipar e passar itens. */
+  function items(view, o = {}) {
     const it = view.items;
     if (!it) return "";
+    if (o.compact) {
+      // Só imagens: próximo item (a nota vai na dica do mouse), o carry e o que dá para equipar ou passar agora.
+      const next = it.next.map((r) =>
+        nextRow({ ...r, note: null }).replace(
+          '<li class="line">',
+          `<li class="line" title="${esc([`${r.item.name} → ${r.unit.name}`, r.note].filter(Boolean).join(" · "))}">`,
+        ),
+      );
+      const carry = (it.champs ?? []).filter((r) => r.carry).map(champRow);
+      const rows = [
+        ...next,
+        ...carry,
+        ...it.equip.filter((r) => r.inField !== false).map(equipRow),
+        ...it.moves.filter((r) => r.now).map(moveRow),
+      ];
+      return rows.length ? `<ul class="lines">${rows.join("")}</ul>` : "";
+    }
     const group = (label, rows, draw) =>
       rows.length
         ? `<h3 class="eyebrow">${label}</h3><ul class="lines">${rows.map(draw).join("")}</ul>`
         : "";
-    return `${group("Próximo item", it.next, nextRow)}${group("Equipar", it.equip, equipRow)}${group("Passar itens", it.moves, moveRow)}`;
+    return `${group("Próximo item", it.next, nextRow)}${group("Itens dos campeões", it.champs ?? [], champRow)}${it.champsMore > 0 ? `<p class="detail">+${esc(it.champsMore)} ${it.champsMore === 1 ? "campeão" : "campeões"} com item pendente</p>` : ""}${group("Equipar", it.equip, equipRow)}${group("Passar itens", it.moves, moveRow)}`;
   }
 
   /** Itens por campeão: equipados (cheios) e os que a build ainda pede (tracejados). */
@@ -179,7 +411,7 @@ export function createDraw(ui) {
           )
           .join("")}</ul>`
       : "";
-    return `${head}${meter}${facts.length ? `<p class="detail">${facts.join(" · ")}</p>` : ""}${p.challenger ? `<p class="detail">${glyph("pause")} ${richText(p.challenger, { size: 16 })}</p>` : ""}${next}${units}${things}`;
+    return `${head}${meter}${facts.length ? `<p class="detail">${facts.join(" · ")}</p>` : ""}${p.challenger ? `<p class="detail">${glyph("pause")} ${richText(p.challenger, { size: 16 })}</p>` : ""}${p.reach ? `<p class="detail">${richText(`Alcance: ${p.reach}`, { size: 16 })}</p>` : ""}${next}${units}${things}`;
   }
 
   /** Rótulo do estado do overlay no dock. */
@@ -194,16 +426,36 @@ export function createDraw(ui) {
 
   /**
    * Dock: botão "?" (ajuda; só clicável no modo interativo), pontos de saúde das fontes (cor + tooltip) e o estado do
-   * modo. `state`: `{ health, mode, hasHost }` (`health` de `healthOf`, `mode` normalizado).
+   * modo. `state`: `{ health, mode, hasHost, fit }` (`health` de `healthOf`, `mode` normalizado, `fit` de `fitSummary`:
+   * tamanho detectado da janela do jogo, escala efetiva e o que foi recolhido por falta de espaço; opcional).
    */
-  function dock({ health, mode, hasHost }) {
+  function dock({ health, mode, hasHost, fit }) {
     const dots = (health ?? [])
       .map((h) => {
         const ok = h.ok === true ? "1" : h.ok === false ? "0" : "?";
         return `<i class="dot" data-id="${esc(h.id)}" data-ok="${ok}" role="img" aria-label="${esc(h.text)}" title="${esc(h.text)}&#10;${esc(h.title)}"></i>`;
       })
       .join("");
-    return `<div class="dock-row">${hasHost ? `<button type="button" class="dock-help" data-hit data-act="help" aria-pressed="${mode.help ? "true" : "false"}" title="Ajuda e configurações do overlay">?</button>` : ""}<span class="dock-dots" role="group" aria-label="Saúde das fontes">${dots}</span><span class="chip dock-mode" title="Estado do overlay">${esc(modeLabel(mode))}</span></div>`;
+    // Tamanho detectado e escala efetiva (para saber que o overlay está se adaptando) e o que foi recolhido.
+    const size = fit?.short
+      ? `<span class="chip dock-fit" data-limit="${esc(fit.limit ?? "")}" title="${esc(fit.title)}">${esc(fit.short)}</span>`
+      : "";
+    const folded = fit?.collapsed?.length
+      ? `<span class="chip dock-fold" title="${esc(`Recolhido por falta de espaço: ${(fit.collapsedLabels ?? []).join(", ")}. Volta sozinho quando houver espaço.`)}">${glyph("warn")}${esc(fit.collapsed.length)} recolhido${fit.collapsed.length > 1 ? "s" : ""}</span>`
+      : "";
+    // Compacto (verbosidade mínima): só "?" e os pontos; o estado aparece quando não é o normal (integrado) e o tamanho
+    // detectado fica na dica do mouse dos pontos e na ajuda.
+    const compact = mode?.hints?.verbosity === "minimal";
+    const label = modeLabel(mode);
+    const modeChip =
+      compact && label === "integrado"
+        ? ""
+        : `<span class="chip dock-mode" title="Estado do overlay">${esc(label)}</span>`;
+    const foldedChip =
+      compact && fit?.collapsed?.length
+        ? `<span class="chip dock-fold" title="${esc(`Recolhido por falta de espaço: ${(fit.collapsedLabels ?? []).join(", ")}. Volta sozinho quando houver espaço.`)}">${glyph("warn")}${esc(fit.collapsed.length)}</span>`
+        : folded;
+    return `<div class="dock-row">${hasHost ? `<button type="button" class="dock-help" data-hit data-act="help" aria-pressed="${mode.help ? "true" : "false"}" title="Ajuda e configurações do overlay">?</button>` : ""}<span class="dock-dots" role="group" aria-label="Saúde das fontes"${compact && fit?.title ? ` title="${esc(fit.title)}"` : ""}>${dots}</span>${modeChip}${compact ? "" : size}${foldedChip}</div>`;
   }
 
   /** Aviso fixo de tela cheia exclusiva (o overlay não aparece sobre o jogo nesse modo). */
@@ -213,5 +465,16 @@ export function createDraw(ui) {
     return `<p class="fs-warn">${glyph("warn")}<span>${esc(fs.text || "Tela cheia exclusiva: use janela ou janela sem borda para ver o overlay.")}</span></p>`;
   }
 
-  return { bar, message, roll, items, builds, plan, dock, banner };
+  return {
+    bar,
+    message,
+    roll,
+    items,
+    builds,
+    plan,
+    carousel,
+    augments,
+    dock,
+    banner,
+  };
 }

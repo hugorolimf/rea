@@ -607,3 +607,62 @@ test("página: só lê /api/overlay; nunca pede análise nem estado, nem escreve
   const code = stripNonCode(read("overlay/hud/hud.mjs"), { keepStrings: true });
   assert.match(code, /\/api\/overlay/);
 });
+
+/* ---------- Overlay compacto (verbosidade mínima, o padrão) ---------- */
+
+test("compacto: na verbosidade mínima nenhuma linha visível passa de 24 caracteres e há no máximo 1 principal + 3 secundárias", async () => {
+  const { buildHints, parseHintSettings } =
+    await import("../overlay/hud/hints.mjs");
+  const { drawHintList, hintLine } = await import("../overlay/hud/markers.mjs");
+  const settings = parseHintSettings(undefined);
+  assert.equal(settings.verbosity, "minimal", "o padrão é o compacto");
+  /** Texto que fica na tela: sem atributos (dicas do mouse), sem texto só para leitor de tela; uma linha por bloco. */
+  const visibleLines = (html) =>
+    html
+      .replace(/<b class="sr">[\s\S]*?<\/b>/g, "")
+      .replace(/<(li|p|div|header|h3|ul)\b[^>]*>/g, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&[a-z#0-9]+;/g, "x")
+      .split("\n")
+      .map((l) => l.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  const o = { compact: true };
+  const input = liveInput();
+  // Uma oferta de aprimoramento aberta e um carrossel não entram juntos na mesma rodada: o modelo ao vivo basta.
+  const v = viewOf(feedOf(input));
+  const ui = {
+    esc,
+    richText: rich.richText,
+    glyph: glyphs.glyph,
+    unitPortrait: glyphs.unitPortrait,
+    itemPortrait: glyphs.itemPortrait,
+    settings,
+    k: 1,
+  };
+  const hints = buildHints(v, settings);
+  assert.ok(hints.hints.length <= 4, `dicas na mínima: ${hints.hints.length}`);
+  const parts = {
+    bar: draw.bar(v, o),
+    roll: draw.roll(v, o),
+    items: draw.items(v, o),
+    message: draw.message(viewOf(null), o),
+    hints: drawHintList(hints, ui),
+    lines: hints.hints.map((h) => hintLine(h, ui)).join(""),
+  };
+  for (const [name, html] of Object.entries(parts))
+    for (const line of visibleLines(html))
+      assert.ok(
+        line.length <= 24,
+        `${name}: linha longa demais (${line.length}): "${line}"`,
+      );
+  // O que saiu da tela foi para a dica do mouse: o porquê da rolagem está no title.
+  if (v.roll?.reason)
+    assert.ok(parts.roll.includes("title="), "porquê no title");
+  assert.ok(
+    !/class="detail"/.test(parts.roll + parts.items + parts.message),
+    "sem parágrafos de detalhe",
+  );
+  assert.ok(!/<h3 class="eyebrow"/.test(parts.items), "sem títulos de grupo");
+  // A forma completa continua na verbosidade normal (o jogador aumenta no "?").
+  assert.match(draw.roll(v), /class="call"/);
+});

@@ -1,4 +1,5 @@
-// Rastreador SOMENTE-LEITURA da janela do TFT: um PowerShell persistente que, a cada ~750 ms, imprime a área cliente
+// Rastreador SOMENTE-LEITURA da janela do TFT: um PowerShell persistente que, a cada ~750 ms (120 ms enquanto a janela está
+// mudando; ver `trackerScript`), imprime a área cliente
 // da janela do jogo em pixels físicos. Mesma identificação do leitor de tela (`Tft.Client()` em screen-reader.ps1):
 // classe `UnrealWindow`, título começando por "TFT", visível e não minimizada.
 // Só consulta posição (EnumWindows, GetClientRect, ClientToScreen). Não lê memória, não injeta, não captura tela e
@@ -7,6 +8,13 @@ import { spawn as nodeSpawn } from "node:child_process";
 
 /** Intervalo padrão entre leituras, em ms. */
 export const TRACK_INTERVAL_MS = 750;
+/**
+ * Intervalo RÁPIDO, em ms, enquanto o retângulo do jogo está mudando (arrastar a borda da janela, trocar janela e janela sem
+ * borda): o overlay acompanha sem atraso perceptível. Volta ao lento sozinho quando estabiliza.
+ */
+export const TRACK_FAST_MS = 120;
+/** Quanto tempo, em ms, o intervalo rápido continua depois da última mudança antes de voltar ao lento. */
+export const TRACK_SETTLE_MS = 2500;
 
 // Fonte C#: sem aspas duplas nem simples (o script passa por uma string simples do PowerShell); as aspas duplas
 // entram como QQ e são trocadas por [char]34 no script.
@@ -54,13 +62,22 @@ const toInt = (v, min, max, fallback) => {
 /**
  * Texto do script PowerShell persistente. Termina sozinho quando `parentPid` deixa de existir ou quando a saída é
  * fechada. Sem aspas duplas e sem nenhuma chamada de entrada (SendInput, mouse_event, keybd_event, SetCursorPos...).
+ *
+ * Cadência adaptativa: dorme `intervalMs` (lento) em repouso; quando a linha lida muda (a janela foi movida,
+ * redimensionada, minimizada...), dorme `fastMs` até `settleMs` depois da última mudança e então volta ao lento. A decisão
+ * é toda do próprio script (sem canal de volta do Electron): é só comparar a linha atual com a anterior.
  */
 export function trackerScript({
   parentPid = 0,
   intervalMs = TRACK_INTERVAL_MS,
+  fastMs = TRACK_FAST_MS,
+  settleMs = TRACK_SETTLE_MS,
 } = {}) {
   const parent = toInt(parentPid, 0, 0x7fffffff, 0);
   const every = toInt(intervalMs, 250, 10000, TRACK_INTERVAL_MS);
+  // O rápido nunca passa do lento; o piso evita um laço apertado.
+  const quick = Math.min(toInt(fastMs, 50, 1000, TRACK_FAST_MS), every);
+  const settle = toInt(settleMs, 500, 30000, TRACK_SETTLE_MS);
   return [
     "$ErrorActionPreference='Stop'",
     "$q=[string][char]34",
@@ -68,12 +85,14 @@ export function trackerScript({
     "Add-Type -TypeDefinition $src",
     "[void][TftTrack]::Aware()",
     `$parent=${parent}`,
+    "$last=''; $fastUntil=[DateTime]::MinValue",
     "while($true){",
     "  if($parent -gt 0 -and -not (Get-Process -Id $parent -ErrorAction SilentlyContinue)){ break }",
     "  $line='N'",
     "  try { $c=[TftTrack]::Client(); if($c -ne $null){ $line='R '+$c[0]+' '+$c[1]+' '+$c[2]+' '+$c[3] } } catch { $line='N' }",
     "  [Console]::Out.WriteLine($line); [Console]::Out.Flush()",
-    `  Start-Sleep -Milliseconds ${every}`,
+    `  if($line -ne $last){ $last=$line; $fastUntil=[DateTime]::UtcNow.AddMilliseconds(${settle}) }`,
+    `  if([DateTime]::UtcNow -lt $fastUntil){ Start-Sleep -Milliseconds ${quick} } else { Start-Sleep -Milliseconds ${every} }`,
     "}",
   ].join("\n");
 }
@@ -134,6 +153,8 @@ export function createGameTracker({
   platform = process.platform,
   parentPid = process.pid,
   intervalMs = TRACK_INTERVAL_MS,
+  fastMs = TRACK_FAST_MS,
+  settleMs = TRACK_SETTLE_MS,
   restartBaseMs = 2000,
   restartMaxMs = 30000,
   stableMs = 10000,
@@ -199,7 +220,12 @@ export function createGameTracker({
   }
 
   function launch() {
-    const { file, args } = trackerCommand({ parentPid, intervalMs });
+    const { file, args } = trackerCommand({
+      parentPid,
+      intervalMs,
+      fastMs,
+      settleMs,
+    });
     let proc;
     try {
       proc = spawn(file, args, {

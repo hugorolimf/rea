@@ -25,13 +25,23 @@ import {
 } from "/v2/js/ui/glyphs.js";
 import { nameChip, richText, segments } from "/v2/js/ui/rich-text.js";
 import { wispsView } from "/v2/js/wisps.js";
+import { augOfferView } from "/v2/js/augs.js";
 import { calibrationHtml, mountCalibrate } from "./calibrate.mjs";
 import { createDraw } from "./draw.mjs";
+import { fitSummary, keepOutRects, stageFrame } from "./fit.mjs";
 import { anchorRects } from "./geometry.mjs";
 import { healthOf } from "./health.mjs";
 import { mountHelp } from "./help.mjs";
 import { buildHints } from "./hints.mjs";
-import { ELEMENT_IDS } from "./layout.mjs";
+import {
+  COPIED_TEXT,
+  COPY_ERROR_MS,
+  COPY_FLASH_MS,
+  editBannerHtml,
+  keysHtml,
+  teamCodeState,
+} from "./keys.mjs";
+import { ELEMENT_IDS, isFolded, setFolded } from "./layout.mjs";
 import {
   drawHintList,
   drawMarkers,
@@ -80,6 +90,8 @@ const deps = {
   partState: PART_STATE,
   buildStates,
   wispsView,
+  // Aprimoramentos: a mesma regra da seção do Ao vivo (oferta do GEP + ordem da análise).
+  augOfferView,
   // Lidos a cada desenho: o catálogo só existe depois de `setCatalog`.
   get catalogItems() {
     return getCatalog().items;
@@ -132,6 +144,12 @@ let mode = PANEL_MODE,
   };
 /** Prévias locais (arrasto, calibração) enquanto o host ainda não devolveu o valor salvo. */
 const preview = { layout: null, calibration: null };
+/**
+ * Adaptação ao tamanho do jogo do último desenho (`fitSummary`) e os elementos recolhidos por falta de espaço. É estado
+ * EFETIVO, só de apresentação: nunca vai para o host nem para o layout salvo.
+ */
+let fit = null,
+  collapsedNow = [];
 
 const sizeOf = () => ({ width: window.innerWidth, height: window.innerHeight });
 const integrated = () => mode.mode === "integrated";
@@ -160,16 +178,22 @@ const SECTIONS = {
   items: ["items"],
   builds: ["builds"],
   plan: ["plan"],
+  // Carrossel e aprimoramentos dividem o elemento: os dois são "escolha agora" e nunca acontecem na mesma rodada.
+  carousel: ["carousel", "augments"],
+  keys: ["keys"],
 };
 /** Ordem dos cartões no modo painel. */
 const PANEL_ORDER = [
   "bar",
   "message",
+  "carousel",
+  "augments",
   "hints",
   "roll",
   "items",
   "builds",
   "plan",
+  "keys",
 ];
 
 const elements = buildElements(stageEl);
@@ -197,19 +221,86 @@ function healthNow() {
   });
 }
 
+/* ---------- Atalhos e "Copiar comp" (keys.mjs) ---------- */
+
+/** Retorno do botão de copiar (`{ text, tone }`) enquanto vale; null fora disso. */
+let copyFlash = null,
+  copyFlashTimer = 0;
+
+/** A legenda fica aberta por este tempo na primeira exibição; depois o padrão é recolhida (`layout.keys.seen`). */
+const FIRST_SHOW_MS = 20000;
+let seenTimer = 0;
+
+/** Legenda de atalhos e botão de copiar; só com o host do Electron (numa aba comum não há atalhos nem cópia). */
+function paintKeys() {
+  const el = layoutNow().keys;
+  put(
+    $("keys"),
+    host
+      ? keysHtml({
+          shortcuts: mode.shortcuts,
+          folded: isFolded(el),
+          copy: teamCodeState(current.view),
+          flash: copyFlash,
+          esc,
+        })
+      : "",
+  );
+  // Primeira exibição: depois de um tempo aberta, recolhe e marca como vista (a escolha do jogador vale dali em diante).
+  if (host && gotMode && el && el.seen === false && !el.hidden && !seenTimer)
+    seenTimer = setTimeout(() => {
+      const now = layoutNow();
+      if (now.keys?.seen === false)
+        Promise.resolve()
+          .then(() => host.saveLayout?.(setFolded(now, "keys", true)))
+          .catch(() => {});
+    }, FIRST_SHOW_MS);
+}
+
+function flashCopy(text, tone, ms) {
+  clearTimeout(copyFlashTimer);
+  copyFlash = { text, tone };
+  paintKeys();
+  copyFlashTimer = setTimeout(() => {
+    copyFlash = null;
+    paintKeys();
+  }, ms);
+}
+
+/** Copia o código da comp exibida pelo processo principal; o botão e o atalho global passam os dois por aqui. */
+async function copyComp() {
+  const tc = teamCodeState(current.view);
+  if (!tc.code) return flashCopy(tc.reason, "warn", COPY_ERROR_MS);
+  try {
+    const r = await host?.copyTeamCode?.(tc.code);
+    if (r?.ok) flashCopy(COPIED_TEXT, "ok", COPY_FLASH_MS);
+    else flashCopy("Não foi possível copiar", "bad", COPY_ERROR_MS);
+  } catch {
+    flashCopy("Não foi possível copiar", "bad", COPY_ERROR_MS);
+  }
+}
+
 /** Cartões, lista de dicas e dock: o que depende dos dados e do modo, não da geometria. */
 function paintData() {
   const view = current.view;
   html.dataset.dim = view?.dim ? "1" : "0";
+  // Verbosidade mínima (padrão): leitura de relance, ícones e números; as frases vão para a dica do mouse e o "?".
+  const compact = mode.hints.verbosity === "minimal",
+    o = { compact };
   if (view) {
     ov.dataset.status = view.status;
     ov.dataset.dim = view.dim ? "1" : "0";
-    put($("bar"), draw.bar(view));
-    put($("message"), draw.message(view));
-    put($("roll"), draw.roll(view));
-    put($("items"), draw.items(view));
-    put($("builds"), draw.builds(view));
-    put($("plan"), draw.plan(view));
+    put($("bar"), draw.bar(view, o));
+    put($("message"), draw.message(view, o));
+    put($("carousel"), draw.carousel(view, o));
+    put($("augments"), draw.augments(view, o));
+    put($("roll"), draw.roll(view, o));
+    put($("items"), draw.items(view, o));
+    // Blocos que repetem o que já está na tela (formação inteira, plano completo): fora do painel compacto; no
+    // integrado eles já começam ocultos no layout e o jogador os liga no "?".
+    const extra = !compact || integrated();
+    put($("builds"), extra ? draw.builds(view) : "");
+    put($("plan"), extra ? draw.plan(view) : "");
   }
   if (current.error)
     put(
@@ -219,9 +310,19 @@ function paintData() {
   const k = stageScale(sizeOf(), mode.scale);
   put(
     $("hints"),
-    drawHintList(current.hints, { ...ui, settings: mode.hints, k }),
+    drawHintList(current.hints, {
+      ...ui,
+      settings: mode.hints,
+      k,
+      // Compacto com as marcas sobre o jogo: a lista não repete as dicas que já estão no alvo.
+      onlyUnanchored: compact && integrated() && mode.game.found,
+    }),
   );
-  put($("dock"), draw.dock({ health: healthNow(), mode, hasHost: !!host }));
+  put(
+    $("dock"),
+    draw.dock({ health: healthNow(), mode, hasHost: !!host, fit }),
+  );
+  paintKeys();
 }
 
 let helpPanel = null,
@@ -235,17 +336,37 @@ function paintStage() {
   const size = sizeOf(),
     k = stageScale(size, mode.scale);
   html.style.setProperty("--k", String(k));
-  applyLayout(elements, layoutNow(), size, { interactive: mode.interactive });
+  // A geometria do HUD existe sempre que o palco tem tamanho (serve às regiões vitais que os elementos não cobrem ao serem
+  // reposicionados); só as MARCAS ancoradas dependem de o jogo ter sido detectado.
+  const valid = size.width > 0 && size.height > 0;
+  const geometry = valid ? anchorRects(size, calibrationNow()) : null;
+  const { arrangement } = applyLayout(elements, layoutNow(), size, {
+    interactive: mode.interactive,
+    k,
+    keepOut: geometry ? keepOutRects(geometry) : [],
+    sticky: collapsedNow,
+  });
+  collapsedNow = arrangement.collapsed;
+  fit = fitSummary(size, {
+    dpr: window.devicePixelRatio,
+    userScale: mode.scale,
+    arrangement,
+  });
+  put(
+    $("dock"),
+    draw.dock({ health: healthNow(), mode, hasHost: !!host, fit }),
+  );
 
   // Sem o jogo detectado não há âncoras: só os elementos aparecem.
-  const found = mode.game.found && size.width > 0 && size.height > 0;
-  const rects = found ? anchorRects(size, calibrationNow()) : null;
+  const found = mode.game.found && valid;
+  const rects = found ? geometry : null;
   const placed =
     rects && !mode.calibrating
       ? placeMarkers(current.hints.hints, rects, size, {
           k,
           settings: mode.hints,
           measure,
+          avoid: Object.values(arrangement.rects),
         })
       : [];
   put($("markers"), drawMarkers(placed, { ...ui, settings: mode.hints, k }));
@@ -267,7 +388,8 @@ function paintStage() {
   }
 
   put($("fsbanner"), draw.banner(mode));
-  helpPanel?.render(mode, healthNow(), ui);
+  put($("editbanner"), editBannerHtml(mode, esc));
+  helpPanel?.render(mode, healthNow(), ui, fit);
 }
 
 function redrawAll() {
@@ -276,6 +398,8 @@ function redrawAll() {
   placeSections();
   paintData();
   paintStage();
+  // O botão "Copiar comp" e o de recolher a legenda podem ter mudado de lugar: o host precisa saber onde estão.
+  hit?.reportHot();
 }
 
 /** Recalcula o modelo de tela e as dicas a partir do último dado recebido. */
@@ -394,7 +518,8 @@ if (host) {
     getState: () => ({
       interactive: mode.interactive && integrated(),
       layout: layoutNow(),
-      stage: sizeOf(),
+      // O layout é fração do HUD 16:9 (não do palco): os gestos convertem px em fração por essas medidas.
+      stage: stageFrame(sizeOf()).hud,
     }),
     preview: (layout) => {
       setPreview("layout", layout);
@@ -417,16 +542,41 @@ if (host) {
   } catch (e) {
     console.error(e);
   }
+  // "Copiar comp" e recolher a legenda: clicáveis mesmo fora do modo interativo (regiões quentes, ver mountHitTest).
+  $("keys").addEventListener("click", (e) => {
+    const btn =
+      e.target instanceof Element ? e.target.closest("[data-act]") : null;
+    if (!btn || btn.disabled) return;
+    if (btn.dataset.act === "copy-comp") void copyComp();
+    else if (btn.dataset.act === "fold-keys") {
+      const next = setFolded(layoutNow(), "keys", !isFolded(layoutNow().keys));
+      setPreview("layout", next);
+      call("saveLayout", next);
+      paintKeys();
+    }
+  });
+  // Atalho global de copiar: o main pede e a página copia pelo mesmo caminho do botão (uma fonte só para o código).
+  try {
+    host.onCopyRequest?.(() => void copyComp());
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-/** Reposiciona quando o conteúdo ou a janela mudam de tamanho. */
+/**
+ * Reposiciona quando o conteúdo ou a janela mudam de tamanho. Os avisos de redimensionamento (a janela do jogo sendo
+ * arrastada pela borda gera uma rajada deles, mais os do ResizeObserver) são agrupados num único desenho curto; o
+ * último da rajada sempre acontece, então o resultado final é exato.
+ */
+const STAGE_COALESCE_MS = 24;
 let stageTimer = 0;
 const queueStage = () => {
   if (stageTimer) return;
   stageTimer = setTimeout(() => {
     stageTimer = 0;
     paintStage();
-  }, 0);
+    hit?.reportHot();
+  }, STAGE_COALESCE_MS);
 };
 window.addEventListener("resize", queueStage);
 if (typeof ResizeObserver === "function") {
