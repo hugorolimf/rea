@@ -52,6 +52,66 @@ function distance(a, b) {
   return row[b.length];
 }
 /**
+ * Resolve o texto lido de uma carta da loja para o id do campeão: `champions` é [{id, names:[...]}] com os nomes em cada
+ * idioma do cliente. Aceita o nome exato ou com poucos erros de OCR, desde que haja um único campeão mais próximo.
+ */
+export function championResolver(champions = []) {
+  const known = champions
+    .flatMap((c) => c.names.map((name) => ({ id: c.id, key: fold(name) })))
+    .filter((k) => k.key.length > 1);
+  return (text) => {
+    const key = fold(text);
+    if (key.length < 2) return null;
+    const exact = known.find((k) => k.key === key);
+    if (exact) return exact.id;
+    const limit = key.length <= 4 ? 1 : 2;
+    let best = null,
+      bestD = limit + 1,
+      tie = false;
+    for (const k of known) {
+      const d = distance(key, k.key);
+      if (d < bestD) {
+        bestD = d;
+        best = k.id;
+        tie = false;
+      } else if (d === bestD && k.id !== best) tie = true;
+    }
+    return best && !tie ? best : null;
+  };
+}
+
+/**
+ * Uma linha do leitor (screen-reader.ps1) em valores: o que o HUD mostrou naquele instante, sem memória entre leituras
+ * (o nível reconciliado, a retenção e o debounce do banco ficam em accept). Nulo = não lido, nunca zero. bank é a lista de
+ * espaços reconhecidos como estão (consumíveis inclusos), items a mesma sem consumíveis, shop as 5 cartas {text, id}
+ * (null = carta vazia) e removers a soma dos removedores empilhados.
+ */
+export function readFrame(event, { champion = () => null } = {}) {
+  const bank = Array.isArray(event.items)
+    ? event.items.filter((i) => typeof i === "string")
+    : null;
+  return {
+    gold: Number.isInteger(event.gold) ? event.gold : null,
+    level: Number.isInteger(event.level) ? event.level : null,
+    xp: typeof event.xp === "string" ? event.xp : null,
+    stage:
+      typeof event.stage === "string" && /^\d-\d$/.test(event.stage)
+        ? event.stage
+        : null,
+    shop: Array.isArray(event.shop)
+      ? event.shop.map((text) => {
+          const raw = typeof text === "string" ? text.trim() : "";
+          return raw ? { text: raw, id: champion(raw) } : null;
+        })
+      : null,
+    bank,
+    items: bank ? bank.filter((i) => !isConsumable(i)) : null,
+    unknownItems: Number.isInteger(event.unknownItems) ? event.unknownItems : 0,
+    removers: Number.isInteger(event.removers) ? event.removers : null,
+  };
+}
+
+/**
  * Cria o leitor; `candidates` é a lista [{id,file}] de ícones de item a reconhecer no banco.
  * `champions` é [{id,names:[...]}] com os nomes em cada idioma do cliente; usado para reconhecer a loja.
  * `options.launch` troca o `spawn` do leitor e `options.settleMs` o prazo do banco de itens (testes).
@@ -95,29 +155,7 @@ export function screenReader(
   }
   let augmentChoice = null,
     augmentMisses = 0;
-  const known = champions
-    .flatMap((c) => c.names.map((name) => ({ id: c.id, key: fold(name) })))
-    .filter((k) => k.key.length > 1);
-  // Aceita o nome exato ou com poucos erros de OCR, desde que haja um único campeão mais próximo.
-  function champion(text) {
-    const key = fold(text);
-    if (key.length < 2) return null;
-    const exact = known.find((k) => k.key === key);
-    if (exact) return exact.id;
-    const limit = key.length <= 4 ? 1 : 2;
-    let best = null,
-      bestD = limit + 1,
-      tie = false;
-    for (const k of known) {
-      const d = distance(key, k.key);
-      if (d < bestD) {
-        bestD = d;
-        best = k.id;
-        tie = false;
-      } else if (d === bestD && k.id !== best) tie = true;
-    }
-    return best && !tie ? best : null;
-  }
+  const champion = championResolver(champions);
   const script = path.join(root, "screen-reader.ps1"),
     candidatesPath = path.join(root, "../data/item-icon-candidates.json");
   let child = null,
@@ -172,15 +210,13 @@ export function screenReader(
     windowVisible = event.window === true;
     if (!windowVisible) return;
     const now = Date.now();
-    const read = {
-      gold: Number.isInteger(event.gold) ? event.gold : null,
-      level: Number.isInteger(event.level) ? event.level : null,
-      xp: typeof event.xp === "string" ? event.xp : null,
-      stage:
-        typeof event.stage === "string" && /^\d-\d$/.test(event.stage)
-          ? event.stage
-          : null,
-    };
+    const frame = readFrame(event, { champion }),
+      read = {
+        gold: frame.gold,
+        level: frame.level,
+        xp: frame.xp,
+        stage: frame.stage,
+      };
     // Nível: o número lido e o total do XP mostrado ("4/10" → 4) se conferem. Sem o número, o total diz o nível
     // (empate 2 ou 68 pelo último nível; XP menor que a leitura anterior com o mesmo total indica subida, 8 → 9). Com
     // os dois em conflito vale o plausível em relação ao último nível (ver reconcileLevel). Só o XP desta leitura
@@ -220,11 +256,7 @@ export function screenReader(
         augmentMisses = 0;
       }
     }
-    if (Array.isArray(event.shop))
-      shop = event.shop.map((text) => {
-        const raw = typeof text === "string" ? text.trim() : "";
-        return raw ? { text: raw, id: champion(raw) } : null;
-      });
+    if (frame.shop) shop = frame.shop;
     // Diagnóstico por espaço: melhor candidato (best) com a distância do 1º (d1) e a do melhor de outra família (d2); mean e
     // spread = brilho médio e desvio da assinatura (espaço vazio é escuro e liso). Não passa pelo debounce: é a leitura de agora.
     if (Array.isArray(event.bankDebug))
@@ -244,22 +276,21 @@ export function screenReader(
       bankGeometry = {
         mode: event.bankGeo.mode === "frame" ? "frame" : "assumed",
         x: number(event.bankGeo.x),
-        ncc: number(event.bankGeo.ncc),
-        contrast: number(event.bankGeo.contrast),
+        pitch: number(event.bankGeo.pitch),
+        hits: number(event.bankGeo.hits),
+        edge: number(event.bankGeo.edge),
         client:
           typeof event.bankGeo.client === "string"
             ? event.bankGeo.client
             : null,
       };
-    const unknown = Number.isInteger(event.unknownItems)
-      ? event.unknownItems
-      : 0;
-    if (!Array.isArray(event.items)) return;
+    const unknown = frame.unknownItems;
+    if (!frame.bank) return;
     // Espaços reconhecidos, na ordem do banco e repetidos como estão (dois itens iguais são dois espaços).
     // Espaços não reconhecidos não derrubam os reconhecidos: seguem contados em unknownItems.
-    const nextBank = event.items.filter((i) => typeof i === "string"),
-      next = nextBank.filter((i) => !isConsumable(i)),
-      nextRemovers = Number.isInteger(event.removers) ? event.removers : null;
+    const nextBank = frame.bank,
+      next = frame.items,
+      nextRemovers = frame.removers;
     // O debounce só recomeça quando a leitura do banco muda: outros campos mudando não adiam a aplicação.
     const key = JSON.stringify([nextBank, unknown, nextRemovers]);
     if (key === pendingItemsKey) return;

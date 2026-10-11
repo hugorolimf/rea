@@ -290,20 +290,25 @@ test(
         Math.abs(read.bankGeo.x - l.x) <= 2,
         `${l.name}: coluna em x=${read.bankGeo.x}, esperado ${l.x}`,
       );
+      // O 2º espaço é um Duplicador de Campeão (consumível): o ícone dos três tamanhos é o mesmo, vale o candidato do catálogo.
       assert.deepEqual(
         read.items,
-        ["DA_Consumable_ItemRemover", "DA_Component_GiantsBelt"],
+        [
+          "DA_Consumable_ItemRemover",
+          "DA_Consumable_LesserChampionDuplicator",
+          "DA_Component_GiantsBelt",
+        ],
         `${l.name}: ${JSON.stringify(read.bankDebug)}`,
       );
-      assert.equal(read.unknownItems, 1, l.name);
+      assert.equal(read.unknownItems, 0, l.name);
       // Diagnóstico ao vivo: por espaço, o melhor candidato, a distância do 1º e a do melhor de outra família.
       assert.equal(read.bankDebug.length, 10);
-      const unknown = read.bankDebug.find((s) => s.value === "?");
+      const recognized = read.bankDebug.find((s) => s.value !== "");
       assert.ok(
-        unknown.best &&
-          Number(unknown.d1) > 0 &&
-          Number(unknown.d2) >= Number(unknown.d1),
-        JSON.stringify(unknown),
+        recognized.best &&
+          Number(recognized.d1) > 0 &&
+          Number(recognized.d2) >= Number(recognized.d1),
+        JSON.stringify(recognized),
       );
       assert.ok(
         read.bankDebug.every(
@@ -337,7 +342,7 @@ test(
             /_?Radiant/.test(id) && family.has(id.replace(/_?Radiant/, "")),
         );
     assert.ok(
-      pairs.some((id) => id.endsWith('_Radiant')),
+      pairs.some((id) => id.endsWith("_Radiant")),
       "há radiante com sublinhado (DA_KrakensFury_Radiant) para testar",
     );
     assert.ok(

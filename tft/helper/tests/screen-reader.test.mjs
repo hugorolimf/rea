@@ -153,8 +153,9 @@ test("bankDebug e bankGeometry chegam ao status por espaço (números do script 
     bankGeo: {
       mode: "frame",
       x: 95,
-      ncc: "0.915",
-      contrast: "0.627",
+      pitch: "65.861",
+      hits: 9,
+      edge: "0.915",
       client: "0,0,2560,1351",
     },
   });
@@ -176,8 +177,9 @@ test("bankDebug e bankGeometry chegam ao status por espaço (números do script 
   assert.deepEqual(status.bankGeometry, {
     mode: "frame",
     x: 95,
-    ncc: 0.915,
-    contrast: 0.627,
+    pitch: 65.861,
+    hits: 9,
+    edge: 0.915,
     client: "0,0,2560,1351",
   });
   // Janela fechada ou leitor parado: sem diagnóstico velho.
