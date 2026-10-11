@@ -1,134 +1,99 @@
 @layer components {
-  /* Botão da célula "Meta" do HUD (era um link para a aba Comps): abre o modal da comp sugerida. */
-  button.goal-link {
-    justify-self: start;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--blue);
-    font-size: 11px;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-    &:hover {
-      text-decoration: underline;
-    }
-  }
+  /*
+   * Modal da comp sugerida (célula "Meta" do HUD, ui/comp-modal.js). Usa a base `.dlg` de components.css (fundo, borda,
+   * sombra, entrada animada, folha embaixo em tela estreita); aqui só o tamanho fixo e o conteúdo.
+   */
 
-  /* Com o modal aberto a página de trás não rola; a calha reservada evita o salto de largura. */
-  body:has(dialog.comp-modal[open]) .stage {
-    overflow: hidden;
-  }
+  /* (O botão da célula "Meta" do HUD que abre este modal, `.goal-link`, é estilizado em hud.css.) */
 
   /* Tamanho fixo: trocar de sugestão ou abrir "Builds e 3★" só rola o corpo, nada pula. */
   .comp-modal {
-    width: min(760px, calc(100vw - 32px));
-    max-width: none;
-    height: min(86vh, 820px);
-    max-height: none;
-    padding: 0;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: var(--bg);
-    color: var(--text);
-    box-shadow: 0 24px 80px oklch(0 0 0 / 0.55);
-    &::backdrop {
-      background: color-mix(in oklab, var(--bg), transparent 28%);
-      backdrop-filter: blur(3px);
-    }
-    &:focus-visible {
-      outline: none;
+    inline-size: min(760px, calc(100vw - 2 * var(--sp-4)));
+    block-size: min(86dvh, 820px);
+    @media (max-width: 640px) {
+      inline-size: 100vw;
+      block-size: 92dvh;
     }
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .comp-modal[open] {
-      animation: cm-in 0.18s ease-out;
-    }
-    @keyframes cm-in {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-    }
+  .cm-box {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    block-size: 100%;
   }
 
-  .cm-box {
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    height: 100%;
-  }
+  /* ============================================================ Cabeçalho: setas, título, fechar */
   .cm-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px 10px;
-    & h2 {
-      flex: 1;
-      min-width: 0;
-      font-size: 15px;
-      font-weight: 700;
-      &:focus-visible {
-        outline: none;
+    & h2:focus-visible {
+      outline: none;
+    }
+    & .btn-icon .i {
+      inline-size: 18px;
+      block-size: 18px;
+    }
+    @media (max-width: 640px) {
+      flex-wrap: wrap;
+      row-gap: var(--sp-2);
+      /* Título e fechar na primeira linha; as setas (alvos grandes) ocupam a segunda. */
+      & h2 {
+        flex: 1 1 0;
+        order: 1;
+      }
+      & .cm-close {
+        order: 2;
+      }
+      & .cm-pager {
+        flex: 1 1 100%;
+        order: 3;
+        justify-content: space-between;
       }
     }
   }
   .cm-pager {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
   }
   .cm-pos {
-    min-width: 5.5ch;
+    min-inline-size: 5.5ch;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
-  .cm-step,
-  .cm-close {
-    padding: 6px 8px;
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
-  }
 
-  /* Sugestões: uma pastilha por comp, com o carry em retrato e o score. */
+  /* ============================================================ Sugestões: uma aba por comp (carry em retrato + score) */
   .cm-tabs {
-    display: flex;
-    gap: 8px;
-    min-height: 46px;
-    padding: 0 18px 10px;
-    overflow-x: auto;
+    min-block-size: 52px;
+    padding: var(--sp-2) var(--sp-4);
     border-bottom: 1px solid var(--line-soft);
-  }
-  .cm-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 4px 10px 4px 5px;
-    border: 1px solid var(--line-soft);
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    &:hover {
-      border-color: var(--muted);
+    & > li {
+      flex: none;
     }
-    &[aria-current="true"] {
-      border-color: var(--go);
-      background: color-mix(in oklab, var(--go), var(--surface) 88%);
-      color: var(--text);
-    }
-    &[data-chosen] {
-      border-color: color-mix(in oklab, var(--amber), transparent 40%);
-      & .i {
-        width: 13px;
-        height: 13px;
-        color: var(--amber);
+    & > li > .cm-tab {
+      min-block-size: 36px;
+      padding: var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-1);
+      border-color: var(--line-soft);
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      &:hover {
+        border-color: var(--muted);
+      }
+      &[aria-current="true"] {
+        border-color: var(--go);
+        background: color-mix(in oklab, var(--go), var(--surface) 88%);
+        color: var(--text);
+      }
+      &[data-chosen] {
+        border-color: color-mix(in oklab, var(--amber), transparent 40%);
+        & .i {
+          inline-size: 13px;
+          block-size: 13px;
+          color: var(--amber);
+        }
+        &[aria-current="true"] {
+          border-color: var(--amber);
+        }
       }
     }
   }
@@ -136,44 +101,50 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ============================================================ Corpo: o cartão da comp, com rolagem própria */
   .cm-body {
-    min-height: 0;
-    padding: 14px 18px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    min-block-size: 0;
     scrollbar-gutter: stable;
-    scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    /* O anel de foco do teclado fica por dentro: por fora o diálogo (overflow oculto) o cortaria. */
+    &:focus-visible {
+      outline-offset: -3px;
+    }
   }
+  /* O corpo já é a superfície: o cartão perde moldura, sombra e preenchimento (e o recorte de itens fora da tela). */
   .cm-card > .comp {
+    padding: 0;
+    border: 0;
     background: transparent;
-    border-color: var(--line-soft);
-  }
-  .comp-traits {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .comp-trait {
-    font-size: 11px;
+    box-shadow: none;
+    content-visibility: visible;
   }
 
+  /* ============================================================ Rodapé: estado da escolha e ação */
   .cm-foot {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 8px 14px;
-    padding: 12px 18px 14px;
-    border-top: 1px solid var(--line-soft);
-    background: color-mix(in oklab, var(--surface), var(--bg) 40%);
+    gap: var(--sp-2) var(--sp-4);
+    background: var(--bg-sunken);
+    @media (max-width: 640px) {
+      grid-template-columns: 1fr 1fr;
+      padding-block-end: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+      & .cm-state {
+        grid-column: 1 / -1;
+      }
+      & .cm-act {
+        min-inline-size: 0;
+      }
+    }
   }
   .cm-state {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    min-height: 2.9em;
+    gap: var(--sp-2);
+    /* Duas linhas reservadas: a mensagem muda (escolhida, outra sugestão...) sem o corpo crescer e encolher. */
+    min-block-size: 2.9em;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-body);
     & b {
       color: var(--text);
     }
@@ -183,40 +154,22 @@
     }
   }
   .cm-all {
-    color: var(--blue);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
+    text-align: center;
+    text-decoration: underline;
+    text-underline-offset: 3px;
     white-space: nowrap;
-    &:hover {
-      text-decoration: underline;
+    @media (pointer: coarse) {
+      display: inline-grid;
+      align-items: center;
+      min-block-size: 40px;
     }
   }
   .cm-act {
-    min-width: 11.5em;
-    justify-content: center;
-    padding: 8px 16px;
-    font-size: 13px;
-  }
-  .cm-sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  @media (max-width: 560px) {
-    .comp-modal {
-      width: 100vw;
-      height: 100dvh;
-      border-radius: 0;
-    }
-    .cm-foot {
-      grid-template-columns: 1fr 1fr;
-    }
-    .cm-state {
-      grid-column: 1 / -1;
-    }
+    min-inline-size: 11.5em;
+    min-block-size: 38px;
+    padding-inline: var(--sp-4);
+    font-size: var(--fs-md);
   }
 }

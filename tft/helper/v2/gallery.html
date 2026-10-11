@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>TFT Compass · galeria do design system</title>
+<!-- Página estática: abre direto do disco (file://) ou pelo servidor; não chama a API. Imagens vêm de ../assets/ (relativo). -->
+<link rel="stylesheet" href="./css/tokens.css">
+<link rel="stylesheet" href="./css/base.css">
+<link rel="stylesheet" href="./css/components.css">
+<link rel="stylesheet" href="./css/rich.css">
+<style>
+  /* Só da galeria (nada daqui vai para o app). */
+  html, body { height: auto; }
+  body { padding: 0 var(--sp-5) var(--sp-8); }
+  .g-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-5); padding: var(--sp-3) 0; margin-bottom: var(--sp-5); border-bottom: 1px solid var(--line-soft); background: color-mix(in oklab, var(--bg), transparent 8%); backdrop-filter: blur(10px); }
+  .g-bar h1 { margin-inline-end: auto; font: 800 var(--fs-lg) var(--font-display); }
+  .g-nav { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); }
+  .g-nav a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+  main { max-width: 1100px; margin-inline: auto; }
+  section.g { margin-block: var(--sp-7); scroll-margin-top: 72px; }
+  section.g > p { margin-bottom: var(--sp-4); color: var(--muted); max-width: 70ch; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); }
+  .sw { display: grid; gap: 6px; font-size: var(--fs-xs); color: var(--muted); }
+  .sw i { display: block; height: 44px; border-radius: var(--r-sm); border: 1px solid var(--line); }
+  .sw b { color: var(--text); font-weight: 600; }
+  code { padding: 1px 5px; border-radius: var(--r-xs); background: var(--surface-2); font: 12px ui-monospace, Consolas, monospace; }
+  .demo { padding: var(--sp-4); border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--surface); }
+  .scale { display: grid; gap: var(--sp-2); }
+  .scale > div { display: flex; align-items: baseline; gap: var(--sp-4); }
+  .scale small { inline-size: 9ch; color: var(--faint); font-size: var(--fs-xs); }
+  .box { display: inline-block; background: var(--blue-fill); border-radius: var(--r-xs); }
+  .tip.is-demo { position: static; opacity: 1; display: inline-block; }
+  .toast.is-demo { animation: none; }
+  .focus-demo { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .focus-demo .fi { --tone: var(--go); display: inline-flex; align-items: center; gap: var(--sp-2); padding: 6px 12px 6px 8px; border: 1px solid color-mix(in oklab, var(--tone), transparent 55%); border-radius: var(--r-md); background: color-mix(in oklab, var(--tone), transparent 90%); line-height: 1.2; }
+  .focus-demo .fi[data-tone="amber"] { --tone: var(--amber); } .focus-demo .fi[data-tone="danger"] { --tone: var(--danger); } .focus-demo .fi[data-tone="wait"] { --tone: var(--muted); }
+  .focus-demo .fi .ic { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: color-mix(in oklab, var(--tone), transparent 82%); color: var(--tone); font-weight: 800; }
+  .focus-demo strong { display: block; font-size: var(--fs-md); } .focus-demo small { display: block; color: var(--muted); font-size: var(--fs-xs); }
+  .notice-demo { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--muted); font-size: var(--fs-sm); }
+  .notice-demo::before { content: ""; inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--tone, var(--muted)); }
+  dialog.dlg::backdrop { background: var(--scrim); }
+</style>
+</head>
+<body>
+<header class="g-bar">
+  <h1>TFT Compass · design system</h1>
+  <nav class="g-nav" aria-label="Seções da galeria">
+    <a href="#cores">Cores</a><a href="#tipografia">Tipografia</a><a href="#espaco">Espaço</a><a href="#botoes">Botões</a><a href="#chips">Chips e selos</a><a href="#retratos">Retratos</a><a href="#campos">Campos</a><a href="#cartoes">Cartões e estados</a><a href="#tabela">Tabela</a><a href="#dialogo">Diálogo</a><a href="#avisos">Dica e avisos</a>
+  </nav>
+  <div class="seg" id="g-theme" role="group" aria-label="Tema da galeria">
+    <button type="button" data-v="auto" aria-pressed="true">Sistema</button>
+    <button type="button" data-v="light" aria-pressed="false">Claro</button>
+    <button type="button" data-v="dark" aria-pressed="false">Escuro</button>
+  </div>
+</header>
+
+<main>
+  <section class="g" id="cores" aria-labelledby="h-cores">
+    <div class="section-head"><h2 id="h-cores">Cores</h2></div>
+    <p>Tokens em OKLCH com par claro/escuro (<code>light-dark()</code>). Texto, traço e contorno usam <code>--go</code> etc.; fundos sólidos usam <code>--go-fill</code> com <code>--on-fill</code> por cima.</p>
+    <div class="grid" id="g-colors"></div>
+  </section>
+
+  <section class="g" id="tipografia" aria-labelledby="h-tipo">
+    <div class="section-head"><h2 id="h-tipo">Tipografia</h2></div>
+    <div class="scale demo">
+      <div><small>--fs-2xs</small><span style="font-size:var(--fs-2xs)">Compre 2 peças do plano antes de rolar</span></div>
+      <div><small>--fs-xs</small><span style="font-size:var(--fs-xs)">Compre 2 peças do plano antes de rolar</span></div>
+      <div><small>--fs-sm</small><span style="font-size:var(--fs-sm)">Compre 2 peças do plano antes de rolar</span></div>
+      <div><small>--fs-md</small><span style="font-size:var(--fs-md)">Compre 2 peças do plano antes de rolar</span></div>
+      <div><small>--fs-lg</small><span style="font-size:var(--fs-lg)">Compre 2 peças do plano antes de rolar</span></div>
+      <div><small>--fs-xl</small><span style="font-size:var(--fs-xl)">Subir para o nível 8</span></div>
+      <div><small>--fs-2xl</small><span style="font-size:var(--fs-2xl);font-weight:700">4-2 · 58 de vida</span></div>
+      <div><small>--fs-hero</small><span style="font-size:var(--fs-hero);font-weight:800;font-family:var(--font-display)">3º lugar</span></div>
+      <div><small>eyebrow</small><span class="eyebrow">Rótulo em caixa alta</span></div>
+    </div>
+  </section>
+
+  <section class="g" id="espaco" aria-labelledby="h-espaco">
+    <div class="section-head"><h2 id="h-espaco">Espaço, raio e sombra</h2></div>
+    <div class="row demo">
+      <div class="row" aria-label="Escala de espaço"><span class="box" style="width:var(--sp-1);height:32px"></span><span class="box" style="width:var(--sp-2);height:32px"></span><span class="box" style="width:var(--sp-3);height:32px"></span><span class="box" style="width:var(--sp-4);height:32px"></span><span class="box" style="width:var(--sp-5);height:32px"></span><span class="box" style="width:var(--sp-6);height:32px"></span><span class="box" style="width:var(--sp-7);height:32px"></span><span class="box" style="width:var(--sp-8);height:32px"></span></div>
+      <span class="sw"><b>--sp-1…8</b>4 · 8 · 12 · 16 · 20 · 24 · 32 · 48 px</span>
+      <div class="row">
+        <span style="width:64px;height:48px;background:var(--surface-3);border-radius:var(--r-xs)"></span>
+        <span style="width:64px;height:48px;background:var(--surface-3);border-radius:var(--r-sm)"></span>
+        <span style="width:64px;height:48px;background:var(--surface-3);border-radius:var(--r-md)"></span>
+        <span style="width:64px;height:48px;background:var(--surface-3);border-radius:var(--r-lg)"></span>
+        <span style="width:64px;height:48px;background:var(--surface-3);border-radius:var(--r-pill)"></span>
+      </div>
+      <div class="row">
+        <span style="width:80px;height:48px;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-1)"></span>
+        <span style="width:80px;height:48px;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-2)"></span>
+        <span style="width:80px;height:48px;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-pop)"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="g" id="botoes" aria-labelledby="h-botoes">
+    <div class="section-head"><h2 id="h-botoes">Botões</h2></div>
+    <p>Uma ação principal sólida por tela (<code>btn-solid</code>); ações de apoio tingidas ou neutras; só ícone exige <code>aria-label</code>.</p>
+    <div class="row demo">
+      <button type="button" class="btn btn-solid">Escolher esta comp</button>
+      <button type="button" class="btn btn-go">Seguir esta comp</button>
+      <button type="button" class="btn">Liberar</button>
+      <button type="button" class="btn btn-quiet">Ver todas</button>
+      <button type="button" class="btn btn-danger">Desfazer escolha</button>
+      <button type="button" class="btn" disabled>Indisponível</button>
+      <button type="button" class="btn btn-sm">Copiar código</button>
+      <button type="button" class="btn btn-quiet btn-icon" aria-label="Fechar">✕</button>
+      <button type="button" class="link">link-botão</button>
+    </div>
+  </section>
+
+  <section class="g" id="chips" aria-labelledby="h-chips">
+    <div class="section-head"><h2 id="h-chips">Chips, selos, pílulas e teclas</h2></div>
+    <div class="row demo">
+      <span class="chip">neutro</span>
+      <span class="chip" data-tone="go">⇄ 2 trocas</span>
+      <span class="chip" data-tone="gold">Melhor comp</span>
+      <span class="chip" data-tone="amber">⏸ segurar</span>
+      <span class="chip" data-tone="blue">Fase 4-2</span>
+      <span class="chip" data-tone="violet">3★</span>
+      <span class="chip" data-tone="danger">sem ouro</span>
+      <span class="score" data-band="high" aria-label="Score 82">82</span>
+      <span class="score" data-band="mid" aria-label="Score 61">61</span>
+      <span class="score" data-band="low" aria-label="Score 34">34</span>
+      <span class="score" data-band="none" aria-label="Sem score">—</span>
+      <span class="tier tier-S">S</span><span class="tier tier-A">A</span><span class="tier tier-B">B</span><span class="tier">C</span>
+      <span class="pill" data-tone="ok">Conectado <span style="color:var(--muted)">dado há 4 s</span></span>
+      <span class="pill" data-tone="warn" data-pulse>Reconectando</span>
+      <span class="pill" data-tone="bad">Servidor indisponível</span>
+      <span class="pill">Conectando</span>
+      <kbd>M</kbd><kbd>Esc</kbd>
+    </div>
+  </section>
+
+  <section class="g" id="retratos" aria-labelledby="h-retratos">
+    <div class="section-head"><h2 id="h-retratos">Retratos de campeão e item</h2></div>
+    <p>O anel é a cor do custo (<code>--ring-c</code>). Sem imagem, o retrato mostra as iniciais. Imagens com <code>width</code>/<code>height</code>, <code>loading="lazy"</code> e <code>decoding="async"</code>.</p>
+    <div class="row demo">
+      <span class="pt" style="--s:44px;--ring-c:var(--cost-1)" data-i="Va" role="img" aria-label="Varus, custo 1"><img src="../assets/a1fc5c9303bd3ee9a34570cc.png" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+      <span class="pt" style="--s:44px;--ring-c:var(--cost-3)" data-i="Vi" role="img" aria-label="Vi, custo 3"><img src="../assets/11594f3383b777f9fe289f42.png" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+      <span class="pt" style="--s:44px;--ring-c:var(--cost-3)" data-i="Di" role="img" aria-label="Diana, custo 3"><img src="../assets/1d6b20b20ed8ce9db000acae.png" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+      <span class="pt" style="--s:44px;--ring-c:var(--cost-4)" data-i="Ap" role="img" aria-label="Aphelios, custo 4"><img src="../assets/59f5c41eab1b235d6ef9c118.png" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+      <span class="pt" style="--s:44px;--ring-c:var(--cost-5)" data-i="Xa" role="img" aria-label="Exemplo sem imagem, custo 5"></span>
+      <span class="pt is-done" style="--s:36px" data-i="Ni" role="img" aria-label="Concluído"><img src="../assets/e44fd0df0b49bd68982e368f.png" alt="" width="36" height="36" loading="lazy" decoding="async"></span>
+      <span class="pt is-pending" style="--s:36px" data-i="Xa" role="img" aria-label="Pendente"><img src="../assets/28d1570c0023948374d6b7e1.png" alt="" width="36" height="36" loading="lazy" decoding="async"></span>
+      <span class="pt pt-item" style="--s:32px" data-i="IE" role="img" aria-label="Infinity Edge"><img src="../assets/bd58f27cc1222ac4adac1bf3.png" alt="" width="32" height="32" loading="lazy" decoding="async"></span>
+      <span class="pt pt-item" style="--s:32px" data-i="LW" role="img" aria-label="Last Whisper"><img src="../assets/cfa8f762426c271938c775a9.png" alt="" width="32" height="32" loading="lazy" decoding="async"></span>
+      <span class="pt pt-item is-dashed" style="--s:32px" data-i="SV" role="img" aria-label="Spirit Visage, falta montar"><img src="../assets/daadbebfb194683c91fd5e9b.png" alt="" width="32" height="32" loading="lazy" decoding="async"></span>
+      <span class="pt pt-item" style="--s:32px" data-i="SU" role="img" aria-label="Item sem imagem"></span>
+    </div>
+    <p style="margin-top:var(--sp-3)">Dentro de uma frase: <span class="rt" data-kind="champion" style="--ring-c:var(--cost-4)"><span class="pt" style="--s:18px" data-i="Ap" aria-hidden="true"><img src="../assets/59f5c41eab1b235d6ef9c118.png" alt="" width="18" height="18" loading="lazy" decoding="async"></span><span class="rt-name">Aphelios</span></span> (hoje 2★) recebe <span class="rt" data-kind="item"><span class="pt pt-item" style="--s:18px" data-i="IE" aria-hidden="true"><img src="../assets/bd58f27cc1222ac4adac1bf3.png" alt="" width="18" height="18" loading="lazy" decoding="async"></span><span class="rt-name">Infinity Edge</span></span>. O nome fica só para leitor de tela.</p>
+  </section>
+
+  <section class="g" id="campos" aria-labelledby="h-campos">
+    <div class="section-head"><h2 id="h-campos">Campos e controles</h2></div>
+    <div class="row demo">
+      <input type="search" placeholder="Campeão, sinergia ou nome" aria-label="Buscar comp">
+      <label class="row" style="gap:var(--sp-2);color:var(--muted)">Ordenar <select><option>Score</option><option>Média</option><option>Top 4</option></select></label>
+      <div class="seg" role="group" aria-label="Estilo de nível"><button type="button" aria-pressed="true">Todas</button><button type="button" aria-pressed="false">Reroll</button><button type="button" aria-pressed="false">Padrão</button><button type="button" aria-pressed="false">Fast 8</button></div>
+      <label class="switch"><input type="checkbox" checked> Topo fixo</label>
+      <ul class="tabs" aria-label="Sugestões"><li><button type="button" aria-current="true">Rengar 82</button></li><li><button type="button">Vi 74</button></li><li><button type="button">Diana 61</button></li></ul>
+    </div>
+  </section>
+
+  <section class="g" id="cartoes" aria-labelledby="h-cartoes">
+    <div class="section-head"><h2 id="h-cartoes">Cartões, foco e estados</h2></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+      <div class="card"><b>Cartão</b><span style="color:var(--muted)">Superfície, borda suave e sombra 1.</span></div>
+      <div class="card" data-tone="go"><b>Tom go</b><span style="color:var(--muted)">Ação recomendada agora.</span></div>
+      <div class="card" data-tone="amber"><b>Tom amber</b><span style="color:var(--muted)">Atenção, decisão pendente.</span></div>
+      <div class="card" data-tone="danger"><b>Tom danger</b><span style="color:var(--muted)">Risco ou erro.</span></div>
+    </div>
+    <h3 class="eyebrow" style="margin:var(--sp-5) 0 var(--sp-2)">Foco agora (exemplo estático)</h3>
+    <div class="focus-demo">
+      <div class="fi" data-tone="go"><span class="ic" aria-hidden="true">$</span><span><strong>Comprar na loja</strong><small>2 peças do plano</small></span></div>
+      <div class="fi" data-tone="go"><span class="ic" aria-hidden="true">↑</span><span><strong>Subir de nível</strong><small>para 8 · 12g</small></span></div>
+      <div class="fi" data-tone="wait"><span class="ic" aria-hidden="true">⏸</span><span><strong>Não role</strong><small>economize</small></span></div>
+      <div class="fi" data-tone="amber"><span class="ic" aria-hidden="true">$</span><span><strong>Buscar peças</strong><small>4 peças</small></span></div>
+      <div class="fi" data-tone="danger"><span class="ic" aria-hidden="true">!</span><span><strong>Estabilizar</strong><small>vida baixa: role para segurar</small></span></div>
+    </div>
+    <h3 class="eyebrow" style="margin:var(--sp-5) 0 var(--sp-2)">Avisos da tela</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+      <div class="notice-demo" style="--tone:var(--blue)">Planejamento · leitura de há 42 s</div>
+      <div class="notice-demo" style="--tone:var(--amber);color:var(--amber)">Snapshot de outro jogo: não use como decisão ao vivo.</div>
+      <div class="notice-demo" style="--tone:var(--danger);color:var(--text)">Sem resposta do servidor do helper.</div>
+    </div>
+    <h3 class="eyebrow" style="margin:var(--sp-5) 0 var(--sp-2)">Estados vazio e erro</h3>
+    <div class="row" style="align-items:flex-start">
+      <section class="state"><svg class="i" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 13h4l1.5 2.5h5L16 13h4M4 13l2.5-8h11L20 13v6H4v-6Z"/></svg><h3>Nenhuma partida para analisar</h3><p>Quando o TFT gravar o primeiro tabuleiro, as decisões aparecem aqui.</p></section>
+      <section class="state" data-tone="danger"><svg class="i" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4 3 20h18L12 4Zm0 6v5m0 3v.01"/></svg><h3>Sem leitura do servidor</h3><p>A análise continua nele; a tela volta sozinha.</p><button type="button" class="btn btn-go">Tentar de novo</button></section>
+    </div>
+    <h3 class="eyebrow" style="margin:var(--sp-5) 0 var(--sp-2)">Carregando</h3>
+    <div class="demo" style="display:grid;gap:var(--sp-2)"><div class="skeleton-line" style="width:60%"></div><div class="skeleton-line" style="width:85%"></div><div class="skeleton-line" style="width:40%"></div></div>
+  </section>
+
+  <section class="g" id="tabela" aria-labelledby="h-tabela">
+    <div class="section-head"><h2 id="h-tabela">Tabela</h2></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <caption>Itens por categoria (exemplo)</caption>
+      <thead><tr><th scope="col">Item</th><th scope="col" data-num>Média</th><th scope="col" data-num>Top 4</th><th scope="col">Tier</th></tr></thead>
+      <tbody>
+        <tr><th scope="row" style="text-align:start;font-weight:600"><span class="pt pt-item" style="--s:24px;vertical-align:middle;margin-inline-end:8px" data-i="IE" role="img" aria-label="Infinity Edge"><img src="../assets/bd58f27cc1222ac4adac1bf3.png" alt="" width="24" height="24" loading="lazy" decoding="async"></span><span class="sr">Infinity Edge</span></th><td data-num>4,12</td><td data-num>58,3%</td><td><span class="tier tier-S">S</span></td></tr>
+        <tr><th scope="row" style="text-align:start;font-weight:600"><span class="pt pt-item" style="--s:24px;vertical-align:middle;margin-inline-end:8px" data-i="LW" role="img" aria-label="Last Whisper"><img src="../assets/cfa8f762426c271938c775a9.png" alt="" width="24" height="24" loading="lazy" decoding="async"></span><span class="sr">Last Whisper</span></th><td data-num>4,31</td><td data-num>54,0%</td><td><span class="tier tier-A">A</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="g" id="dialogo" aria-labelledby="h-dlg">
+    <div class="section-head"><h2 id="h-dlg">Diálogo</h2></div>
+    <p><code>&lt;dialog class="dlg"&gt;</code> com <code>showModal()</code>: foco preso, Esc e fundo inerte nativos; abaixo de 640 px vira folha embaixo.</p>
+    <button type="button" class="btn btn-go" id="g-open">Abrir diálogo de exemplo</button>
+    <dialog class="dlg" id="g-dlg" aria-labelledby="g-dlg-title">
+      <div class="dlg-box">
+        <header class="dlg-head"><h2 id="g-dlg-title">Comp sugerida agora</h2><button type="button" class="btn btn-quiet btn-icon" data-close aria-label="Fechar">✕</button></header>
+        <div class="dlg-body"><p>Corpo com rolagem própria. O cabeçalho e o rodapé ficam fixos.</p><p style="color:var(--muted)">Escolher fixa esta comp no Ao vivo até você desfazer ou a partida acabar.</p></div>
+        <footer class="dlg-foot"><button type="button" class="btn" data-close>Cancelar</button><button type="button" class="btn btn-solid" data-close>Escolher esta comp</button></footer>
+      </div>
+    </dialog>
+  </section>
+
+  <section class="g" id="avisos" aria-labelledby="h-avisos">
+    <div class="section-head"><h2 id="h-avisos">Dica e aviso temporário</h2></div>
+    <p>No app, qualquer elemento com <code>title="…"</code> ganha esta dica (hover, foco por teclado e toque longo; Esc fecha). O aviso temporário (<code>shell.toast</code>) tem ação opcional; use <code>shell.announce</code> para leitores de tela.</p>
+    <div class="row demo">
+      <span class="tip is-demo" role="tooltip">Aphelios 2★<br>Na loja: compre 1 (#3)</span>
+      <div class="toast is-demo"><span>Nova versão do app disponível.</span><button type="button" class="btn btn-go">Atualizar</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  // Script clássico (não módulo): a galeria funciona aberta direto do disco, sem servidor.
+  (function () {
+    var tokens = [
+      ["--bg", "fundo"], ["--surface", "superfície"], ["--surface-2", "superfície 2"], ["--surface-3", "superfície 3"],
+      ["--line", "linha"], ["--text", "texto"], ["--muted", "texto 2"], ["--faint", "texto 3"],
+      ["--go", "go (texto)"], ["--amber", "amber"], ["--violet", "violet"], ["--blue", "blue"], ["--gold", "gold"], ["--danger", "danger"],
+      ["--go-fill", "go (fundo)"], ["--amber-fill", "amber (fundo)"], ["--blue-fill", "blue (fundo)"], ["--gold-fill", "gold (fundo)"],
+      ["--cost-1", "custo 1"], ["--cost-2", "custo 2"], ["--cost-3", "custo 3"], ["--cost-4", "custo 4"], ["--cost-5", "custo 5"]
+    ];
+    document.getElementById("g-colors").innerHTML = tokens.map(function (t) {
+      return '<div class="sw"><i style="background:var(' + t[0] + ')"></i><span><b>' + t[1] + "</b><br><code>" + t[0] + "</code></span></div>";
+    }).join("");
+    var root = document.documentElement, group = document.getElementById("g-theme");
+    group.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-v]"); if (!b) return;
+      if (b.dataset.v === "auto") delete root.dataset.theme; else root.dataset.theme = b.dataset.v;
+      Array.prototype.forEach.call(group.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    });
+    var dlg = document.getElementById("g-dlg");
+    document.getElementById("g-open").addEventListener("click", function () { dlg.showModal(); });
+    dlg.addEventListener("click", function (e) { if (e.target === dlg || e.target.closest("[data-close]")) dlg.close(); });
+  })();
+</script>
+</body>
+</html>

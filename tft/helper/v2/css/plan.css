@@ -1,140 +1,171 @@
+/*
+ * Plano em andamento (ui/plan.js): checklist do que já foi conquistado e do que falta (peças, itens, aprimoramentos,
+ * nível e ouro). Vive na coluna "Formação" do Ao vivo: de ~300 px (janela ao lado do jogo) até a largura de uma coluna larga.
+ */
 @layer components {
-  /* Plano em andamento: checklist do que já foi conquistado e do que falta. */
-  .plan-sec h4 {
-    margin: 14px 0 6px;
-    color: var(--faint);
-    font-size: 10px;
+  .plan-sub {
+    margin: var(--sp-4) 0 var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-xs);
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
   }
+
+  /* Título da comp, desde quando e o medidor do plano. */
   .plan-head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: baseline;
-    gap: 2px 12px;
+    gap: 2px var(--sp-3);
     & h3 {
-      font-size: 15px;
-      font-weight: 700;
+      font-size: var(--fs-lg);
+      font-weight: 750;
       line-height: 1.25;
+      text-wrap: balance;
     }
     & small {
-      color: var(--faint);
-      font-size: 11px;
+      color: var(--muted);
+      font-size: var(--fs-xs);
     }
   }
   .plan-meter,
   .plan-bar {
     position: relative;
     display: block;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--line-soft);
+    block-size: 6px;
     overflow: hidden;
+    border-radius: var(--r-pill);
+    background: var(--line-soft);
     & i {
       position: absolute;
       inset: 0;
       border-radius: inherit;
       background: var(--go);
-      transform-origin: left;
       transform: scaleX(var(--p, 0));
+      transform-origin: left;
       transition: transform var(--settle-ms) var(--settle-ease);
     }
   }
   .plan-meter {
     grid-column: 1 / -1;
-    margin-top: 8px;
+    margin-top: var(--sp-2);
   }
   .plan-bar {
-    width: 44px;
+    inline-size: 44px;
+    block-size: 4px;
     & i {
       background: var(--amber);
     }
   }
+
+  /* Desafiante ainda não confirmado: o plano atual segue até confirmar. */
   .plan-challenger {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    margin-top: 10px;
-    padding: 8px 10px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid color-mix(in oklab, var(--amber), transparent 55%);
-    border-radius: 10px;
+    border-radius: var(--r-md);
+    background: color-mix(in oklab, var(--amber), transparent 92%);
     color: var(--amber);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     line-height: 1.4;
     & .i {
       flex: none;
-      width: 14px;
-      height: 14px;
-      margin-top: 1px;
+      inline-size: 14px;
+      block-size: 14px;
+      margin-top: 2px;
     }
   }
-  .plan-next ol {
-    display: grid;
-    gap: 4px;
-    padding-left: 18px;
-    color: var(--text);
-    font-size: 12px;
-    list-style: decimal;
-    & li::marker {
-      color: var(--faint);
-    }
-    & li:first-child {
+
+  /* Próximo passo: o que fazer agora, em destaque; os seguintes recuam. */
+  .plan-next {
+    margin-top: var(--sp-4);
+    padding: var(--sp-3);
+    border: 1px solid color-mix(in oklab, var(--go), transparent 60%);
+    border-radius: var(--r-md);
+    background: color-mix(in oklab, var(--go), transparent 91%);
+    & .plan-sub {
+      margin: 0 0 var(--sp-2);
       color: var(--go);
-      font-weight: 600;
+    }
+    & ol {
+      display: grid;
+      gap: var(--sp-1);
+      padding-inline-start: var(--sp-5);
+      font-size: var(--fs-sm);
+      list-style: decimal;
+      & li::marker {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      & li:first-child {
+        font-size: var(--fs-md);
+        font-weight: 700;
+      }
     }
   }
+
+  /* Peças e itens: uma linha por entrada, com a situação em ícone e em texto. */
   .plan-list {
     display: grid;
-    gap: 4px;
+    gap: var(--sp-1);
   }
   .plan-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: 10px;
-    padding: 5px 8px;
-    border-radius: 10px;
+    gap: var(--sp-3);
+    padding: 6px var(--sp-2);
+    border-radius: var(--r-sm);
     &:not(:has(.plan-bar)) {
       grid-template-columns: auto minmax(0, 1fr) auto;
     }
     & .plan-main {
       display: grid;
-      min-width: 0;
+      min-inline-size: 0;
       & b {
         overflow: hidden;
-        font-size: 13px;
+        font-size: var(--fs-md);
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       & small {
         color: var(--muted);
-        font-size: 11px;
+        font-size: var(--fs-xs);
+        line-height: 1.5;
       }
     }
     & .plan-mark {
       display: grid;
       place-items: center;
-      width: 20px;
-      height: 20px;
-      color: var(--faint);
+      inline-size: 22px;
+      block-size: 22px;
+      border-radius: 50%;
+      background: var(--surface-3);
+      color: var(--muted);
       & .i {
-        width: 14px;
-        height: 14px;
+        inline-size: 13px;
+        block-size: 13px;
       }
     }
     &[data-status="done"],
     &[data-status="built"] {
-      background: color-mix(in oklab, var(--go), var(--surface) 93%);
+      background: color-mix(in oklab, var(--go), transparent 91%);
       & .plan-mark {
-        color: var(--go);
+        background: var(--go-fill);
+        color: var(--on-fill);
       }
     }
     &[data-status="ready"] .plan-mark,
     &[data-status="move"] .plan-mark {
+      background: color-mix(in oklab, var(--go), transparent 80%);
       color: var(--go);
     }
     &[data-status="partial"] .plan-mark {
+      background: color-mix(in oklab, var(--amber), transparent 80%);
       color: var(--amber);
     }
     &[data-lost] small {
@@ -143,32 +174,33 @@
   }
   .plan-carry {
     color: var(--gold);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-style: normal;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    font-weight: 800;
+    letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
   }
+
+  /* Aprimoramentos do plano: 2-1, 3-2 e 4-2. */
   .plan-augs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
+    gap: var(--sp-2);
     & li {
       display: grid;
+      align-content: start;
       gap: 2px;
-      padding: 6px 8px;
+      padding: var(--sp-2);
       border: 1px dashed var(--line);
-      border-radius: 10px;
-      color: var(--faint);
-      font-size: 11px;
+      border-radius: var(--r-md);
+      color: var(--muted);
+      font-size: var(--fs-xs);
       & b {
-        font-size: 10px;
-        letter-spacing: 0.08em;
+        font-size: var(--fs-2xs);
+        letter-spacing: var(--tracking-caps);
       }
       & span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
       &[data-status="done"] {
         border-style: solid;
@@ -178,50 +210,61 @@
       &[data-status="now"] {
         border-style: solid;
         border-color: color-mix(in oklab, var(--go), transparent 50%);
+        background: color-mix(in oklab, var(--go), transparent 91%);
         color: var(--go);
+        font-weight: 700;
       }
     }
   }
+
+  /* Nível e ouro do plano. */
   .plan-state {
     display: grid;
-    gap: 4px;
-    margin-top: 10px;
+    gap: var(--sp-1);
+    margin-top: var(--sp-3);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     & li {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--sp-2);
     }
     & .i {
-      width: 14px;
-      height: 14px;
+      inline-size: 14px;
+      block-size: 14px;
       color: var(--faint);
     }
     & li[data-status="done"] .i {
       color: var(--go);
     }
   }
+
+  /* O que mudou (o <details> persiste entre as leituras: aberto, continua aberto). */
   .plan-changes {
-    margin-top: 12px;
+    margin-top: var(--sp-3);
     color: var(--muted);
-    font-size: 11px;
-    & summary {
+    font-size: var(--fs-xs);
+    & > summary {
+      min-block-size: 32px;
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 600;
       cursor: pointer;
-      color: var(--faint);
     }
     & ul {
       display: grid;
-      gap: 3px;
-      margin-top: 6px;
+      gap: var(--sp-1);
+      margin-top: var(--sp-1);
+      line-height: 1.5;
     }
     & b {
-      color: var(--faint);
+      color: var(--text);
     }
   }
-  @container stage (max-width: 520px) {
-    .plan-augs {
-      grid-template-columns: minmax(0, 1fr);
+  @media (pointer: coarse) {
+    .plan-changes > summary {
+      min-block-size: 40px;
     }
   }
 }

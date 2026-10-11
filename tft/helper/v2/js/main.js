@@ -10,9 +10,14 @@ import {
   recommendPayload,
   subscribe,
 } from "./api.js";
+import { connectionView, retryDelay } from "./connection.js";
 import { flip, publishMotion, reducedMotion } from "./dom.js";
+import { focusView } from "./focus.js";
 import { goalStore, matchKeyOf, swapStore } from "./comps.js";
 import { buildModel } from "./model.js";
+import { createPrefs, safeStorage } from "./prefs.js";
+import { canRegister, registerServiceWorker } from "./pwa.js";
+import { documentTitle, hashFor, parseHash } from "./router.js";
 import { wispsView } from "./wisps.js";
 import { bankReading } from "./items.js";
 import { equippedBy } from "./comp-items.js";
@@ -26,18 +31,25 @@ import { mountEnded } from "./ui/ended.js";
 import { mountInventory } from "./ui/inventory.js";
 import { mountChampItems } from "./ui/champ-items.js";
 import { mountContest } from "./ui/contest.js";
+import { mountFocusBar } from "./ui/focus-bar.js";
 import { mountHud } from "./ui/hud.js";
 import { mountPanel } from "./ui/panel.js";
+import { mountShell } from "./ui/shell.js";
 import { mountSteps } from "./ui/steps.js";
 import { mountSubs } from "./ui/subs.js";
 import { mountAugs } from "./ui/augs.js";
 import { mountPlan } from "./ui/plan.js";
+import { mountTooltips } from "./ui/tooltip.js";
 import { planView } from "./plan.js";
 import { augStore } from "./augs.js";
 
 const $ = (id) => document.getElementById(id);
 const app = $("app"),
   notice = $("notice");
+
+// Armazenamento que nunca lança (localStorage bloqueado vira memória) e as preferências do app (tema, movimento...).
+const storage = safeStorage(),
+  prefs = createPrefs(storage);
 
 publishMotion();
 reducedMotion.addEventListener("change", () => publishMotion());
@@ -53,6 +65,16 @@ document.addEventListener(
   },
   true,
 );
+
+/* ---------- Casca: navegação, tema, conexão, atalhos, dicas ---------- */
+const shell = mountShell({
+  prefs,
+  persistent: storage.persistent,
+  goTo: (view) => (location.hash = hashFor(view)),
+  onMeta: (trigger) => void openGoalModal(trigger),
+});
+mountTooltips();
+const focusBar = mountFocusBar($("focus"));
 
 const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
   board = mountBoard($("board"), $("traits"), {
@@ -151,20 +173,8 @@ const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
   }),
   // Modal da célula "Meta" do HUD: vê a comp sugerida (e as outras sugestões) e a escolhe pelo mesmo caminho da aba Comps.
   compModal = mountCompModal({ onPick: pickComp, onRelease: releaseComp });
-// Comp fixada e aprimoramentos, por partida; sem localStorage (bloqueado), valem só com a página aberta.
-const memory = new Map(),
-  storage = (() => {
-    try {
-      return localStorage;
-    } catch {
-      return {
-        getItem: (k) => memory.get(k) ?? null,
-        setItem: (k, v) => memory.set(k, v),
-        removeItem: (k) => memory.delete(k),
-      };
-    }
-  })(),
-  goals = goalStore(storage),
+// Comp fixada e aprimoramentos, por partida (em `storage`: sem localStorage valem só com a página aberta).
+const goals = goalStore(storage),
   autoSwaps = swapStore(storage),
   augPicks = augStore(storage);
 
@@ -196,6 +206,57 @@ const emblemsOf = (rec) =>
   (rec?.preview ?? rec?.recommendations?.[0])?.emblems ?? [];
 const placeText = (p) => (p >= 1 ? `${p}º lugar` : "colocação não observada");
 
+/* ---------- Conexão com o servidor e idade do dado ---------- */
+// `okAt`: última leitura de /api/state que deu certo; `failures`: leituras seguidas sem resposta (recuo do laço);
+// `sse`: estado do fluxo de avisos; `ageSeconds`: idade do dado que o servidor informou nessa leitura.
+const net = {
+  okAt: null,
+  failures: 0,
+  error: null,
+  sse: "unknown",
+  ageSeconds: null,
+  live: false,
+  nextAt: null,
+};
+function drawConnection() {
+  shell.setConnection(
+    connectionView({
+      now: Date.now(),
+      okAt: net.okAt,
+      failures: net.failures,
+      error: net.error,
+      networkOnline: navigator.onLine,
+      sse: net.sse,
+      ageSeconds: net.ageSeconds,
+      live: net.live,
+      retryInMs: net.nextAt ? Math.max(0, net.nextAt - Date.now()) : null,
+    }),
+  );
+}
+setInterval(() => !document.hidden && drawConnection(), 2000);
+addEventListener("online", () => {
+  drawConnection();
+  void refresh();
+});
+addEventListener("offline", drawConnection);
+
+/* ---------- Foco agora: aviso educado para leitor de tela quando a decisão urgente muda ---------- */
+let focusSig = null,
+  endedText = null; // último resultado de partida anunciado
+function announceFocus(view) {
+  const urgent = (view?.items ?? []).filter(
+    (i) => ["shop", "level", "roll"].includes(i.id) && i.tone !== "wait",
+  );
+  const sig = urgent.map((i) => `${i.id}:${i.label}:${i.detail}`).join("|");
+  if (sig === focusSig) return;
+  const first = focusSig === null;
+  focusSig = sig;
+  if (!first && urgent.length)
+    shell.announce(
+      `Agora: ${urgent.map((i) => `${i.label}, ${i.detail}`).join(". ")}`,
+    );
+}
+
 function render(model) {
   const { status } = model;
   // Partida encerrada: o resultado substitui as ações da partida que acabou até a próxima começar.
@@ -208,12 +269,16 @@ function render(model) {
         : model.plan
           ? "ready"
           : "empty";
+  net.live = !!status.live;
   const lastMatch = status.lastMatch;
   $("waiting-last").textContent =
     status.waiting && lastMatch
       ? `Partida anterior: ${placeText(lastMatch.placement)}.`
       : "";
   endedView.update({ status, rec: last?.rec });
+  const focus = status.replay ? null : focusView(model);
+  focusBar.update(focus);
+  announceFocus(focus);
   flip($("stage"), () => {
     hud.update(model);
     board.update(model.plan);
@@ -290,23 +355,26 @@ function render(model) {
     // Partida passada: mesma tela do Ao vivo com os tabuleiros finais; o link volta para a partida de agora.
     notice.hidden = false;
     notice.dataset.kind = "replay";
-    notice.innerHTML = `Revendo partida · ${placeText(status.replay.placement)} · tabuleiros finais <a href="#">Voltar ao vivo</a>`;
+    notice.innerHTML = `Revendo partida · ${placeText(status.replay.placement)} · tabuleiros finais <a href="${hashFor("live")}">Voltar ao vivo</a>`;
   } else if (Date.now() - goalLostAt < 10000)
     showNotice(
       "warn",
       "A comp fixada saiu da lista de meta atualizada; voltando às sugestões automáticas.",
     );
   else if (status.waiting) showNotice("", "");
-  else if (status.ended)
-    showNotice(
-      "result",
-      status.placement
-        ? `Partida encerrada · ${placeText(status.placement)}${status.placement <= 4 ? " · top 4" : ""}. Registrada no histórico.`
-        : status.awaitingFinal
-          ? "Partida encerrada para o Hero. Aguardando o tabuleiro final para registrar a colocação."
-          : "Partida encerrada para o Hero.",
-    );
-  else if (status.sameGame === false)
+  else if (status.ended) {
+    const text = status.placement
+      ? `Partida encerrada · ${placeText(status.placement)}${status.placement <= 4 ? " · top 4" : ""}. Registrada no histórico.`
+      : status.awaitingFinal
+        ? "Partida encerrada para o Hero. Aguardando o tabuleiro final para registrar a colocação."
+        : "Partida encerrada para o Hero.";
+    showNotice("result", text);
+    // O cartão de resultado esconde a faixa de aviso: o leitor de tela ouve o resultado uma vez por mudança.
+    if (text !== endedText) {
+      endedText = text;
+      shell.announce(text);
+    }
+  } else if (status.sameGame === false)
     showNotice("warn", "Snapshot de outro jogo: não use como decisão ao vivo.");
   else if (!status.live)
     showNotice(
@@ -327,6 +395,7 @@ $("copy-code").addEventListener("click", async (e) => {
   try {
     await navigator.clipboard.writeText(b.dataset.code);
     label.textContent = "Copiado";
+    shell.announce("Código da equipe copiado");
   } catch {
     label.textContent = "Não copiou";
   }
@@ -354,14 +423,19 @@ addEventListener("keydown", (e) => {
   }
 });
 
-/* ---------- Visões: Ao vivo, Comps e Histórico ---------- */
+/* ---------- Telas: Ao vivo, Comps, Itens e Histórico (roteamento por hash, router.js) ---------- */
 let liveTitle = "TFT Compass",
   goalLostAt = 0,
   historyStale = true,
   compsData = null,
   compsAt = 0;
-const VIEWS = { "#historico": "history", "#comps": "comps", "#itens": "items" },
-  TITLES = { history: "Histórico", comps: "Escolher comp", items: "Itens" };
+// Cada tela é uma seção do palco; só a ativa aparece.
+const VIEW_NODES = {
+  live: "view-live",
+  comps: "comps",
+  items: "items",
+  history: "history",
+};
 // Tier de itens: muda só quando a cópia de meta é renovada no servidor; relê ao abrir, no máximo a cada 10 min.
 let itemsAt = 0;
 async function showItems() {
@@ -373,11 +447,9 @@ async function showItems() {
     itemsView.error(e.message);
   }
 }
-const view = () => VIEWS[location.hash] ?? "live";
-const setTitle = () =>
-  (document.title = TITLES[view()]
-    ? `${TITLES[view()]} · TFT Compass`
-    : liveTitle);
+const view = () => parseHash(location.hash).view;
+const replayOf = () => parseHash(location.hash).replay;
+const setTitle = () => (document.title = documentTitle(view(), liveTitle));
 // Dados dos cartões de comp (aba Comps e modal do HUD): as comps de meta, o encaixe da partida, o banco lido da tela e a
 // comp fixada. `compsData` precisa estar carregado.
 function compCardsData() {
@@ -434,7 +506,7 @@ function pickComp(id, { leave = false } = {}) {
   if (replayOf()) return; // partida revista: a escolha valeria para a partida de agora
   goals.set(matchKeyOf(latestState), id);
   lastKey = "";
-  if (leave) location.hash = ""; // a escolha vale para o Ao vivo: volta para ele
+  if (leave) location.hash = hashFor("live"); // a escolha vale para o Ao vivo: volta para ele
   drawCompModal(); // o estado "escolhida" aparece já, sem esperar a análise
   void refresh();
 }
@@ -459,7 +531,7 @@ async function openGoalModal(trigger) {
   try {
     await ensureComps();
   } catch {
-    location.hash = "#comps"; // sem a lista de meta o modal não tem o que mostrar: a aba Comps mostra o erro
+    location.hash = hashFor("comps"); // sem a lista de meta o modal não tem o que mostrar: a aba Comps mostra o erro
     return;
   }
   if (!latestState) return;
@@ -476,20 +548,31 @@ async function showHistory() {
 }
 function route() {
   const v = view();
-  app.dataset.view = v;
-  $("history").hidden = v !== "history";
-  $("comps").hidden = v !== "comps";
-  $("items").hidden = v !== "items";
-  for (const a of document.querySelectorAll(".rail .nav"))
-    if (a.dataset.view === v) a.setAttribute("aria-current", "page");
-    else a.removeAttribute("aria-current");
+  shell.setView(v);
+  for (const [id, node] of Object.entries(VIEW_NODES))
+    $(node).hidden = id !== v;
   setTitle();
   if (v === "history" && historyStale) void showHistory();
   if (v === "comps") void showComps();
   if (v === "items") void showItems();
 }
 addEventListener("hashchange", route);
-const replayOf = () => /^#partida\/(\d+)$/.exec(location.hash)?.[1] ?? null;
+// "Tentar de novo" dos estados de erro das telas (Comps, Itens, Histórico): cada tela pede a releitura pelo evento.
+document.addEventListener("tft:retry", (e) => {
+  const v = e.detail?.view;
+  if (v === "comps") {
+    compsAt = 0;
+    void showComps();
+  }
+  if (v === "items") {
+    itemsAt = 0;
+    void showItems();
+  }
+  if (v === "history") {
+    historyStale = true;
+    void showHistory();
+  }
+});
 // Entrar ou sair de uma partida revista troca o que o Ao vivo mostra: recarrega na hora.
 addEventListener("hashchange", () => {
   if (view() !== "live") return;
@@ -503,7 +586,16 @@ let busy = false,
   lastKey = "",
   last = null,
   latestState = null,
+  catalogReady = false,
   matchId; // partida exibida; quando muda, nada da anterior é reaproveitado
+
+// O catálogo (ícones, nomes, sinergias) é carregado uma vez; se o servidor estava parado na abertura, tenta de novo a cada leitura.
+async function ensureCatalog() {
+  if (catalogReady) return;
+  setCatalog(await loadCatalog());
+  catalogReady = true;
+  lastKey = ""; // refaz o desenho com os retratos
+}
 
 async function refresh() {
   if (busy) {
@@ -513,9 +605,16 @@ async function refresh() {
   busy = true;
   document.body.classList.add("is-loading");
   try {
+    await ensureCatalog();
     const state = await loadState(),
       id = state.match?.id ?? state.gameId ?? null;
     latestState = state;
+    net.okAt = Date.now();
+    net.failures = 0;
+    net.error = null;
+    net.ageSeconds = Number.isFinite(state.ageSeconds)
+      ? state.ageSeconds
+      : null;
     // Rever partida passada (#partida/<id>): análise do estado final reconstruído pelo servidor.
     const replay = replayOf();
     if (replay) {
@@ -547,6 +646,8 @@ async function refresh() {
       last = null;
       lastKey = "";
       historyStale = true;
+      focusSig = null;
+      endedText = null;
       if (view() === "history") void showHistory();
     }
     // Partida nova sem tabuleiro próprio ainda: o arquivo é da anterior e não serve para decidir nada.
@@ -568,13 +669,12 @@ async function refresh() {
           goal,
           augPicks.get(matchKeyOf(state)),
           autoSwaps.all(matchKeyOf(state)),
-          { legacyServer: true },
         ),
         // Registro desta partida na tela: lista vazia apaga o que o servidor guardou (remoção explícita).
         augmentsKnown: augPicks.has(matchKeyOf(state)),
       },
       // A chave usa só as decisões (a mesma regra e o mesmo formato que o servidor usa para renovar a análise sozinho,
-      // core/state/analysis-key.mjs); os campos do servidor legado do `payload` derivam do estado e já estão na chave.
+      // core/state/analysis-key.mjs).
       key = analysisKey(
         state,
         decisionsOf(
@@ -614,44 +714,104 @@ async function refresh() {
     }
     drawComps();
   } catch (e) {
-    showNotice("error", e.message);
-    if (!last) app.dataset.state = "error";
+    if (e.network) {
+      // Sem resposta do servidor: a tela guarda a última leitura e o recuo espaça as tentativas.
+      net.failures += 1;
+      net.error = e.message;
+    } else {
+      // O servidor respondeu (erro de análise, 4xx/5xx): está no ar, só esta leitura falhou.
+      net.okAt ??= Date.now();
+    }
+    if (!last) {
+      // Sem nenhuma leitura ainda: o bloco de erro da tela conta o que houve (a faixa de aviso repetiria o mesmo texto).
+      app.dataset.state = "error";
+      showNotice("", "");
+      $("state-error-title").textContent = e.network
+        ? "Sem resposta do servidor"
+        : "Sem leitura do jogo";
+      $("state-error-text").textContent = e.network
+        ? `${e.message} Se o servidor está rodando, a análise continua nele; a tela volta sozinha quando ele responder.`
+        : e.message;
+    } else showNotice("error", e.message);
   } finally {
     busy = false;
     document.body.classList.remove("is-loading");
+    drawConnection();
     if (pending) {
       pending = false;
       setTimeout(refresh, 80);
     }
   }
 }
+$("btn-retry").addEventListener("click", () => {
+  lastKey = "";
+  void refresh();
+});
+
+// Laço de leitura: a cada 5 s com o servidor respondendo; com falhas, recua (5, 10, 20, 30 s) e volta ao normal no primeiro sucesso.
+let pollTimer = 0;
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const delay = retryDelay(net.failures);
+  net.nextAt = Date.now() + delay;
+  pollTimer = setTimeout(async () => {
+    if (!document.hidden) await refresh();
+    schedulePoll();
+  }, delay);
+}
 
 try {
-  setCatalog(await loadCatalog());
+  await ensureCatalog();
 } catch (e) {
   showNotice("error", e.message);
+  if (e.network) net.failures = 1;
 }
 route(); // depois do catálogo: o histórico usa retratos e sinergias
 await refresh();
-setInterval(() => !document.hidden && refresh(), 5000);
+schedulePoll();
 document.addEventListener(
   "visibilitychange",
   () => !document.hidden && refresh(),
 );
 let tick = 0;
-subscribe((event) => {
-  if (event?.type === "meta") {
-    // Nova cópia das comps de meta no servidor: relê a lista e pede uma análise nova.
-    compsAt = 0;
-    itemsAt = 0;
-    lastKey = "";
-    if (view() === "comps") void showComps();
-    if (view() === "items") void showItems();
-  }
-  if (event?.type === "match") {
-    historyStale = true;
-    if (view() === "history") void showHistory();
-  }
-  clearTimeout(tick);
-  tick = setTimeout(() => !document.hidden && refresh(), 200);
-});
+subscribe(
+  (event) => {
+    if (event?.type === "meta") {
+      // Nova cópia das comps de meta no servidor: relê a lista e pede uma análise nova.
+      compsAt = 0;
+      itemsAt = 0;
+      lastKey = "";
+      if (view() === "comps") void showComps();
+      if (view() === "items") void showItems();
+    }
+    if (event?.type === "match") {
+      historyStale = true;
+      if (view() === "history") void showHistory();
+    }
+    clearTimeout(tick);
+    tick = setTimeout(() => !document.hidden && refresh(), 200);
+  },
+  (status) => {
+    net.sse = status;
+    drawConnection();
+  },
+);
+
+// App instalável e offline: casca em cache; versão nova só entra quando o usuário aceita (nunca recarrega no meio da partida).
+void registerServiceWorker({
+  onUpdate(apply) {
+    shell.toast("Nova versão do app disponível.", {
+      ms: 0,
+      action: { label: "Atualizar", run: apply },
+    });
+    shell.announce("Nova versão do app disponível");
+  },
+}).then((registration) =>
+  shell.setAppInfo(
+    registration
+      ? "Modo offline ativo: a casca do app fica guardada neste navegador; as leituras do jogo precisam do servidor."
+      : canRegister()
+        ? "Modo offline indisponível: o registro do service worker falhou."
+        : "Modo offline e instalação só funcionam em localhost ou https (ou fora do mock).",
+  ),
+);

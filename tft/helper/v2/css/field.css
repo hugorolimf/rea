@@ -1,13 +1,32 @@
+/*
+ * Formação e "Agora": tabuleiro hexagonal (ui/board.js), sinergias, trilha de passos (ui/steps.js), inventário
+ * (ui/inventory.js) e itens do campeão (ui/champ-items.js). O retrato `.pt` e o botão `.btn` estão em components.css.
+ * Cor só por token: texto/traço = `--x`; fundo sólido = `--x-fill` + `--on-fill`.
+ */
 @layer components {
-  /* ---------- Tabuleiro hexagonal ---------- */
+  /* ============================================================ Tabuleiro hexagonal */
   .field {
     container: field / inline-size;
-    min-width: 0;
+    min-inline-size: 0;
+    /* O botão "Copiar código" fecha o cabeçalho da seção, depois da linha e das contagens. */
+    & .section-head .copy-code {
+      order: 3;
+    }
+  }
+  .copy-code {
+    & .i {
+      inline-size: 14px;
+      block-size: 14px;
+    }
+    &[data-done="1"] {
+      --btn-line: color-mix(in oklab, var(--go), transparent 50%);
+      --btn-fg: var(--go);
+    }
   }
   .board {
     display: block;
-    width: 100%;
-    height: auto;
+    inline-size: 100%;
+    block-size: auto;
     overflow: visible;
     user-select: none;
     & .slot {
@@ -26,10 +45,12 @@
     translate: calc(var(--x) * 1px) calc(var(--y) * 1px);
     scale: 1;
     opacity: 1;
+    cursor: pointer;
+    outline: none;
     transition:
       translate var(--spring-ms) var(--spring-ease),
       scale var(--spring-ms) var(--spring-ease),
-      opacity 300ms ease;
+      opacity var(--dur-3) ease;
     @starting-style {
       scale: 0.5;
       opacity: 0;
@@ -46,7 +67,7 @@
       stroke: var(--line);
       stroke-width: 2;
       stroke-linejoin: round;
-      transition: stroke 300ms;
+      transition: stroke var(--dur-3);
     }
     & .cell-stars {
       fill: var(--gold);
@@ -61,20 +82,20 @@
       stroke-width: 1.5;
     }
     & .cell-cost text {
-      fill: oklch(0.2 0.02 250);
+      fill: var(--on-fill);
       font-size: 9.5px;
       font-weight: 800;
     }
     & .cell-crown {
       display: none;
       & circle {
-        fill: var(--gold);
+        fill: var(--gold-fill);
         stroke: var(--bg);
         stroke-width: 1.5;
       }
       & svg {
         fill: none;
-        stroke: oklch(0.25 0.04 80);
+        stroke: var(--on-fill);
         stroke-width: 2.4;
         stroke-linecap: round;
         stroke-linejoin: round;
@@ -135,7 +156,9 @@
     &[data-swap="ready"] {
       & .swap-ring {
         stroke: var(--go);
-        animation: ring-pulse 1.8s ease-in-out infinite;
+        @media (prefers-reduced-motion: no-preference) {
+          animation: ring-pulse 1.8s ease-in-out infinite;
+        }
       }
       & .cell-ring {
         stroke: var(--go);
@@ -152,8 +175,16 @@
     &[data-swap="blocked"] .swap-ring {
       stroke: var(--faint);
     }
-    &:hover {
-      scale: 1.07;
+    /* Selecionada (itens dela abertos) e foco por teclado: o contorno vira o texto, mais grosso. */
+    &:focus-visible .cell-ring,
+    &[data-selected="1"] .cell-ring {
+      stroke: var(--text);
+      stroke-width: 3;
+    }
+    @media (hover: hover) {
+      &:hover {
+        scale: 1.07;
+      }
     }
   }
   @keyframes ring-pulse {
@@ -168,12 +199,12 @@
     }
   }
 
-  /* Sinergias */
+  /* ============================================================ Sinergias */
   .traits {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 14px;
+    gap: var(--sp-1) var(--sp-2);
+    margin-top: var(--sp-3);
   }
   .trait {
     --p: 0;
@@ -184,9 +215,9 @@
     padding: 3px 10px 5px;
     overflow: hidden;
     border: 1px solid var(--line-soft);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     color: var(--faint);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     transition: --p var(--settle-ms) var(--settle-ease);
     & b {
@@ -195,13 +226,14 @@
     /* Parte da contagem vem de emblema equipado. */
     &[data-emblem="1"] b::after {
       content: "+";
-      font-size: 9px;
+      font-size: var(--fs-2xs);
       vertical-align: super;
     }
+    /* Progresso até o próximo patamar: fio no pé do chip. */
     & i {
       position: absolute;
       inset: auto 0 0 0;
-      height: 2px;
+      block-size: 2px;
       background: var(--line-soft);
       &::after {
         content: "";
@@ -225,192 +257,183 @@
   }
   /* Silhueta da sinergia (PNG cinza do jogo) usada como máscara e tingida pelo estado. */
   .trait-icon {
-    width: 15px;
-    height: 15px;
-    margin-left: -3px;
+    inline-size: 15px;
+    block-size: 15px;
+    margin-inline-start: -3px;
     flex: none;
     background: var(--faint);
     -webkit-mask: var(--icon) center / contain no-repeat;
     mask: var(--icon) center / contain no-repeat;
   }
 
-  /* ---------- Trilha "Agora" ---------- */
+  /* ============================================================ Trilha "Agora" */
+  /* Cada grupo é um cartão. O que tem ação imediata (`data-urgent="1"`: trocar, equipar, peça do plano na loja, passar item
+     agora) ganha cor cheia, título maior e sombra; o resto recua. */
   .steps {
-    position: relative;
     display: grid;
-    gap: 22px;
-    &::before {
-      content: "";
-      position: absolute;
-      inset: 14px auto 14px 15px;
-      width: 2px;
-      border-radius: 1px;
-      background: linear-gradient(var(--line), var(--line-soft) 80%, transparent);
-    }
+    gap: var(--sp-3);
   }
   .empty-steps {
     display: none;
-    color: var(--faint);
+    padding: var(--sp-4);
+    border: 1px dashed var(--line);
+    border-radius: var(--r-md);
+    color: var(--muted);
   }
   .steps[data-empty="1"] + .empty-steps {
     display: block;
   }
   .step {
     --tone: var(--go);
+    --tone-fill: var(--go-fill);
     position: relative;
     display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 14px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+    background: var(--surface);
     &[data-tone="amber"] {
       --tone: var(--amber);
+      --tone-fill: var(--amber-fill);
     }
     &[data-tone="violet"] {
       --tone: var(--violet);
+      --tone-fill: var(--violet-fill);
     }
     &[data-tone="blue"] {
       --tone: var(--blue);
+      --tone-fill: var(--blue-fill);
     }
     &[data-tone="gold"] {
       --tone: var(--gold);
+      --tone-fill: var(--gold-fill);
+    }
+    &[data-urgent="1"] {
+      border-color: color-mix(in oklab, var(--tone), transparent 40%);
+      background: color-mix(in oklab, var(--tone), var(--surface) 90%);
+      box-shadow: var(--shadow-1);
     }
     @starting-style {
       opacity: 0;
       translate: 0 8px;
     }
-    transition: opacity 300ms, translate var(--spring-ms) var(--spring-ease);
+    transition:
+      opacity var(--dur-3),
+      translate var(--spring-ms) var(--spring-ease);
   }
   .step-node {
-    z-index: 1;
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
-    border: 2px solid var(--tone);
+    inline-size: 28px;
+    block-size: 28px;
+    border: 1.5px solid color-mix(in oklab, var(--tone), transparent 40%);
     border-radius: 50%;
-    background: var(--bg);
     color: var(--tone);
-    box-shadow: 0 0 0 4px var(--bg);
     & .i {
-      width: 15px;
-      height: 15px;
+      inline-size: 14px;
+      block-size: 14px;
+    }
+    .step[data-urgent="1"] & {
+      border-color: var(--tone-fill);
+      background: var(--tone-fill);
+      color: var(--on-fill);
     }
   }
   .step h3 {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin: 6px 0 10px;
+    gap: 2px var(--sp-2);
+    min-block-size: 28px;
+    margin-block-end: var(--sp-2);
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 700;
-    letter-spacing: 0.09em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     & .count {
-      padding: 0 7px;
-      border-radius: 9px;
-      background: var(--surface-2);
+      min-inline-size: 20px;
+      padding: 0 6px;
+      border-radius: var(--r-pill);
+      background: var(--surface-3);
       color: var(--text);
-      font-size: 10px;
-      line-height: 17px;
+      font-size: var(--fs-xs);
+      line-height: 20px;
+      text-align: center;
     }
-    /* Nota discreta (ex.: "nenhuma peça do plano na loja agora"); com peça na loja vira um aviso verde. */
+    /* Nota discreta (ex.: "nenhuma peça do plano na loja agora"); com peça na loja vira um aviso verde cheio. */
     & .note {
-      margin-left: auto;
+      margin-inline-start: auto;
       color: var(--faint);
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 500;
       letter-spacing: 0;
       text-transform: none;
       &[data-state="hit"] {
-        color: var(--go);
-        font-weight: 700;
+        padding: 1px var(--sp-2);
+        border-radius: var(--r-pill);
+        background: var(--go-fill);
+        color: var(--on-fill);
+        font-weight: 800;
       }
+    }
+  }
+  .step[data-urgent="1"] h3 {
+    color: var(--text);
+    font-size: var(--fs-md);
+    letter-spacing: 0.02em;
+    text-transform: none;
+    & .count {
+      background: var(--tone-fill);
+      color: var(--on-fill);
+      font-weight: 800;
     }
   }
   .rows {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 10px;
+    gap: var(--sp-2);
   }
   .row {
     display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
-    min-width: 0;
-    max-width: 100%;
-    padding: 5px 12px 5px 6px;
+    gap: 6px var(--sp-2);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding: 4px 10px 4px 5px;
     border: 1px solid var(--line-soft);
-    border-radius: 18px;
-    background: color-mix(in oklab, var(--surface), transparent 30%);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
     @starting-style {
       opacity: 0;
       scale: 0.92;
     }
-    transition: opacity 300ms, scale var(--spring-ms) var(--spring-ease);
-    .step[data-tone="go"] & {
-      border-color: color-mix(in oklab, var(--go), transparent 70%);
-      background: linear-gradient(90deg, color-mix(in oklab, var(--go), transparent 90%), transparent 75%);
+    transition:
+      opacity var(--dur-3),
+      scale var(--spring-ms) var(--spring-ease);
+    .step[data-urgent="1"] & {
+      border-color: color-mix(in oklab, var(--tone), transparent 60%);
+      background: var(--surface);
     }
   }
+  /* Linhas de peça (Comprar, Loja) são o próprio retrato: sem cápsula em volta. */
   .row-tile {
-    padding: 4px 2px;
+    padding: 2px;
     border: 0;
     background: none;
   }
 
-  /* Peças das linhas */
-  .pt {
-    --s: 28px;
-    position: relative;
-    display: inline-grid;
-    place-items: center;
-    flex: none;
-    width: var(--s);
-    height: var(--s);
-    border-radius: 50%;
-    background: var(--surface-2);
-    color: var(--muted);
-    font-size: calc(var(--s) * 0.36);
-    font-weight: 700;
-    box-shadow: 0 0 0 2px var(--ring-c, var(--line));
-    &::before {
-      content: attr(data-i);
-    }
-    & img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border-radius: inherit;
-      object-fit: cover;
-    }
-    &.pt-item {
-      border-radius: 9px;
-      box-shadow: inset 0 0 0 1px var(--line);
-    }
-    &.is-done {
-      --ring-c: var(--go);
-    }
-    &.is-pending {
-      --ring-c: var(--amber);
-    }
-    &.is-dashed {
-      opacity: 0.7;
-      outline: 1.5px dashed var(--muted);
-      outline-offset: 1px;
-    }
-  }
+  /* Peças das linhas (o retrato `.pt` está em components.css) */
   .mini {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    & b {
-      font-size: 12px;
-    }
     & .st {
       color: var(--gold);
-      font-size: 9px;
+      font-size: var(--fs-2xs);
       font-style: normal;
       letter-spacing: -1px;
     }
@@ -420,29 +443,24 @@
     align-items: center;
     gap: 6px;
     padding: 2px 8px 2px 3px;
-    border-radius: 999px;
-    background: var(--surface-2);
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
   }
   .tile {
     display: inline-grid;
     justify-items: center;
     gap: 4px;
-    width: 64px;
+    inline-size: 64px;
     text-align: center;
-    & b {
-      max-width: 100%;
-      overflow: hidden;
-      font-size: 11px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
     & small {
-      color: var(--gold);
-      font-size: 10px;
+      max-inline-size: 100%;
+      color: var(--muted);
+      font-size: var(--fs-xs);
+      font-weight: 600;
     }
     & .pt {
       --s: 46px;
-      border-radius: 14px;
+      border-radius: var(--r-md);
       outline: 2px dashed var(--amber);
       outline-offset: 0;
       box-shadow: none;
@@ -459,8 +477,10 @@
     &.is-hold .pt {
       outline: 2px dashed var(--amber);
     }
-    /* Peça do plano na loja agora (lista Comprar): contorno e brilho de ação; o selo é sobreposto, sem mudar a altura. */
+    /* Peça do plano na loja agora (lista Comprar): contorno e brilho de ação; o selo é sobreposto, sem mudar a altura.
+       A coluna é mais larga para caber o que fazer ("comprar 1 · #3"). */
     &.is-shop {
+      inline-size: 96px;
       & .pt {
         outline: 2px solid var(--go);
         box-shadow: 0 0 0 4px color-mix(in oklab, var(--go), transparent 70%);
@@ -477,10 +497,9 @@
         opacity: 1;
       }
       & small.shop-do {
-        max-width: 100%;
         overflow: hidden;
         color: var(--go);
-        font-weight: 700;
+        font-weight: 800;
         text-overflow: ellipsis;
         white-space: nowrap;
         &[data-conf="provavel"] {
@@ -492,26 +511,26 @@
       }
     }
   }
+  /* Selo "NA LOJA": cheio quando a loja foi lida com confiança; tracejado e com "?" quando é só provável. */
   .shop-flag {
     position: absolute;
-    bottom: -7px;
-    left: 50%;
+    inset: auto auto -8px 50%;
     translate: -50% 0;
-    padding: 0 5px;
-    border-radius: 7px;
-    background: var(--go);
-    box-shadow: 0 0 0 2px var(--bg);
-    color: oklch(0.2 0.02 250);
-    font-size: 8.5px;
+    padding: 0 6px;
+    border-radius: var(--r-xs);
+    background: var(--go-fill);
+    box-shadow: 0 0 0 2px var(--surface);
+    color: var(--on-fill);
+    font-size: var(--fs-2xs);
     font-weight: 800;
     letter-spacing: 0.04em;
-    line-height: 14px;
+    line-height: 15px;
     white-space: nowrap;
     &[data-conf="provavel"] {
       border: 1px dashed var(--go);
-      background: var(--bg);
+      background: var(--surface);
       color: var(--go);
-      line-height: 12px;
+      line-height: 13px;
     }
     @media (prefers-reduced-motion: no-preference) {
       animation: shop-flag 1.6s ease-in-out infinite;
@@ -523,17 +542,16 @@
     }
   }
   .cost,
-  .act,
-  .miss {
+  .act {
     position: absolute;
     top: -6px;
     display: grid;
     place-items: center;
-    min-width: 17px;
-    height: 17px;
+    min-inline-size: 17px;
+    block-size: 17px;
     padding: 0 4px;
     border-radius: 9px;
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-style: normal;
     font-weight: 800;
     line-height: 1;
@@ -541,16 +559,16 @@
   .cost {
     left: -6px;
     background: var(--c);
-    color: oklch(0.2 0.02 250);
+    color: var(--on-fill);
   }
   .act {
     right: -6px;
     border: 1px solid var(--line);
-    background: var(--bg);
+    background: var(--surface);
     color: var(--text);
     & .i {
-      width: 10px;
-      height: 10px;
+      inline-size: 10px;
+      block-size: 10px;
     }
     &.is-buy {
       border-color: var(--go);
@@ -563,34 +581,28 @@
       color: var(--amber);
     }
   }
-  .miss {
-    top: auto;
-    right: -6px;
-    bottom: -6px;
-    background: oklch(0.3 0.05 75);
-    color: var(--gold);
-  }
   .meter {
     display: block;
-    width: 40px;
-    height: 4px;
+    inline-size: 40px;
+    block-size: 4px;
     overflow: hidden;
     border-radius: 2px;
     background: var(--line-soft);
     & i {
       display: block;
-      width: 100%;
-      height: 100%;
+      inline-size: 100%;
+      block-size: 100%;
       background: linear-gradient(90deg, var(--amber), var(--gold));
       transform: scaleX(var(--p));
       transform-origin: left;
       transition: transform var(--settle-ms) var(--settle-ease);
     }
   }
+  /* Seta de fluxo: `go` pulsa (anima só sem movimento reduzido), `hold` é tracejada. */
   .flow {
     flex: none;
-    width: 26px;
-    height: 10px;
+    inline-size: 26px;
+    block-size: 10px;
     fill: none;
     stroke: var(--faint);
     stroke-width: 1.6;
@@ -600,7 +612,9 @@
       stroke: var(--go);
       & .l {
         stroke-dasharray: 3 4;
-        animation: dash 0.9s linear infinite;
+        @media (prefers-reduced-motion: no-preference) {
+          animation: dash 0.9s linear infinite;
+        }
       }
     }
     &.hold {
@@ -610,6 +624,7 @@
       }
     }
   }
+  /* Situação no fim da linha: ícone + cor (e texto quando a linha não diz por si). */
   .row .ok {
     color: var(--go);
   }
@@ -619,18 +634,26 @@
   .row .no {
     color: var(--danger);
   }
-  .row .warn {
+  .row .warn,
+  .row .no,
+  .row .now-tag,
+  .row .wait {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    color: var(--amber);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-style: normal;
     font-weight: 800;
   }
+  .row .warn {
+    color: var(--amber);
+  }
+  .row .now-tag {
+    color: var(--go);
+  }
   .row .frac {
     color: var(--amber);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .row i {
     display: inline-flex;
@@ -640,8 +663,8 @@
   .slot-empty {
     display: inline-grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    inline-size: 28px;
+    block-size: 28px;
     border: 1.5px dashed var(--faint);
     border-radius: 50%;
     color: var(--muted);
@@ -649,34 +672,33 @@
   .rank {
     display: inline-grid;
     place-items: center;
-    width: 20px;
-    height: 20px;
+    inline-size: 20px;
+    block-size: 20px;
     border-radius: 50%;
-    background: oklch(0.32 0.05 85);
+    background: color-mix(in oklab, var(--gold), var(--surface) 78%);
     color: var(--gold);
-    font-size: 11px;
-  }
-  .why {
-    color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-xs);
+    font-weight: 800;
   }
   .now-dot {
-    width: 9px;
-    height: 9px;
+    inline-size: 9px;
+    block-size: 9px;
     border-radius: 50%;
     background: var(--go);
-    animation: ping 1.8s ease-out infinite;
+    @media (prefers-reduced-motion: no-preference) {
+      animation: ping 1.8s ease-out infinite;
+    }
   }
   .pips {
     display: inline-flex;
     gap: 3px;
     & i {
-      width: 8px;
-      height: 8px;
+      inline-size: 8px;
+      block-size: 8px;
       border: 1px solid var(--line);
       border-radius: 50%;
       background: var(--surface);
-      transition: background 300ms;
+      transition: background var(--dur-3);
       &.on {
         border-color: var(--go);
         background: var(--go);
@@ -687,164 +709,148 @@
       background: var(--amber);
     }
   }
-  /* Copiar código da equipe: discreto, no cabeçalho da formação */
-  .copy-code {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    margin-left: auto;
-    padding: 3px 9px;
-    border: 1px solid var(--line-soft);
-    border-radius: 999px;
-    background: none;
-    color: var(--faint);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color 0.2s, border-color 0.2s;
-    & .i {
-      width: 12px;
-      height: 12px;
-    }
-    &:hover:not(:disabled) {
-      border-color: var(--line);
-      color: var(--text);
-    }
-    &[data-done="1"] {
-      border-color: color-mix(in oklab, var(--go), transparent 50%);
-      color: var(--go);
-    }
-    &:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-  }
-  /* Inventário lido da tela: banco, montar agora e a um componente */
-  .inventory {
-    display: grid;
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-  .inv-bank {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 6px;
-    border-radius: 10px;
-    background: color-mix(in oklab, var(--surface), transparent 40%);
-  }
-  .inv-unknown {
-    margin: -4px 0 0;
-    color: var(--faint);
-    font-size: 11px;
-  }
-  .inv-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 16px;
-    & li {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    & .op {
-      color: var(--faint);
-      font-size: 11px;
-    }
-  }
-  .inv-near {
-    opacity: 0.6;
-    & .miss .pt {
-      outline: 1px dashed var(--amber);
-      outline-offset: 1px;
-      opacity: 0.5;
-    }
-  }
   /* Carrossel: componente → item → campeão; item que fecha agora ganha um anel verde */
   .car {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     & .flow {
-      width: 22px;
+      inline-size: 22px;
     }
   }
   .car-target.is-close .pt {
     box-shadow: 0 0 0 2px var(--go);
   }
-  /* Peça selecionada na Formação e faixa com os itens dela */
-  .cells .cell {
-    cursor: pointer;
-    outline: none;
-    &:focus-visible .cell-ring,
-    &[data-selected="1"] .cell-ring {
-      stroke: var(--text);
-      stroke-width: 2.5;
+
+  /* ============================================================ Inventário lido da tela */
+  /* Banco, o que montar agora e o que está a um componente. */
+  .inventory {
+    display: grid;
+    gap: var(--sp-3);
+    margin-block-end: var(--sp-4);
+  }
+  .inv-cap {
+    margin-block-end: var(--sp-1);
+  }
+  .inv-bank {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    padding: var(--sp-2);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+  .inv-unknown {
+    margin-block-start: calc(-1 * var(--sp-2));
+    color: var(--faint);
+    font-size: var(--fs-xs);
+  }
+  .inv-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    & li {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 4px 10px 4px 6px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-md);
+      background: var(--surface-2);
+    }
+    & .op {
+      color: var(--faint);
+      font-size: var(--fs-xs);
     }
   }
+  /* Montar agora: ação imediata, em verde. */
+  .inv-ready li {
+    border-color: color-mix(in oklab, var(--go), transparent 50%);
+    background: color-mix(in oklab, var(--go), var(--surface) 90%);
+  }
+  .inv-near {
+    opacity: 0.8;
+  }
+  /* Componente que falta: tracejado, esmaecido. */
+  .inv-miss .pt {
+    outline: 1px dashed var(--amber);
+    outline-offset: 1px;
+    opacity: 0.5;
+  }
+  .inv-emblem small {
+    color: var(--gold);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+  }
+
+  /* ============================================================ Itens do campeão selecionado */
   .champ-items {
     display: grid;
-    gap: 10px;
-    margin: 6px 0 10px;
-    padding: 10px 12px;
+    gap: var(--sp-3);
+    margin-block: var(--sp-2) var(--sp-3);
+    padding: var(--sp-3);
     border: 1px solid var(--line-soft);
-    border-radius: 12px;
-    background: color-mix(in oklab, var(--surface), transparent 30%);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
   }
   .ci-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     & b {
-      font-size: 13px;
+      font-size: var(--fs-md);
     }
     & i {
       color: var(--gold);
-      font-size: 11px;
+      font-size: var(--fs-xs);
       font-style: normal;
     }
   }
   .ci-equipped {
     display: inline-flex;
     gap: 3px;
-    margin-left: 6px;
+    margin-inline-start: var(--sp-1);
   }
   .ci-close {
-    display: grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    margin-left: auto;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    color: var(--faint);
-    cursor: pointer;
-    & .i {
-      width: 14px;
-      height: 14px;
-    }
-    &:hover {
-      color: var(--text);
-    }
+    margin-inline-start: auto;
   }
   .ci-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 18px;
+    gap: var(--sp-2);
     & li {
       display: grid;
       grid-template-columns: auto auto;
+      justify-content: start;
       align-items: center;
-      gap: 2px 8px;
+      gap: 2px var(--sp-2);
+      padding: 6px 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-md);
+      background: var(--surface-2);
+      &[data-state="ready"] {
+        border-color: color-mix(in oklab, var(--go), transparent 50%);
+      }
+      &[data-state="half"] {
+        border-color: color-mix(in oklab, var(--amber), transparent 55%);
+      }
+      &[data-state="move"] {
+        border-color: color-mix(in oklab, var(--violet), transparent 55%);
+      }
     }
     & small {
       grid-column: 1 / -1;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       color: var(--faint);
-      font-size: 10px;
+      font-size: var(--fs-xs);
     }
-    & li[data-state="on"] small {
+    & li[data-state="on"] small,
+    & li[data-state="taken"] small {
       color: var(--muted);
     }
     & li[data-state="ready"] small {
@@ -855,45 +861,45 @@
       color: var(--amber);
     }
     & li[data-state="move"] small {
-      color: var(--violet, var(--go));
+      color: var(--violet);
       font-weight: 700;
-    }
-    & li[data-state="taken"] small {
-      color: var(--muted);
-    }
-    & small {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
     }
   }
   .ci-from {
     display: inline-flex;
   }
+  /* Componentes da receita: o que já está em mãos fica cheio e com fio verde embaixo (não só a opacidade). */
   .ci-recipe {
     display: inline-flex;
     gap: 2px;
     & span {
+      padding-block-end: 2px;
+      border-block-end: 2px solid transparent;
       opacity: 0.45;
     }
     & span.got {
+      border-block-end-color: var(--go);
       opacity: 1;
     }
   }
   .ci-empty {
     color: var(--faint);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
-  .inv-emblem {
-    & small {
-      color: var(--gold);
-      font-size: 11px;
-      font-weight: 700;
+
+  /* Janela estreita (ao lado do jogo, celular): passos mais justos. */
+  @container stage (max-width: 480px) {
+    .step {
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: var(--sp-2);
+      padding: var(--sp-2) var(--sp-3);
     }
-    & .miss .pt {
-      outline: 1px dashed var(--amber);
-      outline-offset: 1px;
-      opacity: 0.5;
+    .step-node {
+      inline-size: 24px;
+      block-size: 24px;
+    }
+    .step h3 {
+      min-block-size: 24px;
     }
   }
 }

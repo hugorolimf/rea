@@ -109,26 +109,29 @@ function buyTile(r) {
       ? `${r.unit.name}\n${s.title}\nChance por loja: ${pct(r.chance)}`
       : r.unit.name,
     attrs: s ? ` data-shop="${s.probable ? "provavel" : "confiavel"}"` : "",
-    badge: `<em class="act" title="${where}">${glyph(r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}</em>${flag}`,
+    // O ícone do canto diz como a peça entra; o texto equivalente fica para leitor de tela (e na dica).
+    badge: `<em class="act" title="${where}">${glyph(r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}<span class="sr">${where}</span></em>${flag}`,
     foot: `<span class="meter" style="--p:${Math.min(1, r.chance / 0.2)}"><i></i></span><small${s ? ` class="shop-do" data-conf="${s.probable ? "provavel" : "confiavel"}"` : ""}>${s ? `<span class="sr">na loja: </span>${esc(s.mark)}` : pct(r.chance)}</small>`,
   });
 }
 
 /** HTML de cada linha por tipo; textos longos ficam em `title`. */
 const BUILD = {
+  // Trocar: quem sai, seta, quem entra. Itens a preservar viram aviso em texto (não só um número no ícone).
   swap: (r) =>
-    `${mini(r.exit.id, r.exit.name, r.exitStars)}${flow("go")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.held ? `<em class="warn" title="preserve ${r.held} item(ns) antes de trocar">${glyph("warn")}${r.held}</em>` : `<i class="ok">${glyph("check")}</i>`}`,
+    `${mini(r.exit.id, r.exit.name, r.exitStars)}${flow("go")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.held ? `<em class="warn" title="preserve ${r.held} item(ns) antes de trocar">${glyph("warn")}preserve ${r.held} ${r.held === 1 ? "item" : "itens"}</em>` : `<i class="ok">${glyph("check")}<span class="sr">pode trocar</span></i>`}`,
   equip: (r) =>
-    `${r.items.map((i) => itemPortrait(i)).join("")}${flow("go")}${mini(r.unit.id, r.unit.name, r.unit.stars)}<i class="${r.inField ? "ok" : "wait"}" title="${r.inField ? "montável com seu banco" : "prepare a entrada em campo"}">${glyph(r.inField ? "check" : "clock")}</i>`,
+    `${r.items.map((i) => itemPortrait(i)).join("")}${flow("go")}${mini(r.unit.id, r.unit.name, r.unit.stars)}<i class="${r.inField ? "ok" : "wait"}" title="${r.inField ? "montável com seu banco" : "prepare a entrada em campo"}">${glyph(r.inField ? "check" : "clock")}<span class="sr">${r.inField ? "montável com seu banco" : "prepare a entrada em campo"}</span></i>`,
   bank: (r) =>
-    `${itemPortrait(r.item)}${flow()}${r.to ? mini(r.to.id, r.to.name) : `<span class="stash" title="${esc(r.reason)}">${glyph("bank")}</span>`}`,
+    `${itemPortrait(r.item)}${flow()}${r.to ? mini(r.to.id, r.to.name) : `<span class="stash" title="${esc(r.reason)}">${glyph("bank")}<span class="sr">guardar no banco</span></span>`}`,
   buy: (r) => buyTile(r),
   slot: (r) =>
-    `<span class="slot-empty" title="${r.fromReserve ? "já está na reserva" : "entra ao subir de nível"}">${glyph("plus")}</span>${flow("go")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.fromReserve ? `<i class="ok" title="já está na reserva">${glyph("roll")}</i>` : ""}`,
+    `<span class="slot-empty" title="${r.fromReserve ? "já está na reserva" : "entra ao subir de nível"}">${glyph("plus")}<span class="sr">${r.fromReserve ? "vaga livre; a peça já está na reserva" : "vaga livre; a peça entra ao subir de nível"}</span></span>${flow("go")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.fromReserve ? `<i class="ok" title="já está na reserva">${glyph("roll")}<span class="sr">já está na reserva</span></i>` : ""}`,
   hold: (r) =>
-    `${mini(r.exit.id, r.exit.name, r.exitStars)}${flow("hold")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.need ? `${pips(r.have, r.need, "amber")}<small class="frac">${r.have}/${r.need}</small>` : `<i class="no" title="não troque">${glyph("x")}</i>`}`,
+    `${mini(r.exit.id, r.exit.name, r.exitStars)}${flow("hold")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.need ? `${pips(r.have, r.need, "amber")}<small class="frac">${r.have}/${r.need}</small>` : `<i class="no" title="não troque">${glyph("x")}não troque</i>`}`,
+  // Passar itens: "agora" e "planejar" são rótulos visíveis (o ponto e o relógio sozinhos dependem de dica).
   moves: (r) =>
-    `${mini(r.from.id, r.from.name, r.from.stars)}${flow(r.now ? "go" : "")}${r.moves.map((m) => `<span class="mv">${itemPortrait(m.item, { size: 24 })}${flow()}${mini(m.to.id, m.to.name)}</span>`).join("")}${r.now ? '<i class="now-dot" title="agora"></i>' : `<i class="wait" title="planejar">${glyph("clock")}</i>`}`,
+    `${mini(r.from.id, r.from.name, r.from.stars)}${flow(r.now ? "go" : "")}${r.moves.map((m) => `<span class="mv">${itemPortrait(m.item, { size: 24 })}${flow()}${mini(m.to.id, m.to.name)}</span>`).join("")}${r.now ? '<i class="now-tag" title="agora"><span class="now-dot" aria-hidden="true"></span>agora</i>' : `<i class="wait" title="planejar">${glyph("clock")}planejar</i>`}`,
   next: (r) => nextRow(r),
   shop: (r) => {
     const [tone, g] = SHOP_GLYPH[r.action] ?? ["", "x"];
@@ -162,16 +165,38 @@ const stepNode = (step) =>
     ),
   );
 
+/**
+ * Grupo com ação imediata: trocar/equipar (tom "go"), peça do plano na loja agora (nota "hit" do cruzamento com a loja) ou
+ * item para passar agora. Ganha cor cheia e título maior (field.css); os demais recuam.
+ */
+const isUrgent = (step) =>
+  step.tone === "go" ||
+  step.note?.state === "hit" ||
+  step.rows.some((r) => r.kind === "moves" && r.now);
+
+/** Escreve só se mudou: a trilha é relida a cada leitura do servidor. */
+const setText = (n, text) => {
+  if (n.textContent !== text) n.textContent = text;
+};
+
 function updateStep(node, step) {
   node.dataset.tone = step.tone;
-  node.querySelector(".step-node").innerHTML = glyph(ICON[step.id] ?? "check");
-  node.querySelector(".label").textContent = step.title;
-  node.querySelector(".count").textContent = step.rows.length;
+  const urgent = isUrgent(step) ? "1" : "0";
+  if (node.dataset.urgent !== urgent) node.dataset.urgent = urgent;
+  const icon = node.querySelector(".step-node"),
+    iconName = ICON[step.id] ?? "check";
+  if (icon.dataset.icon !== iconName) {
+    icon.dataset.icon = iconName;
+    icon.innerHTML = glyph(iconName);
+  }
+  setText(node.querySelector(".label"), step.title);
+  setText(node.querySelector(".count"), String(step.rows.length));
   // Nota discreta do cabeçalho (ex.: "nenhuma peça do plano na loja agora"); só existe quando a fonte leu a loja.
   const note = node.querySelector(".note");
   note.hidden = !step.note;
-  note.textContent = step.note?.text ?? "";
-  note.title = step.note?.title ?? "";
+  setText(note, step.note?.text ?? "");
+  const title = step.note?.title ?? "";
+  if (note.title !== title) note.title = title;
   note.dataset.state = step.note?.state ?? "";
   reconcile(node.querySelector(".rows"), step.rows, {
     key: (r, i) => r.key ?? `${step.id}:${i}`,

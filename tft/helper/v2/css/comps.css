@@ -1,199 +1,192 @@
 @layer components {
-  /* Visão "Comps": escolher e fixar a comp que o Ao vivo segue. */
-  .app[data-view="comps"] {
-    & .hud,
-    & .notice,
-    & .deck,
-    & .skeleton,
-    & .waiting,
-    & .contest {
-      display: none !important;
-    }
+  /*
+   * Aba "Comps": escolher e fixar a comp que o Ao vivo segue, e o cartão de comp (reaproveitado pelo modal do HUD, ver
+   * comp-modal.css). Botão, chip, score, segmentado, campo, cartão e estado vêm de components.css; aqui só o que é da área.
+   */
+  .comps {
+    /* Mesmo respiro lateral do palco (shell.css): a barra de filtros sangra até as bordas para o fundo cobrir tudo. */
+    --stage-pad: clamp(14px, 2.2vw, 34px);
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface-2);
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    &:hover {
-      border-color: var(--muted);
-    }
-  }
-  .btn-go {
-    border-color: color-mix(in oklab, var(--go), transparent 45%);
-    background: color-mix(in oklab, var(--go), transparent 84%);
-    color: var(--go);
-    &:hover {
-      border-color: var(--go);
-      background: color-mix(in oklab, var(--go), transparent 76%);
-    }
-  }
-
-  /* Comp seguida agora (ou modo automático) */
+  /* ============================================================ Comp seguida agora (ou modo automático) */
   .comps-goal {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding: 12px 16px;
+    gap: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
     border: 1px solid var(--line-soft);
-    border-radius: 12px;
+    border-radius: var(--r-md);
     background: var(--surface);
     color: var(--muted);
+    line-height: var(--lh-body);
     & p {
-      flex: 1;
+      flex: 1 1 280px;
       min-width: 0;
     }
     & b {
       color: var(--text);
     }
     & > .i {
-      width: 20px;
-      height: 20px;
+      inline-size: 20px;
+      block-size: 20px;
       color: var(--faint);
     }
     &[data-pinned="1"] {
       border-color: color-mix(in oklab, var(--amber), transparent 55%);
+      background: color-mix(in oklab, var(--amber), var(--surface) 92%);
       & > .i {
         color: var(--amber);
       }
     }
   }
 
-  /* Filtros */
+  /* ============================================================ Filtros (barra fixa no topo do palco) */
   .comps-filters {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 14px;
-    margin-bottom: 10px;
+    gap: var(--sp-2) var(--sp-3);
+    margin: 0 calc(-1 * var(--stage-pad)) var(--sp-3);
+    padding: var(--sp-2) var(--stage-pad);
+    border-bottom: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--bg), transparent 6%);
+    backdrop-filter: blur(12px);
     & input[type="search"] {
-      flex: 1 1 220px;
+      flex: 1 1 240px;
       min-width: 0;
-      padding: 7px 12px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--surface);
-      &::placeholder {
-        color: var(--faint);
-      }
-    }
-  }
-  .seg {
-    display: inline-flex;
-    padding: 3px;
-    border: 1px solid var(--line-soft);
-    border-radius: 999px;
-    background: var(--surface);
-    & button {
-      padding: 4px 11px;
-      border: 0;
-      border-radius: 999px;
-      background: none;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      &[aria-pressed="true"] {
-        background: var(--surface-2);
-        color: var(--text);
-        box-shadow: inset 0 0 0 1px var(--line);
-      }
     }
   }
   .comps-sort {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     color: var(--muted);
-    font-size: 12px;
-    & select {
-      padding: 5px 8px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
+    font-size: var(--fs-sm);
+  }
+  /* O contador mora dentro da barra (ui/comps.js o move para lá): fica à vista enquanto se rola. */
+  .comps-count {
+    margin-inline-start: auto;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .comps-hint {
+    margin-bottom: var(--sp-3);
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    &:empty {
+      display: none;
     }
   }
-  .comps-count {
-    margin-bottom: 12px;
-    color: var(--faint);
-    font-size: 12px;
+  /* Em janela baixa a barra fixa comeria a tela (mesma regra do topo do Ao vivo). */
+  @media (max-height: 640px) {
+    .comps-filters {
+      position: static;
+    }
+  }
+  /* Palco estreito (janela ao lado do jogo, celular): busca e estilo ocupam a linha inteira, nada rola de lado. */
+  @container stage (max-width: 640px) {
+    .comps-filters {
+      gap: var(--sp-2);
+      & input[type="search"] {
+        flex-basis: 100%;
+      }
+      & .seg {
+        display: flex;
+        flex-basis: 100%;
+        & button {
+          flex: 1 1 0;
+          padding-inline: var(--sp-1);
+        }
+      }
+    }
   }
 
-  /* Cartões */
+  /* ============================================================ Grade de cartões */
+  /* Colunas de 320 px até ~460 px: uma coluna em palco estreito, mais colunas conforme a largura. */
   .comps-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: var(--sp-4);
     align-items: start;
   }
-  .comps-empty {
-    padding: 18px;
-    border: 1px dashed var(--line);
-    border-radius: 12px;
-    color: var(--muted);
+  .comps-state {
+    grid-column: 1 / -1;
   }
+
+  /* ============================================================ Cartão de comp (.card de components.css) */
   .comp {
-    display: grid;
-    gap: 10px;
-    padding: 14px 16px;
-    border: 1px solid var(--line-soft);
-    border-radius: var(--radius);
-    background: color-mix(in oklab, var(--surface), var(--bg) 30%);
+    align-content: start;
+    min-inline-size: 0;
+    /* Cartões fora da tela não custam layout; o tamanho lembrado evita o salto da barra de rolagem. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
     &[data-pinned] {
-      border-color: color-mix(in oklab, var(--amber), transparent 45%);
       background: color-mix(in oklab, var(--amber), var(--surface) 94%);
+    }
+    & .muted {
+      color: var(--faint);
     }
   }
   .comp-head {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 6px 8px;
+    gap: var(--sp-2) var(--sp-3);
+    & .score {
+      min-width: 42px;
+      height: 30px;
+      font-size: var(--fs-lg);
+    }
     & h3 {
-      flex: 1 1 140px;
       min-width: 0;
-      font-size: 14px;
+      font-size: var(--fs-lg);
       font-weight: 700;
+      line-height: var(--lh-tight);
     }
   }
+  .comp-tags {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    gap: var(--sp-1) var(--sp-2);
+  }
+
+  /* Peças da comp: retrato com anel do custo; carry com coroa, "já em campo" com visto (e o texto para leitor de tela). */
   .comp-units {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 6px;
+    gap: var(--sp-2) var(--sp-1);
     & li {
       position: relative;
       display: grid;
       justify-items: center;
       gap: 3px;
-      width: 46px;
-      & > span:last-child {
-        max-width: 100%;
-        overflow: hidden;
-        color: var(--faint);
-        font-size: 10px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
+      inline-size: 54px;
+    }
+    & .comp-unit-name {
+      max-inline-size: 100%;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: var(--fs-xs);
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     & li.is-mine .pt {
       box-shadow:
         0 0 0 2px var(--ring-c),
         0 0 0 4px color-mix(in oklab, var(--go), transparent 45%);
     }
-    & li.is-mine > span:last-child {
+    & li.is-mine .comp-unit-name {
       color: var(--go);
     }
-    & li.is-carry > span:last-child {
+    & li.is-carry .comp-unit-name {
       color: var(--gold);
       font-weight: 700;
     }
@@ -201,17 +194,18 @@
   .badge-carry,
   .badge-mine {
     position: absolute;
-    top: -5px;
-    right: -5px;
+    inset-block-start: -4px;
+    inset-inline-end: 1px;
     display: grid;
     place-items: center;
-    width: 17px;
-    height: 17px;
+    inline-size: 18px;
+    block-size: 18px;
     border-radius: 50%;
-    background: var(--bg);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line-soft);
     & .i {
-      width: 11px;
-      height: 11px;
+      inline-size: 11px;
+      block-size: 11px;
       stroke-width: 2.4;
     }
   }
@@ -221,71 +215,97 @@
   .badge-mine {
     color: var(--go);
   }
+  .comp-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+
   .comp-stats,
   .comp-fit {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 14px;
+    gap: var(--sp-1) var(--sp-4);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     & b {
       color: var(--text);
+      font-variant-numeric: tabular-nums;
     }
   }
   .comp-fit {
-    padding-top: 8px;
+    padding-top: var(--sp-3);
     border-top: 1px solid var(--line-soft);
-    & .muted {
-      color: var(--faint);
+  }
+  .dispute {
+    font-weight: 600;
+    &[data-level="baixa"] {
+      color: var(--go);
+    }
+    &[data-level="média"] {
+      color: var(--amber);
+    }
+    &[data-level="alta"] {
+      color: var(--danger);
     }
   }
-  /* Itens do banco que combinam com o carry: build do carry, emblemas e o que falta. */
+
+  /* ============================================================ Itens do banco na comp */
+  /* Cada item é uma pastilha: a cor do estado (--st) tinge borda e legenda, e a legenda diz o estado em palavras. */
   .comp-bank {
     display: grid;
-    gap: 6px;
-    padding-top: 8px;
+    gap: var(--sp-2);
+    padding-top: var(--sp-3);
     border-top: 1px solid var(--line-soft);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .cb-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     color: var(--muted);
+    font-weight: 600;
     & .i {
-      width: 14px;
-      height: 14px;
+      inline-size: 16px;
+      block-size: 16px;
     }
   }
-  .cb-list {
+  .cb-list,
+  .cp-items {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 16px;
+    gap: var(--sp-2);
     & li {
+      --st: var(--muted);
       display: grid;
       grid-template-columns: auto auto;
       align-items: center;
       justify-content: start;
-      gap: 2px 8px;
+      gap: 2px var(--sp-2);
+      padding: var(--sp-1) var(--sp-2);
+      border: 1px solid color-mix(in oklab, var(--st), transparent 72%);
+      border-radius: var(--r-sm);
+      background: color-mix(in oklab, var(--st), var(--surface) 94%);
     }
     & small,
     & em {
       grid-column: 1 / -1;
-      color: var(--faint);
-      font-size: 10px;
+      color: var(--st);
+      font-size: var(--fs-xs);
       font-style: normal;
     }
-    & li[data-state="on"] small {
-      color: var(--muted);
+  }
+  .cb-list {
+    & li[data-state="ready"],
+    & li[data-state="radiant"],
+    & li[data-state="craft"] {
+      --st: var(--go);
+      & small {
+        font-weight: 700;
+      }
     }
-    & li[data-state="ready"] small,
-    & li[data-state="radiant"] small,
-    & li[data-state="craft"] small {
-      color: var(--go);
-      font-weight: 700;
-    }
-    & li[data-state="half"] small {
-      color: var(--amber);
+    & li[data-state="half"] {
+      --st: var(--amber);
     }
     & li[data-state="missing"] > .pt {
       opacity: 0.5;
@@ -305,24 +325,25 @@
   .cb-foot {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 12px;
+    gap: 2px var(--sp-3);
     color: var(--faint);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
+
   /* Plano de itens: seus itens distribuídos pelos campeões de maior impacto, com o valor acumulando. */
   .cp-total {
-    margin-left: auto;
+    margin-inline-start: auto;
     color: var(--go);
     font-variant-numeric: tabular-nums;
   }
   .cp-note {
     color: var(--amber);
-    font-size: 12px;
-  }
-  .cp-note[data-unread] {
-    padding: 6px 10px;
-    border: 1px dashed var(--amber);
-    border-radius: 8px;
+    font-size: var(--fs-sm);
+    &[data-unread] {
+      padding: var(--sp-2) var(--sp-3);
+      border: 1px dashed color-mix(in oklab, var(--amber), transparent 40%);
+      border-radius: var(--r-sm);
+    }
   }
   .cp-sub {
     color: var(--muted);
@@ -330,16 +351,18 @@
   .cp-champs,
   .cp-wish-list {
     display: grid;
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: var(--sp-2);
+    align-items: start;
   }
   .cp-champ,
   .cp-wish-champ {
     display: grid;
-    gap: 4px;
-    padding: 6px 10px;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid var(--line-soft);
-    border-radius: 12px;
-    background: color-mix(in oklab, var(--surface), var(--bg) 20%);
+    border-radius: var(--r-md);
+    background: color-mix(in oklab, var(--surface-2), var(--surface) 50%);
   }
   .cp-champ[data-rank="1"] {
     border-color: var(--line);
@@ -347,118 +370,96 @@
   .cp-who {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     & .rt {
       min-width: 0;
     }
   }
   .cp-sum {
-    margin-left: auto;
     display: grid;
     justify-items: end;
+    margin-inline-start: auto;
     font-variant-numeric: tabular-nums;
     & b {
       color: var(--go);
     }
     & small {
       color: var(--faint);
-      font-size: 10px;
+      font-size: var(--fs-xs);
     }
   }
   .cp-items {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 16px;
-    & li {
-      display: grid;
-      grid-template-columns: auto auto;
-      align-items: center;
-      justify-content: start;
-      gap: 2px 8px;
-    }
+    gap: var(--sp-2);
     & small {
-      grid-column: 1 / -1;
-      color: var(--muted);
-      font-size: 10px;
       & b {
         color: var(--text);
         font-variant-numeric: tabular-nums;
       }
     }
-    & li[data-state="on"] small,
-    & li[data-state="bank"] small {
-      color: var(--go);
+    & li[data-state="on"],
+    & li[data-state="bank"] {
+      --st: var(--go);
     }
-    & li[data-state="move"] small,
-    & li[data-state="moveStay"] small,
-    & li[data-state="craftMove"] small {
-      color: var(--amber);
+    & li[data-state="move"],
+    & li[data-state="moveStay"],
+    & li[data-state="craftMove"] {
+      --st: var(--amber);
     }
-    & li[data-state="craft"] small {
-      color: var(--blue);
+    & li[data-state="craft"] {
+      --st: var(--blue);
     }
     /* Valor com pouca amostra: mostrado, mas apagado. */
     & li[data-weak] > .pt {
       opacity: 0.7;
     }
   }
-  .cp-wish {
+  /* Lista de desejos e "Builds e 3★": <details> com o mesmo cabeçalho; o estado aberto sobrevive ao redesenho. */
+  .cp-wish,
+  .comp-more {
     color: var(--muted);
     & summary {
-      width: max-content;
+      display: flex;
+      align-items: center;
+      inline-size: max-content;
+      max-inline-size: 100%;
+      min-block-size: 28px;
+      border-radius: var(--r-xs);
       cursor: pointer;
-      padding: 2px 0;
+      font-weight: 600;
+      &:hover {
+        color: var(--text);
+      }
       &::marker {
         color: var(--faint);
       }
     }
     & .cp-wish-list {
-      margin-top: 6px;
+      margin-top: var(--sp-2);
     }
-  }
-  .dispute {
-    &[data-level="baixa"] {
-      color: var(--go);
-    }
-    &[data-level="média"] {
-      color: var(--amber);
-    }
-    &[data-level="alta"] {
-      color: var(--danger);
-    }
-  }
-  .comp-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px 14px;
   }
   .comp-more {
-    flex: 1 1 100%;
-    color: var(--muted);
-    font-size: 12px;
-    & summary {
-      width: max-content;
-      cursor: pointer;
-      padding: 2px 0;
-      &::marker {
-        color: var(--faint);
-      }
-    }
+    font-size: var(--fs-sm);
   }
-  .comp-actions .btn + .comp-more {
-    flex: 1 1 auto;
-    padding-top: 4px;
+
+  /* ============================================================ Ações e detalhes */
+  .comp-actions {
+    display: grid;
+    gap: var(--sp-2);
+    /* "Seguir esta comp" (ou "Liberar") ocupa a largura do cartão: é a ação do cartão. */
+    & > .btn {
+      min-block-size: 38px;
+      font-size: var(--fs-md);
+    }
   }
   .comp-builds {
     display: grid;
-    gap: 6px;
-    margin-top: 8px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
     & li {
       display: grid;
-      grid-template-columns: auto 90px auto minmax(0, 1fr);
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      gap: 8px;
+      gap: var(--sp-1) var(--sp-2);
     }
     & b {
       overflow: hidden;
@@ -470,71 +471,63 @@
   }
   .comp-items {
     display: flex;
-    gap: 4px;
-  }
-  .comp-3star {
-    margin-top: 8px;
-    & b {
-      color: var(--gold);
-    }
-  }
-
-  /* Atalho no HUD */
-  .goal-link {
-    color: var(--blue);
-    font-size: 11px;
-    font-weight: 600;
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  /* Itens: média ajustada pelos itens que você tem e builds com a variação publicada. */
-  .comp-edge {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 2px 8px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: color-mix(in oklab, var(--go), var(--surface) 92%);
-    color: var(--muted);
-    font-size: 12px;
-    & > .i {
-      grid-row: span 2;
-      width: 18px;
-      height: 18px;
-      color: var(--go);
-    }
-    & b {
-      color: var(--text);
-    }
-    & .tier {
-      min-width: 18px;
-      height: 18px;
-      vertical-align: -4px;
-    }
-    & small {
-      color: var(--faint);
-      font-size: 11px;
-    }
+    gap: var(--sp-1);
   }
   .comp-item {
     display: inline-grid;
-    border-radius: 9px;
+    border-radius: var(--r-sm);
     &.is-held {
       box-shadow: 0 0 0 2px var(--go);
     }
   }
   .comp-build-stat {
-    justify-self: end;
+    grid-column: 2 / -1;
     color: var(--faint);
-    font-size: 11px;
-    white-space: nowrap;
+    font-size: var(--fs-xs);
   }
   .comp-build-note {
-    margin-top: 6px;
+    margin-top: var(--sp-2);
     color: var(--faint);
-    font-size: 11px;
+    font-size: var(--fs-xs);
+  }
+  .comp-3star {
+    margin-top: var(--sp-2);
+    & b {
+      color: var(--gold);
+    }
+  }
+
+  /* Com seus itens: média ajustada pelos itens que você tem, e de onde vem o ganho. */
+  .comp-edge {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 2px var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+    background: color-mix(in oklab, var(--go), var(--surface) 90%);
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    & > .i {
+      grid-row: span 2;
+      inline-size: 18px;
+      block-size: 18px;
+      color: var(--go);
+    }
+    & b {
+      color: var(--text);
+    }
+    & small {
+      color: var(--muted);
+      font-size: var(--fs-xs);
+    }
+  }
+
+  /* Alvos de toque do cartão (botões já têm 40 px em components.css). */
+  @media (pointer: coarse) {
+    .cp-wish summary,
+    .comp-more summary {
+      min-block-size: 40px;
+    }
   }
 }

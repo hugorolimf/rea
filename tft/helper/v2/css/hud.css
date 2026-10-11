@@ -1,43 +1,98 @@
+/*
+ * HUD da partida (ui/hud.js): cinco células (Fase, Vida, Nível, Ouro, Meta) dentro de `.live-top`, fixo no topo do Ao vivo.
+ * Compacto e de altura estável: o corpo de cada célula reserva a altura do anel (--ring). Largura por container query do
+ * palco: estreito (janela ao lado do jogo, celular) = duas linhas de 3 colunas; largo = uma linha de cinco células.
+ */
 @layer components {
   .hud {
-    display: flex;
-    justify-content: space-between;
-    gap: 0;
-    padding-bottom: 18px;
-    border-bottom: 1px solid var(--line-soft);
+    --ring: 44px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 1fr);
+    grid-template-areas:
+      "fase vida nivel"
+      "ouro meta meta";
+    gap: var(--sp-2) var(--sp-3);
+    align-items: start;
   }
   .hud-cell {
     display: grid;
     align-content: start;
-    gap: 8px;
-    min-width: 0;
-    flex: 0 1 auto;
-    padding: 0 clamp(12px, 1.6vw, 26px);
-    & + .hud-cell {
-      border-left: 1px solid var(--line-soft);
-    }
-    &:first-child {
-      padding-left: 0;
-    }
+    gap: var(--sp-1);
+    min-inline-size: 0;
   }
-  .stack {
-    display: grid;
-    gap: 6px;
-    align-content: center;
+  .hud-stage {
+    grid-area: fase;
   }
-  .pair {
+  .hud-hp {
+    grid-area: vida;
+  }
+  .hud-level {
+    grid-area: nivel;
+  }
+  .hud-gold {
+    grid-area: ouro;
+  }
+  .hud-goal {
+    grid-area: meta;
+  }
+  /* Corpo da célula: reserva a altura do anel, então a linha do HUD não pula quando um texto aparece ou some. */
+  .hud-body {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--sp-2);
+    min-block-size: var(--ring);
+    min-inline-size: 0;
   }
-  .sub {
+  .hud-stack {
+    display: grid;
+    align-content: center;
+    justify-items: start;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+  .hud-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px var(--sp-2);
+    min-inline-size: 0;
+  }
+  .hud-sub {
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
+    line-height: 1.3;
   }
 
-  /* Fase */
+  /* Largo: uma linha só, com divisórias finas entre as células. */
+  @container stage (min-width: 820px) {
+    .hud {
+      grid-template-columns: repeat(4, max-content) minmax(0, 1fr);
+      grid-template-areas: "fase vida nivel ouro meta";
+      gap: 0;
+    }
+    .hud-cell {
+      padding-inline: var(--sp-5);
+      &:first-child {
+        padding-inline-start: 0;
+      }
+      & + .hud-cell {
+        border-inline-start: 1px solid var(--line-soft);
+      }
+    }
+    .hud-hp .hp {
+      inline-size: 112px;
+    }
+  }
+  /* Telas estreitas: o anel encolhe e o corpo da Meta ganha espaço para o botão. */
+  @container stage (max-width: 480px) {
+    .hud {
+      --ring: 40px;
+    }
+  }
+
+  /* ============================================================ Fase */
   .stage-num {
-    font-size: 28px;
+    font-size: var(--fs-xl);
     font-weight: 750;
     letter-spacing: -0.02em;
     line-height: 1;
@@ -46,8 +101,8 @@
     display: flex;
     gap: 5px;
     & li {
-      width: 7px;
-      height: 7px;
+      inline-size: 7px;
+      block-size: 7px;
       border-radius: 50%;
       background: var(--line);
       transition: background var(--settle-ms) var(--settle-ease);
@@ -57,104 +112,111 @@
       &[data-state="now"] {
         background: var(--go);
         box-shadow: 0 0 0 3px color-mix(in oklab, var(--go), transparent 70%);
-        animation: beat 1.8s ease-in-out infinite;
+        @media (prefers-reduced-motion: no-preference) {
+          animation: beat 1.8s ease-in-out infinite;
+        }
       }
     }
   }
-  .live {
-    display: flex;
+  .hud-live {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     color: var(--faint);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
+    white-space: nowrap;
   }
   .live-dot {
-    width: 7px;
-    height: 7px;
+    inline-size: 7px;
+    block-size: 7px;
     border-radius: 50%;
     background: var(--faint);
   }
-  /* Fonte GEP (Overwolf/TFTAcademy): verde = alimentando o helper; âmbar = parada/ausente (usa a leitura de tela). */
-  .gep-chip {
-    padding: 1px 7px;
-    border: 1px solid var(--line-soft);
-    border-radius: 999px;
-    color: var(--faint);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    &[hidden] {
-      display: none;
-    }
-    &[data-state="ativo"] {
-      border-color: color-mix(in oklab, var(--go), transparent 55%);
-      color: var(--go);
-    }
-    &[data-state="obsoleto"],
-    &[data-state="esquema-desconhecido"] {
-      border-color: color-mix(in oklab, var(--amber), transparent 55%);
-      color: var(--amber);
-    }
-  }
   .hud-stage[data-live="1"] {
-    & .live {
+    & .hud-live {
       color: var(--go);
     }
     & .live-dot {
       background: var(--go);
-      animation: ping 1.8s ease-out infinite;
+      @media (prefers-reduced-motion: no-preference) {
+        animation: ping 1.8s ease-out infinite;
+      }
     }
   }
+  /* Fonte GEP (Overwolf/TFTAcademy): verde = alimentando o helper; âmbar = parada ou esquema desconhecido (usa a leitura de tela).
+     Texto longo ("GEP off · ligar gravação") corta com reticências; o texto inteiro está na dica. */
+  .gep-chip {
+    display: block;
+    max-inline-size: 100%;
+    padding: 0 var(--sp-2);
+    overflow: hidden;
+    font-size: var(--fs-2xs);
+    text-overflow: ellipsis;
+  }
 
-  /* Vida */
+  /* ============================================================ Vida */
   .hp {
     display: grid;
-    gap: 8px;
+    gap: 6px;
+    inline-size: 100%;
+    min-inline-size: 72px;
   }
   .hp-num {
-    font-size: 28px;
+    font-size: var(--fs-xl);
     font-weight: 750;
     line-height: 1;
     letter-spacing: -0.02em;
   }
+  .hud-hp[data-low="1"] .hp-num {
+    color: var(--danger);
+  }
   .hp-bar {
     --p: 0;
-    height: 8px;
-    width: 128px;
+    inline-size: 100%;
+    block-size: 8px;
     overflow: hidden;
     border-radius: 4px;
     background: var(--line-soft);
     transition: --p var(--settle-ms) var(--settle-ease);
     & i {
       display: block;
-      width: 100%;
-      height: 100%;
+      inline-size: 100%;
+      block-size: 100%;
       border-radius: inherit;
       background: color-mix(in oklch, var(--danger), var(--go) calc(var(--p) * 100%));
       transform: scaleX(var(--p));
       transform-origin: left;
     }
     &[data-low="1"] i {
-      animation: low 1.1s ease-in-out infinite;
+      @media (prefers-reduced-motion: no-preference) {
+        animation: low 1.1s ease-in-out infinite;
+      }
     }
   }
 
-  /* Anéis e medidores */
+  /* ============================================================ Anéis e medidores */
   .ring-wrap {
     position: relative;
     display: grid;
     place-items: center;
     flex: none;
+    transition: opacity var(--dur-3);
+    /* Leitura velha: o anel esmaece e o número fica em itálico (não depende só da opacidade). */
+    &[data-stale="1"] {
+      opacity: 0.6;
+      & .ring-center {
+        font-style: italic;
+      }
+    }
   }
   .ring {
     --p: 0;
     --sweep: 100;
     --rot: -90deg;
     --accent: var(--go);
-    width: 60px;
-    height: 60px;
+    inline-size: var(--ring);
+    block-size: var(--ring);
     overflow: visible;
     transition: --p var(--settle-ms) var(--settle-ease);
     & circle {
@@ -165,14 +227,13 @@
   }
   .ring-track {
     stroke: var(--line-soft);
-    stroke-width: 5;
+    stroke-width: 6;
     stroke-dasharray: calc(var(--sweep) * 1px) 100px;
   }
   .ring-fill {
     stroke: var(--accent);
-    stroke-width: 5;
+    stroke-width: 6;
     stroke-dasharray: calc(var(--p) * var(--sweep) * 1px) 100px;
-    filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent), transparent 60%));
   }
   .ring-gold {
     --sweep: 75;
@@ -180,7 +241,7 @@
     --accent: var(--gold);
     & .tick {
       stroke: var(--faint);
-      stroke-width: 1.2;
+      stroke-width: 1.4;
     }
     & .floor-mark {
       fill: var(--amber);
@@ -193,18 +254,71 @@
     --accent: var(--violet);
   }
   .ring-level[data-go="1"] {
-    animation: glow 1.8s ease-in-out infinite;
+    @media (prefers-reduced-motion: no-preference) {
+      animation: glow 1.8s ease-in-out infinite;
+    }
   }
   .ring-center {
     position: absolute;
-    font-size: 17px;
+    font-size: calc(var(--ring) * 0.3);
     font-weight: 700;
     line-height: 1;
     pointer-events: none;
   }
   .hud-gold .ring-center {
     color: var(--gold);
-    font-size: 16px;
+  }
+  .hud-goal .ring-center {
+    font-size: var(--fs-xs);
+  }
+  /* Nível: texto do XP em até duas linhas, equilibradas. */
+  .hud-level .hud-sub {
+    text-wrap: balance;
+  }
+
+  /* ============================================================ Meta (comp sugerida ou fixada) */
+  .hud-goal .hud-stack {
+    justify-items: stretch;
+    gap: var(--sp-1);
+  }
+  .hud-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px var(--sp-2);
+    min-inline-size: 0;
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    line-height: 1.3;
+    & .score {
+      min-inline-size: 28px;
+      block-size: 20px;
+      font-size: var(--fs-sm);
+    }
+    & .chip {
+      padding-block: 0;
+    }
+  }
+  .hud-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  /* O botão que abre o modal da comp (ui/shell.js o encontra por `.goal-link`). Especificidade maior que o estilo antigo de
+     link em comp-modal.css/comps.css, que ainda existe. */
+  .hud .goal-link {
+    justify-self: start;
+    padding: 3px 10px;
+    border: 1px solid var(--btn-line);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-align: center;
+    &:hover {
+      text-decoration: none;
+    }
   }
 
   @keyframes beat {
@@ -228,23 +342,7 @@
   }
   @keyframes glow {
     50% {
-      filter: drop-shadow(0 0 7px color-mix(in oklab, var(--go), transparent 35%));
+      filter: drop-shadow(0 0 5px color-mix(in oklab, var(--go), transparent 40%));
     }
-  }
-
-  @container stage (max-width: 860px) {
-    .hud {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      row-gap: 18px;
-    }
-    .hud-cell:nth-child(4) {
-      border-left: 0;
-      padding-left: 0;
-    }
-  }
-  .ring-wrap[data-stale="1"] {
-    opacity: 0.55;
-    transition: opacity 0.3s;
   }
 }

@@ -49,13 +49,19 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       );
     }
   root.setAttribute("viewBox", `${-PAD} ${-PAD} ${W + PAD * 2} ${H + PAD * 2}`);
+  // As casas são botões focáveis: o contêiner é um grupo (um `role="img"` tornaria os filhos decorativos).
+  root.setAttribute("role", "group");
   root.replaceChildren(defs, grid, cellsLayer, empty);
+  /** Marca a casa escolhida: o contorno (CSS) e `aria-pressed` (leitor de tela) andam juntos. */
+  const mark = (n, on) => {
+    n.dataset.selected = on ? "1" : "0";
+    n.setAttribute("aria-pressed", on ? "true" : "false");
+  };
   const pick = (target) => {
     const g = target.closest?.(".cell");
     if (!g) return;
     selected = selected === g.dataset.k ? null : g.dataset.k;
-    for (const n of cellsLayer.children)
-      n.dataset.selected = n.dataset.k === selected ? "1" : "0";
+    for (const n of cellsLayer.children) mark(n, n.dataset.k === selected);
     onSelect(selected);
   };
   cellsLayer.addEventListener("click", (e) => pick(e.target));
@@ -116,7 +122,7 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     cost.setAttribute("transform", `translate(${-R * 0.5} ${-R * 0.58})`);
     return svg(
       "g",
-      { class: "cell" },
+      { class: "cell", tabindex: 0, role: "button" },
       svg("polygon", { class: "cell-bg", points: shape }),
       svg("image", {
         class: "cell-img",
@@ -149,9 +155,7 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     const p = hexCenter(c.col, c.row, SIZE);
     setVars(g, { "--x": p.x.toFixed(2), "--y": p.y.toFixed(2) });
     g.dataset.status = c.status;
-    g.dataset.selected = c.id === selected ? "1" : "0";
-    g.setAttribute("tabindex", "0");
-    g.setAttribute("role", "button");
+    mark(g, c.id === selected);
     g.dataset.carry = c.carry ? "1" : "0";
     const src = champIcon(c.id);
     if (src) g.querySelector(".cell-img").setAttribute("href", src);
@@ -181,8 +185,13 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     const swapText = s
       ? ` · ${KIND_LABEL[s.kind]}${s.exit ? `: ${s.exit.name} sai` : ""}${s.kind === "hold" ? ` (${s.have}/${s.need})` : ""}${s.held ? ` · preserve ${s.held} item(ns)` : ""}`
       : "";
-    g.querySelector("title").textContent =
-      `${c.name}${c.stars ? ` ${c.stars}★` : ""} · ${status}${swapText}${c.reason ? ` · ${c.reason}` : ""}`;
+    // A casa é a imagem do campeão; o texto vai na dica do SVG e no rótulo do botão (leitor de tela e teclado).
+    const label = `${c.name}${c.stars ? ` ${c.stars}★` : ""} · ${status}${swapText}${c.reason ? ` · ${c.reason}` : ""}`;
+    const tip = g.querySelector("title");
+    if (tip.textContent !== label) {
+      tip.textContent = label;
+      g.setAttribute("aria-label", label);
+    }
   };
 
   /* Sinergias: contagem e progresso até o próximo patamar. */
@@ -218,7 +227,7 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     /** Desmarca a peça selecionada (ex.: ao fechar o detalhe). */
     clear() {
       selected = null;
-      for (const n of cellsLayer.children) n.dataset.selected = "0";
+      for (const n of cellsLayer.children) mark(n, false);
     },
     update(plan) {
       const cells = plan?.cells ?? [];

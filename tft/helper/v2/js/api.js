@@ -7,13 +7,35 @@ import { shareEvents } from "./sse-share.js";
 
 /** Camada de rede da v2: usa os mesmos endpoints da v1, sem alterar o contrato. */
 const getJSON = async (url, init = {}, ms = 20000) => {
-  const response = await fetch(url, {
-    ...init,
-    signal: AbortSignal.timeout(ms),
-  });
-  const body = await response.json();
+  let response;
+  try {
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  } catch (cause) {
+    // Servidor parado, rede caída ou tempo esgotado: erro de conexão (`network`), distinto de uma resposta de erro.
+    throw Object.assign(
+      new Error(
+        cause?.name === "TimeoutError"
+          ? "O servidor demorou demais para responder."
+          : "Sem resposta do servidor do helper.",
+      ),
+      { network: true, cause },
+    );
+  }
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    // Corpo que não é JSON (proxy, página de erro): vale o status.
+  }
   if (!response.ok)
-    throw new Error(body.error ?? "Não foi possível atualizar a leitura.");
+    throw Object.assign(
+      new Error(body?.error ?? "Não foi possível atualizar a leitura."),
+      { status: response.status },
+    );
+  if (body === null)
+    throw Object.assign(new Error("Resposta inválida do servidor."), {
+      status: response.status,
+    });
   return body;
 };
 
@@ -74,14 +96,13 @@ export function recommendPayload(
   goal = null,
   augments = [],
   compSwaps = {},
-  { replay = false, legacyServer = false } = {},
+  { replay = false } = {},
 ) {
   const screen = state.screen ?? {},
     decisions = decisionsOf(state, goal, augments, compSwaps);
-  // `legacyServer`: um servidor iniciado antes do M7 ainda exige `level`/`gold`/`inventory` no POST (sem eles responde
-  // "Nível deve ser de 1 a 11." / "Ouro inválido."). O servidor novo ignora esses campos ao vivo e usa o próprio estado,
-  // então mandá-los é inofensivo. Remover quando todo servidor em uso for posterior ao M7.
-  if (!replay && !legacyServer) return decisions;
+  // Ao vivo só vão as decisões. (O modo de compatibilidade `legacyServer`, que mandava nível/ouro/banco para servidores
+  // anteriores ao M7, foi removido: o servidor atual lê o próprio estado e responde 400 só se a decisão for inválida.)
+  if (!replay) return decisions;
   return {
     ...decisions,
     level: screen.level ?? state.estimatedLevel ?? 7,
@@ -116,13 +137,20 @@ export const analysisKey = (state, payload) =>
 
 /**
  * Assina os avisos do servidor (SSE): novos tabuleiros e início/fim de partida (`type: "match"`).
- * Devolve uma função que encerra a assinatura.
+ * `onStatus("open" | "closed")` informa o estado do fluxo (o EventSource reconecta sozinho; "closed" vale até o
+ * próximo "open"). Devolve uma função que encerra a assinatura.
  */
-export const subscribe = (onEvent) =>
-  shareEvents((text) => {
-    let event = null;
-    try {
-      event = JSON.parse(text);
-    } catch {}
-    onEvent(event);
-  });
+export const subscribe = (onEvent, onStatus = () => {}) =>
+  shareEvents(
+    (text) => {
+      let event = null;
+      try {
+        event = JSON.parse(text);
+      } catch {}
+      onStatus("open"); // qualquer mensagem prova que o fluxo está de pé
+      onEvent(event);
+    },
+    () => onStatus("closed"),
+    "/api/events",
+    () => onStatus("open"),
+  );

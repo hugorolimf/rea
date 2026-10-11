@@ -1617,7 +1617,7 @@ persistência, estado antigo, reset. Traçados à mão; se algum falhar, suspeit
 
 **Riscos e pendências.**
 
-- **Reiniciar o servidor da 3218** para ter o laço (não reiniciei nem fiz GET/POST). O cliente novo continua compatível com o servidor antigo (o corpo do POST não mudou; `legacyServer: true` segue; `/core/state/analysis-key.mjs` é servido do disco).
+- **Reiniciar o servidor da 3218** para ter o laço (não reiniciei nem fiz GET/POST). O cliente novo continua compatível com o servidor antigo (o corpo do POST não mudou; `legacyServer: true` seguia; `/core/state/analysis-key.mjs` é servido do disco). _Atualização (modernização da interface):_ o modo `legacyServer` foi removido de `v2/js/api.js` e do `main.js` (o servidor atual é posterior ao M7); o que mudou no cliente está em `v2/DESIGN.md` §2.
 - **Primeira execução** pode acusar erro de digitação nos módulos novos ou nos testes; `app/recommend.mjs` é longo (a regra de lint de tamanho já acusava `server.mjs`).
 - **Medir ao vivo:** custo do tick barato (`AUTO tick` p95) e da análise (`AUTO recomendação`), atraso do loop com a UI fechada, e se a leitura de estado a cada 3 s pesa (GEP/SQLite, `gameFiles.ledger`). Se pesar, subir `TFT_AUTO_REFRESH_MS`.
 - A UI ainda faz seu próprio `POST` quando a chave dela muda; ela continua útil (carrega decisões) mas já não é necessária para a recomendação se renovar.

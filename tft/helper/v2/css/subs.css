@@ -1,74 +1,83 @@
+/*
+ * Substituições (ui/subs.js): peças da comp que valem trocar nesta partida. Vive na coluna "Formação"; a linha se ajusta
+ * à largura da própria lista (contêiner `subs`), não à da janela.
+ */
 @layer components {
-  /* Substituições: peças da comp que valem trocar nesta partida. */
   .subs {
+    container: subs / inline-size;
     display: grid;
-    gap: 8px;
+    gap: var(--sp-2);
   }
-  .sub {
+  .sub-row {
     display: grid;
-    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "pair body act";
     align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
     border: 1px solid var(--line-soft);
-    border-radius: 12px;
-    background: color-mix(in oklab, var(--surface), var(--bg) 30%);
-    & p {
-      display: grid;
-      gap: 2px;
-      min-width: 0;
-      margin-left: 4px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    & > .btn {
+      grid-area: act;
     }
+    &.is-stuck {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas: "pair body";
+    }
+    &.is-applied {
+      border-style: dashed;
+    }
+  }
+  .sub-pair {
+    grid-area: pair;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .sub-arrow {
+    color: var(--muted);
+  }
+  .sub-body {
+    grid-area: body;
+    display: grid;
+    gap: 2px;
+    min-inline-size: 0;
     & b {
-      font-size: 13px;
+      font-size: var(--fs-md);
       font-weight: 700;
     }
     & small {
       color: var(--muted);
-      font-size: 11px;
-    }
-    &.is-stuck {
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-    &.is-applied {
-      border-style: dashed;
-      & small {
-        color: var(--faint);
-      }
+      font-size: var(--fs-xs);
+      line-height: 1.45;
     }
   }
-  .sub-pt .pt {
-    box-shadow: 0 0 0 2px var(--ring-c, var(--line));
-  }
-  .sub-arrow {
-    color: var(--faint);
-  }
-  .sub-why {
-    &[data-tone="warn"] {
-      color: var(--amber) !important;
-    }
+  .sub-why[data-tone="warn"] {
+    color: var(--amber);
   }
   .sub-others {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    margin-top: 2px;
-    color: var(--faint) !important;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
   }
-  /* Alternativa de troca: retrato (anel na cor do custo) + nome. */
+  /* Alternativa de troca: retrato (anel na cor do custo), nome e um resumo de disputa; a dica traz o detalhe. */
   .sub-alt {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 8px 3px 4px;
+    gap: var(--sp-2);
+    min-block-size: 36px;
+    padding: 3px 12px 3px 4px;
     border: 1px solid var(--line-soft);
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--surface), var(--bg) 20%);
-    color: var(--text, inherit);
-    font: inherit;
-    font-size: 12px;
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--fs-sm);
+    text-align: start;
     cursor: pointer;
+    transition: border-color var(--dur-2);
     &:hover:not(:disabled) {
       border-color: var(--blue);
     }
@@ -76,31 +85,30 @@
       opacity: 0.6;
       cursor: default;
     }
-  }
-  .link {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--blue);
-    font: inherit;
-    cursor: pointer;
-    &:hover:not(:disabled) {
-      text-decoration: underline;
-    }
-    &:disabled {
-      color: var(--faint);
-      cursor: default;
+    @media (pointer: coarse) {
+      min-block-size: 44px;
     }
   }
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: default;
+  .sub-alt-name {
+    display: grid;
+    line-height: 1.2;
+    & small {
+      color: var(--muted);
+      font-size: var(--fs-2xs);
+    }
   }
-  @container stage (max-width: 520px) {
-    .sub {
-      grid-template-columns: auto auto auto minmax(0, 1fr);
+  .sub-note {
+    color: var(--muted);
+    font-size: var(--fs-xs);
+  }
+  /* Lista estreita: o botão de ação desce para a linha de baixo, alinhado à esquerda. */
+  @container subs (max-width: 420px) {
+    .sub-row:not(.is-stuck) {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        "pair body"
+        "act act";
       & > .btn {
-        grid-column: 1 / -1;
         justify-self: start;
       }
     }

@@ -6,6 +6,13 @@ import { itemPortrait, portrait } from "./glyphs.js";
 const UNKNOWN =
   '<span class="pt pt-item is-dashed" style="--s:26px" data-i="?" title="Item no banco que o leitor não reconheceu"></span>';
 
+/** Sinais das receitas: decorativos para leitor de tela (a ordem das imagens já diz a receita). */
+const PLUS = '<span class="op" aria-hidden="true">+</span>',
+  ARROW = '<span class="op" aria-hidden="true">→</span>';
+/** Legenda curta de cada lista (visível; a lista mantém o `aria-label`, então a legenda fica fora da leitura). */
+const cap = (text) =>
+  `<p class="eyebrow inv-cap" aria-hidden="true">${text}</p>`;
+
 /**
  * Inventário lido da tela: o banco de itens, o que montar agora (componente + componente → item → quem
  * usa) e o que está a um componente. Dados de `ownedItemAdvice` do servidor; sem leitura, fica oculto.
@@ -16,8 +23,8 @@ export function mountInventory(root) {
     `<li title="${esc(`${r.item.name} em ${r.champion}`)}">${r.required
       .map((id) => itemPortrait({ id }, { size: 22 }))
       .join(
-        '<span class="op">+</span>',
-      )}<span class="op">→</span>${itemPortrait({ id: r.item.id, name: r.item.name }, { size: 26 })}${portrait(r.championId, r.champion, { size: 22 })}</li>`;
+        PLUS,
+      )}${ARROW}${itemPortrait({ id: r.item.id, name: r.item.name }, { size: 26 })}${portrait(r.championId, r.champion, { size: 22 })}</li>`;
   return {
     /**
      * `reading` é o banco lido da tela (ver `bankReading`): aparece na hora, sem esperar a análise, com todo espaço
@@ -52,34 +59,34 @@ export function mountInventory(root) {
       drawn = key;
       root.innerHTML =
         bank.length || unknown
-          ? `<div class="inv-bank" aria-label="Banco de itens">${bank.map((i) => itemPortrait(i, { size: 26 })).join("")}${Array.from({ length: unknown }, () => UNKNOWN).join("")}</div>
+          ? `<div>${cap(`Banco · ${bank.length + unknown} ${bank.length + unknown === 1 ? "item" : "itens"}`)}<div class="inv-bank" role="group" aria-label="Banco de itens">${bank.map((i) => itemPortrait(i, { size: 26 })).join("")}${Array.from({ length: unknown }, () => UNKNOWN).join("")}</div></div>
           ${note ? `<p class="inv-unknown" title="${esc(note)}">${unknown} não reconhecido${unknown === 1 ? "" : "s"}: fora da análise</p>` : ""}
           ${
             emblems.length
-              ? `<ul class="inv-list inv-emblem" aria-label="Emblemas para a comp">${emblems
+              ? `<div>${cap("Emblemas para a comp")}<ul class="inv-list inv-emblem" aria-label="Emblemas para a comp">${emblems
                   .map(
                     (e) =>
-                      `<li title="${esc(`Emblema de ${e.trait}: dá a sinergia a ${e.holder ? e.holder.name : "uma peça da comp"}${e.ready ? "; monta agora" : "; falta o outro componente"}`)}">${e.ready ? "" : `<span class="miss">${itemPortrait({ id: e.other }, { size: 22 })}</span><span class="op">+</span>`}${itemPortrait({ id: e.id, name: e.name }, { size: 26 })}${e.holder ? `<span class="op">→</span>${portrait(e.holder.id, e.holder.name, { size: 22 })}` : ""}<small>${esc(e.trait)}</small></li>`,
+                      `<li title="${esc(`Emblema de ${e.trait}: dá a sinergia a ${e.holder ? e.holder.name : "uma peça da comp"}${e.ready ? "; monta agora" : "; falta o outro componente"}`)}">${e.ready ? "" : `<span class="inv-miss">${itemPortrait({ id: e.other }, { size: 22 })}</span>${PLUS}`}${itemPortrait({ id: e.id, name: e.name }, { size: 26 })}${e.holder ? `${ARROW}${portrait(e.holder.id, e.holder.name, { size: 22 })}` : ""}<small>${esc(e.trait)}</small></li>`,
                   )
-                  .join("")}</ul>`
+                  .join("")}</ul></div>`
               : ""
           }
-          ${ready.length ? `<ul class="inv-list" aria-label="Montar agora">${ready.map(recipe).join("")}</ul>` : ""}
+          ${ready.length ? `<div>${cap("Montar agora")}<ul class="inv-list inv-ready" aria-label="Montar agora">${ready.map(recipe).join("")}</ul></div>` : ""}
           ${
             near.length
-              ? `<ul class="inv-list inv-near" aria-label="Falta um componente">${near
+              ? `<div>${cap("Falta um componente")}<ul class="inv-list inv-near" aria-label="Falta um componente">${near
                   .map(
                     (r) =>
                       `<li title="${esc(`Falta ${r.missing.length} componente para ${r.item.name} em ${r.champion}`)}">${r.required
                         .map(
                           (id) =>
-                            `<span class="${r.missing.includes(id) ? "miss" : ""}">${itemPortrait({ id }, { size: 22 })}</span>`,
+                            `<span class="${r.missing.includes(id) ? "inv-miss" : ""}">${itemPortrait({ id }, { size: 22 })}</span>`,
                         )
                         .join(
-                          '<span class="op">+</span>',
-                        )}<span class="op">→</span>${itemPortrait({ id: r.item.id, name: r.item.name }, { size: 26 })}${portrait(r.championId, r.champion, { size: 22 })}</li>`,
+                          PLUS,
+                        )}${ARROW}${itemPortrait({ id: r.item.id, name: r.item.name }, { size: 26 })}${portrait(r.championId, r.champion, { size: 22 })}</li>`,
                   )
-                  .join("")}</ul>`
+                  .join("")}</ul></div>`
               : ""
           }`
           : "";

@@ -2,11 +2,32 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0c131c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eff3f8" media="(prefers-color-scheme: light)">
+<meta name="description" content="TFT Compass: decisões da rodada de Teamfight Tactics (comprar, rolar, subir de nível, montar) a partir da leitura local do jogo.">
 <title>TFT Compass</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/v2/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/v2/icons/apple-touch-icon.png">
+<!-- Tema antes da primeira pintura (sem piscar): preferência salva ou ?theme=light|dark. -->
+<script>
+(function () {
+  try {
+    var q = /[?&]theme=(light|dark)\b/.exec(location.search),
+      t = q ? q[1] : (JSON.parse(localStorage.getItem("tft-compass-prefs")) || {}).theme;
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    if ((JSON.parse(localStorage.getItem("tft-compass-prefs")) || {}).stickyHud === false) document.documentElement.dataset.stickyHud = "off";
+  } catch (e) {}
+})();
+</script>
+<!-- Dados simulados (?mock=...): o mock instala o fetch falso antes dos módulos; sem o parâmetro nada é carregado. -->
+<script>if (/[?&]mock=/.test(location.search)) document.write('<script src="/live-mock.js"><\/script>');</script>
 <link rel="stylesheet" href="/v2/css/tokens.css">
 <link rel="stylesheet" href="/v2/css/base.css">
+<link rel="stylesheet" href="/v2/css/shell.css">
+<link rel="stylesheet" href="/v2/css/components.css">
 <link rel="stylesheet" href="/v2/css/hud.css">
 <link rel="stylesheet" href="/v2/css/field.css">
 <link rel="stylesheet" href="/v2/css/panel.css">
@@ -19,9 +40,19 @@
 <link rel="stylesheet" href="/v2/css/items.css">
 <link rel="stylesheet" href="/v2/css/ended.css">
 <link rel="stylesheet" href="/v2/css/rich.css">
+<link rel="modulepreload" href="/v2/js/main.js">
+<link rel="modulepreload" href="/v2/js/api.js">
+<link rel="modulepreload" href="/v2/js/model.js">
+<link rel="modulepreload" href="/v2/js/dom.js">
+<link rel="modulepreload" href="/v2/js/ui/glyphs.js">
+<link rel="modulepreload" href="/v2/js/ui/rich-text.js">
+<link rel="modulepreload" href="/v2/js/ui/hud.js">
+<link rel="modulepreload" href="/v2/js/ui/steps.js">
+<link rel="modulepreload" href="/v2/js/ui/panel.js">
+<link rel="modulepreload" href="/v2/js/ui/board.js">
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
     <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
@@ -47,64 +78,104 @@
     <symbol id="i-items" viewBox="0 0 24 24"><path d="m12 3 7 7-7 11-7-11 7-7ZM5 10h14M9 10l3 11 3-11"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/><path d="M12 8v4l3 2"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16a8 8 0 0 0 0-16Z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.8m0 3v.01"/></symbol>
+    <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 4v10m-4-4 4 4 4-4M5 19h14"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M3 9a14 14 0 0 1 4-2.5M21 9a14 14 0 0 0-8-3.5M6 12.5A9 9 0 0 1 9 11m6 .5a9 9 0 0 1 3 1.5M9.5 16a4 4 0 0 1 5 0M12 19.5v.01M4 4l16 16"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13h4l1.5 2.5h5L16 13h4M4 13l2.5-8h11L20 13v6H4v-6Z"/></symbol>
   </defs>
 </svg>
 
-<div class="app" id="app" data-state="loading">
-  <nav class="rail" aria-label="Navegação principal">
-    <a class="brand" href="#" aria-label="TFT Compass"><svg class="i"><use href="#i-plan"/></svg><span>TFT</span></a>
-    <a class="nav" href="#" data-view="live" aria-current="page" title="Ao vivo"><svg class="i"><use href="#i-live"/></svg><span>Ao vivo</span></a>
-    <a class="nav" href="#comps" data-view="comps" title="Escolher comp"><svg class="i"><use href="#i-comps"/></svg><span>Comps</span></a>
-    <a class="nav" href="#itens" data-view="items" title="Tier de itens e atributos"><svg class="i"><use href="#i-items"/></svg><span>Itens</span></a>
-    <a class="nav" href="#historico" data-view="history" title="Histórico de partidas"><svg class="i"><use href="#i-history"/></svg><span>Histórico</span></a>
+<a class="skip-link" href="#stage">Ir para o conteúdo</a>
+
+<div class="app" id="app" data-state="loading" data-view="live">
+  <header class="appbar" role="banner">
+    <a class="brand" href="#ao-vivo" aria-label="TFT Compass: ir para Ao vivo"><svg class="i" aria-hidden="true"><use href="#i-plan"/></svg><span>TFT <small>Compass</small></span></a>
+    <span class="pill conn" id="conn" data-tone="idle" title="Estado da conexão com o servidor do helper"><span class="conn-label">Conectando</span><span class="conn-detail"></span></span>
+    <div class="appbar-actions">
+      <button type="button" class="btn btn-quiet btn-icon" id="btn-install" hidden aria-label="Instalar o app" title="Instalar o app (janela própria, abre mais rápido)"><svg class="i" aria-hidden="true"><use href="#i-install"/></svg></button>
+      <button type="button" class="btn btn-quiet btn-icon" id="btn-theme" aria-label="Tema: automático" title="Tema: automático (segue o sistema). Clique para alternar. Atalho: T"><svg class="i" aria-hidden="true"><use href="#i-auto"/></svg></button>
+      <button type="button" class="btn btn-quiet btn-icon" id="btn-help" aria-haspopup="dialog" aria-label="Ajustes e atalhos" title="Ajustes e atalhos (?)"><svg class="i" aria-hidden="true"><use href="#i-help"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Telas do app">
+    <a class="nav-link" href="#ao-vivo" data-view="live" aria-current="page" title="Ao vivo: decisões da rodada (1)"><svg class="i" aria-hidden="true"><use href="#i-live"/></svg><span>Ao vivo</span></a>
+    <a class="nav-link" href="#comps" data-view="comps" title="Escolher a comp (2)"><svg class="i" aria-hidden="true"><use href="#i-comps"/></svg><span>Comps</span></a>
+    <a class="nav-link" href="#itens" data-view="items" title="Tier de itens e atributos (3)"><svg class="i" aria-hidden="true"><use href="#i-items"/></svg><span>Itens</span></a>
+    <a class="nav-link" href="#historico" data-view="history" title="Histórico de partidas (4)"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span>Histórico</span></a>
   </nav>
 
   <main class="stage" id="stage" tabindex="-1">
-    <header class="hud" id="hud" aria-label="Estado da partida"></header>
-    <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
-    <div class="contest" id="contest" role="status" hidden></div>
-    <div class="deck">
-      <div class="col">
-        <section class="field" aria-labelledby="field-title">
-          <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span><button type="button" class="copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
-          <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
-          <div class="champ-items" id="champ-items" hidden></div>
-          <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
-        </section>
-        <section class="plan-sec" id="plan-sec" aria-labelledby="plan-title" hidden>
-          <div class="section-head"><h2 id="plan-title">Plano</h2><span class="chips" id="plan-chips"></span></div>
-          <div id="plan-body"></div>
-        </section>
-        <section class="augs-sec" id="augs-sec" aria-labelledby="augs-title" hidden>
-          <div class="section-head"><h2 id="augs-title">Aprimoramentos</h2></div>
-          <ol class="aug-path" id="augs-path" aria-label="Aprimoramentos escolhidos em 2-1, 3-2 e 4-2"></ol>
-          <div class="aug-offers" id="augs-offers" hidden></div>
-        </section>
-        <section class="subs-sec" id="subs-sec" aria-labelledby="subs-title" hidden>
-          <div class="section-head"><h2 id="subs-title">Substituições</h2></div>
-          <ul class="subs" id="subs"></ul>
-        </section>
-        <section class="items-sec" aria-labelledby="items-title">
-          <div class="section-head"><h2 id="items-title">Itens</h2></div>
-          <div class="inventory" id="inventory" hidden></div>
-          <ol class="steps" id="steps-items"></ol>
-        </section>
+    <h1 class="sr" id="view-title">Ao vivo</h1>
+
+    <div class="view view-live" id="view-live">
+      <div class="live-top" id="live-top">
+        <section class="hud" id="hud" aria-label="Estado da partida"></section>
+        <section class="focus" id="focus" aria-label="Foco agora" hidden></section>
       </div>
-      <section class="todo" aria-labelledby="todo-title">
-        <div class="section-head"><h2 id="todo-title">Agora</h2></div>
-        <ol class="steps" id="steps"></ol>
-        <p class="empty-steps">Nada a fazer nesta leitura.</p>
+      <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+      <div class="contest" id="contest" role="status" hidden></div>
+
+      <div class="deck" id="deck">
+        <section class="todo" aria-labelledby="todo-title">
+          <div class="section-head"><h2 id="todo-title">Agora</h2></div>
+          <ol class="steps" id="steps"></ol>
+          <p class="empty-steps">Nada a fazer nesta leitura.</p>
+        </section>
+        <aside class="panel" id="panel" aria-label="Decisão da rodada: nível, roll e loja"></aside>
+        <div class="col">
+          <section class="field" aria-labelledby="field-title">
+            <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span><button type="button" class="btn btn-sm copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
+            <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
+            <div class="champ-items" id="champ-items" hidden></div>
+            <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
+          </section>
+          <section class="plan-sec" id="plan-sec" aria-labelledby="plan-title" hidden>
+            <div class="section-head"><h2 id="plan-title">Plano</h2><span class="chips" id="plan-chips"></span></div>
+            <div id="plan-body"></div>
+          </section>
+          <section class="augs-sec" id="augs-sec" aria-labelledby="augs-title" hidden>
+            <div class="section-head"><h2 id="augs-title">Aprimoramentos</h2></div>
+            <ol class="aug-path" id="augs-path" aria-label="Aprimoramentos escolhidos em 2-1, 3-2 e 4-2"></ol>
+            <div class="aug-offers" id="augs-offers" hidden></div>
+          </section>
+          <section class="subs-sec" id="subs-sec" aria-labelledby="subs-title" hidden>
+            <div class="section-head"><h2 id="subs-title">Substituições</h2></div>
+            <ul class="subs" id="subs"></ul>
+          </section>
+          <section class="items-sec" aria-labelledby="items-title">
+            <div class="section-head"><h2 id="items-title">Itens</h2></div>
+            <div class="inventory" id="inventory" hidden></div>
+            <ol class="steps" id="steps-items"></ol>
+          </section>
+        </div>
+      </div>
+
+      <div class="skeleton" aria-hidden="true"></div>
+      <section class="state live-state" id="state-error" data-tone="danger" aria-labelledby="state-error-title">
+        <svg class="i" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+        <h2 id="state-error-title">Sem leitura do servidor</h2>
+        <p id="state-error-text">O helper não respondeu. Se o servidor está rodando, a análise continua nele; a tela volta sozinha quando ele responder.</p>
+        <button type="button" class="btn btn-go" id="btn-retry"><svg class="i" aria-hidden="true"><use href="#i-roll"/></svg>Tentar de novo</button>
       </section>
+      <section class="state live-state" id="state-empty" aria-labelledby="state-empty-title">
+        <svg class="i" aria-hidden="true"><use href="#i-inbox"/></svg>
+        <h2 id="state-empty-title">Nenhuma partida para analisar</h2>
+        <p>Quando o TFT gravar o primeiro tabuleiro da partida, as decisões aparecem aqui. Enquanto isso, escolha uma comp em <a class="link" href="#comps">Comps</a> ou veja os <a class="link" href="#itens">itens</a>.</p>
+      </section>
+      <section class="waiting" id="waiting" aria-labelledby="waiting-title">
+        <span class="waiting-pulse" aria-hidden="true"></span>
+        <h2 id="waiting-title">Nova partida em andamento</h2>
+        <p>Os dados da partida anterior foram descartados. Aguardando o jogo publicar o primeiro tabuleiro, o que costuma levar de 1 a 4 minutos.</p>
+        <p class="waiting-last" id="waiting-last"></p>
+      </section>
+      <section class="ended" id="ended" aria-labelledby="ended-title"></section>
     </div>
-    <div class="skeleton" aria-hidden="true"></div>
-    <section class="waiting" id="waiting" aria-labelledby="waiting-title">
-      <span class="waiting-pulse" aria-hidden="true"></span>
-      <h2 id="waiting-title">Nova partida em andamento</h2>
-      <p>Os dados da partida anterior foram descartados. Aguardando o jogo publicar o primeiro tabuleiro, o que costuma levar de 1 a 4 minutos.</p>
-      <p class="waiting-last" id="waiting-last"></p>
-    </section>
-    <section class="ended" id="ended" aria-labelledby="ended-title"></section>
-    <section class="comps" id="comps" aria-labelledby="comps-title" hidden>
+
+    <section class="view comps" id="comps" aria-labelledby="comps-title" hidden>
       <div class="section-head"><h2 id="comps-title">Escolher comp</h2><span class="chips" id="comps-source"></span></div>
       <div class="comps-goal" id="comps-goal"></div>
       <div class="comps-filters" role="search">
@@ -115,18 +186,45 @@
       <p class="comps-count" id="comps-count" aria-live="polite"></p>
       <ol class="comps-grid" id="comps-grid"></ol>
     </section>
-    <section class="items" id="items" aria-labelledby="itemtier-title" hidden></section>
-    <section class="history" id="history" aria-labelledby="history-title" hidden>
+    <section class="view items" id="items" aria-labelledby="itemtier-title" hidden></section>
+    <section class="view history" id="history" aria-labelledby="history-title" hidden>
       <div class="section-head"><h2 id="history-title">Histórico de partidas</h2></div>
       <div class="history-summary" id="history-summary"></div>
       <ol class="history-list" id="history-list"></ol>
     </section>
   </main>
 
-  <aside class="panel" id="panel" aria-label="Decisão da rodada"></aside>
+  <p class="sr" id="announcer" role="status" aria-live="polite" aria-atomic="true"></p>
+  <div class="toasts" id="toasts" aria-live="off"></div>
 </div>
 
-<script src="/live-mock.js"></script>
+<dialog class="dlg" id="help-dlg" aria-labelledby="help-title">
+  <div class="dlg-box">
+    <header class="dlg-head">
+      <h2 id="help-title">Ajustes e atalhos</h2>
+      <button type="button" class="btn btn-quiet btn-icon" data-close aria-label="Fechar"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </header>
+    <div class="dlg-body settings">
+      <div class="setting"><span class="setting-label" id="lbl-theme">Tema</span><div class="seg" id="set-theme" role="group" aria-labelledby="lbl-theme"><button type="button" data-v="auto">Sistema</button><button type="button" data-v="light">Claro</button><button type="button" data-v="dark">Escuro</button></div></div>
+      <div class="setting"><span class="setting-label" id="lbl-motion">Movimento</span><div class="seg" id="set-motion" role="group" aria-labelledby="lbl-motion"><button type="button" data-v="auto">Sistema</button><button type="button" data-v="reduce">Reduzir</button></div></div>
+      <label class="setting switch"><span class="setting-label">Topo fixo no Ao vivo (HUD e foco)</span><input type="checkbox" id="set-sticky"></label>
+      <p class="setting-note" id="storage-note" hidden>O navegador bloqueou o armazenamento local: os ajustes valem só até fechar esta página.</p>
+      <h3 class="eyebrow">Atalhos</h3>
+      <table class="tbl keys">
+        <tbody>
+          <tr><td><kbd>1</kbd> a <kbd>4</kbd></td><td>Ao vivo, Comps, Itens, Histórico</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Abrir a comp sugerida (Meta) e escolher</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Alternar o tema</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Fechar o diálogo ou os itens do campeão</td></tr>
+          <tr><td><kbd>?</kbd></td><td>Abrir esta janela</td></tr>
+        </tbody>
+      </table>
+      <p class="setting-note" id="app-version"></p>
+    </div>
+  </div>
+</dialog>
+
+<noscript><p style="padding:24px">O TFT Compass precisa de JavaScript.</p></noscript>
 <script type="module" src="/v2/js/main.js"></script>
 </body>
 </html>

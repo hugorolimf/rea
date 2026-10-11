@@ -59,7 +59,7 @@ function units(c) {
       const ch = champions.get(id),
         carry = id === c.carry,
         mine = owned.has(id);
-      return `<li class="${mine ? "is-mine" : ""}${carry ? " is-carry" : ""}" style="--ring-c:var(--cost-${ch?.cost ?? 1})">${portrait(id, ch?.name ?? id, { size: 38, badge: carry ? `<i class="badge-carry" title="Carry">${glyph("crown")}</i>` : mine ? `<i class="badge-mine" title="Já em campo">${glyph("check")}</i>` : "" })}<span>${esc(ch?.name ?? id)}</span></li>`;
+      return `<li class="${mine ? "is-mine" : ""}${carry ? " is-carry" : ""}" style="--ring-c:var(--cost-${ch?.cost ?? 1})">${portrait(id, ch?.name ?? id, { size: 38, badge: carry ? `<i class="badge-carry" title="Carry">${glyph("crown")}</i>` : mine ? `<i class="badge-mine" title="Já em campo">${glyph("check")}</i>` : "" })}<span class="comp-unit-name">${esc(ch?.name ?? id)}</span>${carry ? '<span class="sr"> (carry)</span>' : ""}${mine ? '<span class="sr"> (já em campo)</span>' : ""}</li>`;
     })
     .join("");
 }
@@ -231,8 +231,16 @@ export function itemPlanBlock(
 // Sinergia ativa da comp com o ícone do jogo (máscara tingida); sem ícone, só o texto.
 const traitChip = ({ name: trait, count }) => {
   const icon = traitIcon(trait);
-  return `<li class="chip comp-trait">${icon ? `<em class="trait-icon" style="--icon:url('${esc(icon)}')" aria-hidden="true"></em>` : ""}${esc(trait)} ${count}</li>`;
+  return `<li class="chip">${icon ? `<em class="trait-icon" style="--icon:url('${esc(icon)}')" aria-hidden="true"></em>` : ""}${esc(trait)} ${count}</li>`;
 };
+
+/**
+ * Estado vazio ou de erro como item de lista (`.state` de components.css): ícone, o que aconteceu e o que fazer.
+ * `body` é HTML já escapado por quem chama; `action` é o botão (ou vazio).
+ */
+export const stateItem = ({ icon, title, body, action = "", tone = "" }) =>
+  `<li class="comps-state"><section class="state"${tone ? ` data-tone="${tone}"` : ""}>${glyph(icon)}<h3>${esc(title)}</h3>${body}${action}</section></li>`;
+const retryButton = `<button type="button" class="btn btn-go" data-retry>${glyph("roll")}Tentar de novo</button>`;
 
 /**
  * Cartão de uma comp (o mesmo da aba Comps e do modal do HUD). `actions: false` tira o botão de seguir/liberar (o modal
@@ -291,23 +299,26 @@ function card(
         .filter(Boolean)
         .join("")
     : '<span class="muted">Encaixe indisponível nesta leitura</span>';
-  return `<li class="comp" data-id="${esc(c.id)}"${pinned ? ' data-pinned=""' : ""}>
+  // O cartão fixado ganha o tom âmbar do `.card`, mas só na lista (no modal a moldura some e o rodapé já diz "Escolhida").
+  return `<li class="comp card" data-id="${esc(c.id)}"${pinned ? ` data-pinned=""${actions ? ' data-tone="amber"' : ""}` : ""}>
     <header class="comp-head">
       ${sc ? `<span class="score" data-band="${sc.band}" title="Score 0-100 para a sua partida: itens que você tem, o que já tem em campo (com a chance de subir de estrela), força da comp, chance de montar no seu nível${sc.level ? " " + sc.level : ""}, loja e disputa. Disputa alta reduz o score.">${sc.score}</span>` : '<span class="score" data-band="none" title="O score aparece com uma leitura do tabuleiro">—</span>'}
       <h3>${richText(c.title, { size: 22 })}</h3>
-      <span class="chip">${esc(c.style.label)}</span>
-      ${c.match ? `<span class="chip" title="Sinergia ativa nesta comp">${esc(c.match.name)} ×${c.match.count}</span>` : ""}
-      ${sc?.best ? '<span class="chip chip-best" title="Maior score para você agora">Melhor comp</span>' : f?.suggested ? '<span class="chip chip-go" title="Entre as 3 sugeridas para esta partida">Sugerida</span>' : ""}
-      ${pinned ? `<span class="chip chip-amber">${glyph("flag")} Seguindo</span>` : ""}
+      <div class="comp-tags">
+        <span class="chip">${esc(c.style.label)}</span>
+        ${c.match ? `<span class="chip" title="Sinergia ativa nesta comp">${esc(c.match.name)} ×${c.match.count}</span>` : ""}
+        ${sc?.best ? '<span class="chip chip-best" title="Maior score para você agora">Melhor comp</span>' : f?.suggested ? '<span class="chip chip-go" title="Entre as 3 sugeridas para esta partida">Sugerida</span>' : ""}
+        ${pinned ? `<span class="chip chip-amber">${glyph("flag")} Seguindo</span>` : ""}
+      </div>
     </header>
-    <ul class="comp-units">${units(c)}</ul>
+    <ul class="comp-units" aria-label="Campeões da comp">${units(c)}</ul>
     ${synergies ? `<ul class="comp-traits" aria-label="Sinergias ativas">${activeTraits(c, champions, getCatalog().traits).map(traitChip).join("")}</ul>` : ""}
     <p class="comp-stats"><span>média <b>${c.avg.toFixed(2)}</b></span><span>top 4 <b>${pct(c.top4)}</b></span><span>1º <b>${pct(c.win)}</b></span><span>${thousands(c.games)} partidas</span></p>
     <p class="comp-fit">${fit}</p>
     ${bank}
     ${edge}
     <div class="comp-actions">
-      ${actions ? (pinned ? '<button type="button" class="btn" data-release>Liberar</button>' : `<button type="button" class="btn btn-go" data-pick="${esc(c.id)}">Seguir esta comp</button>`) : ""}
+      ${actions ? (pinned ? `<button type="button" class="btn" data-release>${glyph("x")}Liberar</button>` : `<button type="button" class="btn ${sc?.best ? "btn-solid" : "btn-go"}" data-pick="${esc(c.id)}">${glyph("flag")}Seguir esta comp</button>`) : ""}
       <details class="comp-more" data-more="${esc(c.id)}"${open ? " open" : ""}><summary>Builds e 3★</summary>${details(c)}</details>
     </div>
   </li>`;
@@ -363,7 +374,24 @@ export function mountComps(root, { onPick, onRelease }) {
     drawn = "";
     draw();
   };
+  // O contador vive dentro da barra de filtros (fixa ao rolar); o aviso de encaixe fica logo acima da grade.
+  const hint = document.createElement("p");
+  hint.className = "comps-hint";
+  root.querySelector(".comps-filters")?.append($("comps-count"));
+  $("comps-grid").before(hint);
+  $("comps-grid").setAttribute("aria-label", "Comps de meta");
+
   let typing = 0;
+  /** Volta a mostrar todas as comps (busca e estilo); a ordenação escolhida continua. */
+  const clearFilters = () => {
+    clearTimeout(typing);
+    prefs.query = "";
+    prefs.style = "";
+    $("comps-q").value = "";
+    for (const x of $("comps-style").children)
+      x.setAttribute("aria-pressed", String(x.dataset.style === ""));
+    changed();
+  };
   $("comps-q").addEventListener("input", (e) => {
     clearTimeout(typing);
     typing = setTimeout(() => {
@@ -395,7 +423,27 @@ export function mountComps(root, { onPick, onRelease }) {
     const pick = e.target.closest("[data-pick]");
     if (pick) onPick(pick.dataset.pick);
     if (e.target.closest("[data-release]")) onRelease();
+    if (e.target.closest("[data-clear]")) clearFilters();
+    // O main.js escuta o pedido e recarrega a lista de comps.
+    if (e.target.closest("[data-retry]"))
+      document.dispatchEvent(
+        new CustomEvent("tft:retry", { detail: { view: "comps" } }),
+      );
   });
+
+  /** Foco que sobrevive ao redesenho da grade: guarda um seletor do controle ativo e o restabelece depois. */
+  function focusKeeper() {
+    const a = document.activeElement;
+    if (!a || !$("comps-grid").contains(a)) return () => {};
+    const card = a.closest(".comp")?.dataset.id,
+      sel =
+        a.matches("summary") && a.parentElement?.dataset.more
+          ? `details[data-more="${CSS.escape(a.parentElement.dataset.more)}"] > summary`
+          : card && a.matches("[data-pick]")
+            ? `.comp[data-id="${CSS.escape(card)}"] [data-pick]`
+            : null;
+    return () => sel && $("comps-grid").querySelector(sel)?.focus();
+  }
 
   function draw() {
     if (!data) return;
@@ -424,8 +472,11 @@ export function mountComps(root, { onPick, onRelease }) {
       ? `${glyph("flag")}<p>Seguindo <b>${richText(goal.title)}</b>${data.swapCount ? ` com ${data.swapCount} substituição(ões)` : ""}. O Ao vivo, as trocas e a economia usam esta comp ${data.lobby ? "até você liberar ou a próxima partida começar (a escolha do lobby não passa para a partida)" : "até você liberar ou a partida acabar"}.</p><button type="button" class="btn" data-release>Liberar</button>`
       : `${glyph("roll")}<p>Automático: o Ao vivo segue a melhor sugestão da leitura${auto ? ` (agora <b>${richText(auto)}</b>)` : ""}, que pode mudar a cada leitura. Fixe uma comp para manter a direção.</p>`;
     $("comps-goal").dataset.pinned = goal ? "1" : "0";
-    $("comps-count").textContent =
-      `${list.length} de ${all.length} comps${data.ranking.length ? "" : " · encaixe aparece com uma leitura do tabuleiro"}`;
+    $("comps-count").textContent = `${list.length} de ${all.length} comps`;
+    hint.textContent = data.ranking.length
+      ? ""
+      : "O encaixe na partida aparece quando houver uma leitura do tabuleiro.";
+    const restore = focusKeeper();
     $("comps-grid").innerHTML = list.length
       ? list
           .map((c) =>
@@ -437,7 +488,20 @@ export function mountComps(root, { onPick, onRelease }) {
             }),
           )
           .join("")
-      : '<li class="comps-empty">Nenhuma comp com esses filtros.</li>';
+      : all.length
+        ? stateItem({
+            icon: "inbox",
+            title: "Nenhuma comp com esses filtros",
+            body: "<p>Tente outro nome de campeão ou sinergia, ou volte a mostrar todos os estilos de nível.</p>",
+            action: `<button type="button" class="btn" data-clear>Limpar filtros</button>`,
+          })
+        : stateItem({
+            icon: "inbox",
+            title: "Nenhuma comp de meta carregada",
+            body: "<p>O servidor não trouxe a lista de comps. Tente de novo em instantes.</p>",
+            action: retryButton,
+          });
+    restore();
   }
 
   return {
@@ -446,8 +510,17 @@ export function mountComps(root, { onPick, onRelease }) {
       draw();
     },
     error(message) {
-      $("comps-grid").innerHTML =
-        `<li class="comps-empty">${esc(message)}</li>`;
+      // Sem isto, o próximo `update` com os mesmos dados seria ignorado e o erro ficaria na tela.
+      drawn = "";
+      $("comps-count").textContent = "";
+      hint.textContent = "";
+      $("comps-grid").innerHTML = stateItem({
+        icon: "warn",
+        tone: "danger",
+        title: "Não foi possível carregar as comps",
+        body: `<p>${esc(message)}</p><p>Confira se o servidor do helper está rodando e tente de novo.</p>`,
+        action: retryButton,
+      });
     },
   };
 }

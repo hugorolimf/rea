@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TFT Compass">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a2736"/><stop offset="1" stop-color="#0a1017"/></linearGradient>
+    <linearGradient id="hex" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cf0c8"/><stop offset="1" stop-color="#2fb98c"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M256 88 396 170v172L256 424 116 342V170Z" fill="none" stroke="url(#hex)" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M256 150 302 256 256 362 210 256Z" fill="#0a1017" stroke="#7cf0c8" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M256 150 302 256H210Z" fill="#7cf0c8"/>
+  <circle cx="256" cy="256" r="9" fill="#0a1017"/>
+</svg>

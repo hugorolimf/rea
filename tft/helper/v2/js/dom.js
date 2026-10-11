@@ -76,6 +76,15 @@ export function reconcile(parent, items, { key, create, update }) {
 /* ---------- Movimento ---------- */
 
 export const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+// Preferência do app (Ajustes → Movimento → Reduzir): vale além do que o sistema pede.
+let forcedReduce = false;
+/** Força (ou libera) o movimento reduzido por preferência do usuário e republica as molas. */
+export function setForcedReducedMotion(value) {
+  forcedReduce = !!value;
+  publishMotion();
+}
+/** `true` se o sistema ou o app pedem menos movimento. */
+export const isReducedMotion = () => forcedReduce || reducedMotion.matches;
 const supportsLinear = CSS.supports(
   "animation-timing-function",
   "linear(0, 1)",
@@ -91,9 +100,9 @@ export function publishMotion(root = document.documentElement) {
     supportsLinear ? m.easing : "cubic-bezier(.22,.8,.24,1)";
   setVars(root, {
     "--spring-ease": ease(motion.spring),
-    "--spring-ms": `${reducedMotion.matches ? 0 : motion.spring.duration}ms`,
+    "--spring-ms": `${isReducedMotion() ? 0 : motion.spring.duration}ms`,
     "--settle-ease": ease(motion.settle),
-    "--settle-ms": `${reducedMotion.matches ? 0 : motion.settle.duration}ms`,
+    "--settle-ms": `${isReducedMotion() ? 0 : motion.settle.duration}ms`,
   });
 }
 
@@ -106,7 +115,7 @@ export function flip(root, mutate) {
   for (const n of root.querySelectorAll("[data-flip]"))
     before.set(n.dataset.flip, n.getBoundingClientRect());
   mutate();
-  if (reducedMotion.matches || !before.size) return;
+  if (isReducedMotion() || !before.size) return;
   const ease = supportsLinear
     ? motion.spring.easing
     : "cubic-bezier(.22,.8,.24,1)";

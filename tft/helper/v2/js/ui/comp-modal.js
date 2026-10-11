@@ -8,7 +8,7 @@ import {
   stepIndex,
   suggestionIds,
 } from "../suggest.js";
-import { compCard, compsContext } from "./comps.js";
+import { compCard, compsContext, stateItem } from "./comps.js";
 import { glyph, portrait } from "./glyphs.js";
 import { richText } from "./rich-text.js";
 
@@ -24,28 +24,29 @@ import { richText } from "./rich-text.js";
  */
 export function mountCompModal({ onPick, onRelease }) {
   const dlg = document.createElement("dialog");
-  dlg.className = "comp-modal";
+  // Base `.dlg` de components.css (fundo, borda, sombra, entrada animada, folha embaixo em tela estreita).
+  dlg.className = "dlg comp-modal";
   dlg.setAttribute("aria-labelledby", "cm-title");
   dlg.setAttribute("aria-describedby", "cm-status");
   dlg.setAttribute("aria-modal", "true");
-  dlg.innerHTML = `<div class="cm-box">
-    <header class="cm-head">
+  dlg.innerHTML = `<div class="dlg-box cm-box">
+    <header class="dlg-head cm-head">
       <div class="cm-pager" role="group" aria-label="Navegar pelas sugestões">
-        <button type="button" class="btn cm-step" data-step="-1" aria-label="Sugestão anterior">${glyph("prev")}</button>
+        <button type="button" class="btn btn-icon cm-step" data-step="-1" aria-label="Sugestão anterior">${glyph("prev")}</button>
         <output class="cm-pos" id="cm-pos" aria-hidden="true"></output>
-        <button type="button" class="btn cm-step" data-step="1" aria-label="Próxima sugestão">${glyph("next")}</button>
+        <button type="button" class="btn btn-icon cm-step" data-step="1" aria-label="Próxima sugestão">${glyph("next")}</button>
       </div>
       <h2 id="cm-title" tabindex="-1"></h2>
-      <button type="button" class="btn cm-close" data-close aria-label="Fechar">${glyph("x")}</button>
+      <button type="button" class="btn btn-icon cm-close" data-close aria-label="Fechar">${glyph("x")}</button>
     </header>
-    <ul class="cm-tabs" id="cm-tabs" aria-label="Sugestões"></ul>
-    <div class="cm-body" id="cm-body" tabindex="0" role="region" aria-label="Detalhes da comp"><ol class="cm-card" id="cm-card"></ol></div>
-    <footer class="cm-foot">
+    <ul class="tabs cm-tabs" id="cm-tabs" aria-label="Sugestões"></ul>
+    <div class="dlg-body cm-body" id="cm-body" tabindex="0" role="region" aria-label="Detalhes da comp"><ol class="cm-card" id="cm-card"></ol></div>
+    <footer class="dlg-foot cm-foot">
       <p class="cm-state" id="cm-status" role="status"></p>
-      <a class="cm-all" href="#comps" data-all>Ver todas as comps</a>
-      <button type="button" class="btn btn-go cm-act" id="cm-act"></button>
+      <a class="link cm-all" href="#comps" data-all>Ver todas as comps</a>
+      <button type="button" class="btn btn-solid cm-act" id="cm-act"></button>
     </footer>
-    <p class="cm-sr" id="cm-announce" role="status" aria-live="polite"></p>
+    <p class="sr" id="cm-announce" role="status" aria-live="polite"></p>
   </div>`;
   document.body.append(dlg);
   const $ = (id) => dlg.querySelector(`#${id}`),
@@ -146,14 +147,23 @@ export function mountCompModal({ onPick, onRelease }) {
           actions: false,
           synergies: true,
         })
-      : '<li class="comps-empty">Sem sugestões nesta leitura. Abra todas as comps para escolher uma.</li>';
+      : stateItem({
+          icon: "inbox",
+          title: "Sem sugestões nesta leitura",
+          body: "<p>Use “Ver todas as comps”, logo abaixo, para escolher uma.</p>",
+        });
     body.scrollTop = top;
+    // Mantém a aba atual à vista quando a fila de abas passa da largura do diálogo.
+    $("cm-tabs")
+      .querySelector('[aria-current="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
 
     const act = $("cm-act");
     act.hidden = !c;
     act.dataset.mode = st.chosen ? "release" : "pick";
     act.textContent = st.chosen ? "Desfazer escolha" : "Escolher esta comp";
-    act.classList.toggle("btn-go", !st.chosen);
+    // Ação principal só ao escolher; desfazer é um botão comum.
+    act.classList.toggle("btn-solid", !st.chosen);
     $("cm-status").innerHTML = !c
       ? ""
       : st.chosen

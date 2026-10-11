@@ -16,11 +16,13 @@ export function shareEvents(
   onMessage,
   onError = () => {},
   url = "/api/events",
+  onOpen = () => {},
 ) {
   if (!("locks" in navigator) || typeof BroadcastChannel === "undefined") {
     // Navegador sem Web Locks: conexão própria, como antes.
     const source = new EventSource(url);
     source.onmessage = (e) => onMessage(e.data);
+    source.onopen = onOpen;
     source.onerror = onError;
     return () => source.close();
   }
@@ -28,7 +30,11 @@ export function shareEvents(
     abort = new AbortController();
   let release = () => {};
   channel.onmessage = ({ data }) =>
-    data.type === "message" ? onMessage(data.text) : onError();
+    data.type === "message"
+      ? onMessage(data.text)
+      : data.type === "open"
+        ? onOpen()
+        : onError();
   navigator.locks
     .request(
       NAME,
@@ -39,6 +45,10 @@ export function shareEvents(
           source.onmessage = (e) => {
             channel.postMessage({ type: "message", text: e.data });
             onMessage(e.data);
+          };
+          source.onopen = () => {
+            channel.postMessage({ type: "open" });
+            onOpen();
           };
           source.onerror = () => {
             channel.postMessage({ type: "error" });

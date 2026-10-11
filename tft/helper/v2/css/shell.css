@@ -1,0 +1,490 @@
+/*
+ * Casca do app: barra superior, navegação (trilho à esquerda em tela larga, barra embaixo em tela estreita), palco rolável,
+ * telas (`.view`), grade do Ao vivo, avisos de estado. As telas só desenham o que é delas dentro do palco.
+ * Estados globais em `.app[data-state]` (loading | ready | empty | waiting | ended | error) e a tela em `[data-view]`.
+ */
+@layer layout {
+  /* ============================================================ Grade do app */
+  /* A barra do mock (live-mock.js) define --mockbar-h; sem ela o app ocupa a janela inteira. */
+  body {
+    padding-bottom: 0 !important;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-rows: var(--appbar-h) minmax(0, 1fr);
+    grid-template-areas:
+      "bar bar"
+      "nav stage";
+    block-size: calc(100dvh - var(--mockbar-h, 0px));
+    overflow: hidden;
+  }
+  .skip-link {
+    position: fixed;
+    inset: var(--sp-2) auto auto var(--sp-2);
+    z-index: calc(var(--z-toast) + 1);
+    padding: var(--sp-2) var(--sp-4);
+    border-radius: var(--r-pill);
+    background: var(--go-fill);
+    color: var(--on-fill);
+    font-weight: 700;
+    translate: 0 -200%;
+    &:focus-visible {
+      translate: 0 0;
+      outline-color: var(--text);
+    }
+  }
+
+  /* ============================================================ Barra superior */
+  .appbar {
+    grid-area: bar;
+    z-index: var(--z-nav);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-3) 0 var(--sp-4);
+    border-bottom: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--bg-sunken), transparent 10%);
+    backdrop-filter: blur(10px);
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-inline-end: auto;
+    color: var(--go);
+    font: 800 var(--fs-md) / 1 var(--font-display);
+    letter-spacing: 0.04em;
+    & .i {
+      inline-size: 22px;
+      block-size: 22px;
+    }
+    & small {
+      color: var(--faint);
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+  }
+  .appbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .conn {
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    & .conn-detail {
+      color: var(--muted);
+      font-weight: 600;
+    }
+  }
+
+  /* ============================================================ Navegação */
+  .nav {
+    grid-area: nav;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-3) 0;
+    border-right: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--bg-sunken), transparent 25%);
+  }
+  .nav-link {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    inline-size: 56px;
+    padding: 9px 0 7px;
+    border-radius: var(--r-md);
+    color: var(--muted);
+    font-size: var(--fs-2xs);
+    font-weight: 600;
+    transition:
+      background var(--dur-2),
+      color var(--dur-2);
+    & .i {
+      inline-size: 20px;
+      block-size: 20px;
+    }
+    &:hover {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    &[aria-current="page"] {
+      background: color-mix(in oklab, var(--go), transparent 86%);
+      color: var(--go);
+    }
+  }
+  /* Tela estreita (janela ao lado do jogo, celular): navegação embaixo, no alcance do polegar. */
+  @media (max-width: 760px) {
+    .app {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: var(--appbar-h) minmax(0, 1fr) calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px));
+      grid-template-areas:
+        "bar"
+        "stage"
+        "nav";
+    }
+    .nav {
+      flex-direction: row;
+      justify-content: space-around;
+      padding: 0 var(--sp-2) env(safe-area-inset-bottom, 0px);
+      border-right: 0;
+      border-top: 1px solid var(--line-soft);
+      background: color-mix(in oklab, var(--bg-sunken), transparent 6%);
+    }
+    .nav-link {
+      flex: 1;
+      max-inline-size: 110px;
+      inline-size: auto;
+      padding: 7px 0 6px;
+      font-size: var(--fs-xs);
+    }
+    .brand small,
+    .conn .conn-detail {
+      display: none;
+    }
+  }
+
+  /* ============================================================ Palco e telas */
+  .stage {
+    grid-area: stage;
+    container: stage / inline-size;
+    min-inline-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0 clamp(14px, 2.2vw, 34px) var(--sp-8);
+    scrollbar-gutter: stable;
+    &:focus-visible {
+      outline: none;
+    }
+  }
+  .view {
+    padding-top: var(--sp-4);
+  }
+  .view[hidden] {
+    display: none;
+  }
+  /* Entrada suave ao trocar de tela (View Transitions cuida do resto, ver ui/shell.js). */
+  @media (prefers-reduced-motion: no-preference) {
+    .view:not([hidden]) {
+      animation: view-in var(--dur-3) var(--ease-out);
+    }
+    @keyframes view-in {
+      from {
+        opacity: 0;
+        translate: 0 6px;
+      }
+    }
+  }
+
+  /* ============================================================ Ao vivo: topo fixo (HUD + foco) */
+  .live-top {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    display: grid;
+    gap: var(--sp-3);
+    margin-inline: calc(-1 * clamp(14px, 2.2vw, 34px));
+    padding: var(--sp-3) clamp(14px, 2.2vw, 34px);
+    border-bottom: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--bg), transparent 6%);
+    backdrop-filter: blur(12px);
+  }
+  /* O topo só gruda em janelas altas e se a preferência permitir (em janela baixa ele comeria a tela). */
+  @media (max-height: 640px) {
+    .live-top {
+      position: static;
+    }
+  }
+  :root[data-sticky-hud="off"] .live-top {
+    position: static;
+  }
+  /*
+   * Janela estreita (ao lado do jogo, celular): o HUD inteiro fixo comeria metade da tela. Só a faixa "Foco agora" fica
+   * fixa (uma ou duas linhas); o HUD rola junto com o resto. `display: contents` tira a caixa do `.live-top` para o
+   * `position: sticky` da faixa valer dentro de `#view-live` inteiro.
+   */
+  @container stage (max-width: 640px) {
+    .live-top {
+      display: contents;
+    }
+    .live-top > .hud {
+      margin-bottom: var(--sp-3);
+    }
+    .live-top > .focus {
+      position: sticky;
+      top: 0;
+      z-index: var(--z-sticky);
+      margin-inline: calc(-1 * clamp(14px, 2.2vw, 34px));
+      padding: var(--sp-2) clamp(14px, 2.2vw, 34px);
+      border-block: 1px solid var(--line-soft);
+      background: color-mix(in oklab, var(--bg), transparent 6%);
+      backdrop-filter: blur(12px);
+    }
+    /* Uma linha só, rolável de lado: a decisão mais urgente fica à esquerda e sempre visível. */
+    .live-top > .focus {
+      flex-wrap: nowrap;
+      & .focus-list {
+        flex: 1 1 0;
+        flex-wrap: nowrap;
+        min-inline-size: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      & .focus-item {
+        flex: none;
+      }
+    }
+    :root[data-sticky-hud="off"] .live-top > .focus {
+      position: static;
+    }
+    @media (max-height: 640px) {
+      .live-top > .focus {
+        position: static;
+      }
+    }
+  }
+
+  /* Foco agora: o que fazer na rodada, em ordem de urgência. */
+  .focus {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: var(--sp-2);
+    min-block-size: 44px;
+  }
+  .focus-label {
+    align-self: center;
+    margin-inline-end: var(--sp-1);
+  }
+  .focus-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .focus-item {
+    --tone: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 6px 12px 6px 8px;
+    border: 1px solid color-mix(in oklab, var(--tone), transparent 55%);
+    border-radius: var(--r-md);
+    background: color-mix(in oklab, var(--tone), transparent 90%);
+    line-height: 1.2;
+    &[data-tone="go"] {
+      --tone: var(--go);
+    }
+    &[data-tone="amber"] {
+      --tone: var(--amber);
+    }
+    &[data-tone="danger"] {
+      --tone: var(--danger);
+    }
+    &[data-tone="wait"] {
+      --tone: var(--muted);
+    }
+    & .focus-icon {
+      display: grid;
+      place-items: center;
+      inline-size: 28px;
+      block-size: 28px;
+      border-radius: 50%;
+      background: color-mix(in oklab, var(--tone), transparent 82%);
+      color: var(--tone);
+      & .i {
+        inline-size: 16px;
+        block-size: 16px;
+      }
+    }
+    & strong {
+      display: block;
+      font-size: var(--fs-md);
+      font-weight: 700;
+    }
+    & small {
+      display: block;
+      color: var(--muted);
+      font-size: var(--fs-xs);
+    }
+    @starting-style {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    transition:
+      opacity var(--dur-2),
+      translate var(--dur-3) var(--ease-out);
+  }
+  .focus-idle {
+    align-self: center;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+
+  /* ============================================================ Aviso da tela (notice) */
+  .notice {
+    --tone: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid color-mix(in oklab, var(--tone), var(--line) 60%);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    &::before {
+      content: "";
+      flex: none;
+      inline-size: 8px;
+      block-size: 8px;
+      border-radius: 50%;
+      background: var(--tone);
+    }
+    &[data-kind="warn"] {
+      --tone: var(--amber);
+      color: var(--amber);
+    }
+    &[data-kind="error"] {
+      --tone: var(--danger);
+      background: color-mix(in oklab, var(--danger), var(--bg) 90%);
+      color: var(--text);
+    }
+    &[data-kind="info"],
+    &[data-kind="replay"] {
+      --tone: var(--blue);
+    }
+    & a {
+      color: var(--blue);
+      font-weight: 700;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+  }
+
+  /* ============================================================ Grade do Ao vivo (Agora | Painel | Formação) */
+  .deck {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "todo"
+      "panel"
+      "col";
+    gap: var(--sp-6) var(--gap);
+    align-items: start;
+    margin-top: var(--sp-5);
+  }
+  .todo {
+    grid-area: todo;
+    min-inline-size: 0;
+  }
+  .panel {
+    grid-area: panel;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+    padding: var(--sp-4) var(--sp-4);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+  }
+  .col {
+    grid-area: col;
+    min-inline-size: 0;
+    /* Seções fluem em colunas conforme a largura (uma em tela estreita); nenhuma seção parte ao meio. */
+    columns: 380px;
+    column-gap: var(--gap);
+    & > section {
+      break-inside: avoid;
+      margin-block-end: var(--sp-6);
+    }
+  }
+  /* Médio: Agora e Painel lado a lado; a coluna da formação embaixo, em largura inteira. */
+  @container stage (min-width: 760px) {
+    .deck {
+      grid-template-columns: minmax(0, 1fr) minmax(300px, var(--panel-w));
+      grid-template-areas:
+        "todo panel"
+        "col col";
+    }
+    .panel {
+      position: sticky;
+      top: calc(var(--live-top-h, 0px) + var(--sp-3));
+      max-block-size: calc(100dvh - var(--appbar-h) - var(--live-top-h, 0px) - var(--sp-6));
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+  }
+  /* Largo: três colunas, sem rolar para ver o Painel junto do Agora e da Formação. */
+  @container stage (min-width: 1180px) {
+    .deck {
+      grid-template-columns: minmax(0, 1fr) var(--panel-w) minmax(0, 1.1fr);
+      grid-template-areas: "todo panel col";
+    }
+  }
+  .items-sec:has(.steps[data-empty="1"]):has(.inventory[hidden]) {
+    display: none;
+  }
+
+  /* ============================================================ Estados globais do Ao vivo */
+  .skeleton {
+    display: none;
+  }
+  .app[data-state="loading"] .skeleton {
+    display: block;
+    block-size: 320px;
+    margin-top: var(--sp-5);
+    border-radius: var(--radius);
+    background: linear-gradient(100deg, var(--surface) 30%, var(--surface-3) 50%, var(--surface) 70%) 0 0 / 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .app[data-state="loading"] .deck,
+  .app[data-state="loading"] .focus,
+  .app[data-state="error"] .deck,
+  .app[data-state="error"] .focus,
+  .app[data-state="empty"] .deck {
+    display: none;
+  }
+  /* ============================================================ Diálogo de ajustes e atalhos */
+  .settings {
+    display: grid;
+    gap: var(--sp-4);
+  }
+  .setting {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2) var(--sp-4);
+  }
+  .setting-label {
+    font-weight: 600;
+  }
+  .setting-note {
+    color: var(--faint);
+    font-size: var(--fs-xs);
+  }
+  .keys td:first-child {
+    white-space: nowrap;
+  }
+}
+
+/* Estados "erro" e "vazio" do Ao vivo: na camada components porque o `display: grid` de `.state` mora lá. */
+@layer components {
+  .state.live-state {
+    display: none;
+    margin-top: var(--sp-5);
+  }
+  .app[data-state="error"] #state-error,
+  .app[data-state="empty"] #state-empty {
+    display: grid;
+  }
+}

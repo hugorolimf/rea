@@ -35,9 +35,9 @@ export function mountChampItems(root, { onClose }) {
           .join("")}</span>${s.text ? `<small>${note}</small>` : ""}</li>`;
       });
       root.innerHTML = `
-        <div class="ci-head">${portrait(cell.id, cell.name, { size: 30 })}<b>${esc(cell.name)}</b><i>${stars(cell.stars)}</i>
-          ${equipped.length ? `<span class="ci-equipped" title="equipados">${equipped.map((e) => itemPortrait(e, { size: 20 })).join("")}</span>` : ""}
-          <button type="button" class="ci-close" data-close aria-label="Fechar">${glyph("x")}</button></div>
+        <div class="ci-head">${portrait(cell.id, cell.name, { size: 30 })}<b>${esc(cell.name)}</b>${cell.stars > 0 ? `<i title="${cell.stars} ${cell.stars === 1 ? "estrela" : "estrelas"}"><span aria-hidden="true">${stars(cell.stars)}</span><span class="sr">${cell.stars} ${cell.stars === 1 ? "estrela" : "estrelas"}</span></i>` : ""}
+          ${equipped.length ? `<span class="ci-equipped" role="group" aria-label="Itens equipados" title="equipados">${equipped.map((e) => itemPortrait(e, { size: 20 })).join("")}</span>` : ""}
+          <button type="button" class="btn btn-quiet btn-icon ci-close" data-close aria-label="Fechar itens do campeão" title="Fechar (Esc)">${glyph("x")}</button></div>
         ${rec.length ? `<ul class="ci-list" aria-label="Itens recomendados">${rec.join("")}</ul>` : '<p class="ci-empty">Sem build recomendada para este campeão.</p>'}`;
     },
   };

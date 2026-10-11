@@ -8,6 +8,18 @@ const TYPES = {
   ".mjs": "text/javascript",
   ".css": "text/css",
   ".svg": "image/svg+xml",
+  // PWA (v2/manifest.webmanifest, v2/icons/*.png).
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
+};
+
+/**
+ * Arquivos servidos num endereço fixo da raiz: o service worker precisa estar em `/sw.js` para controlar o escopo `/`
+ * (a página principal), e o manifesto fica ao lado dele. Os dois vivem em `v2/`.
+ */
+const ROOT_FILES = {
+  "/sw.js": "v2/sw.js",
+  "/manifest.webmanifest": "v2/manifest.webmanifest",
 };
 
 /**
@@ -17,11 +29,15 @@ const TYPES = {
 const DIRS = { "/v2/": "v2", "/core/": "core", "/overlay/": "overlay/hud" };
 
 /**
- * Resolve o caminho de uma URL estática (`/`, `/v2/*`, `/core/*`, `/overlay/*`) para um arquivo dentro da pasta certa. Devolve null
+ * Resolve o caminho de uma URL estática (`/`, `/v2/*`, `/core/*`, `/overlay/*`, `/sw.js`, `/manifest.webmanifest`) para um arquivo dentro da pasta certa. Devolve null
  * quando a URL não é estática; `{ target, type }` caso contrário, com `type` undefined se o arquivo não pode ser
  * servido (tipo não web ou fora da pasta: sem sair do diretório).
  */
 export function staticTarget(root, pathname) {
+  const fixed = Object.hasOwn(ROOT_FILES, pathname)
+    ? path.resolve(root, ROOT_FILES[pathname])
+    : null;
+  if (fixed) return { target: fixed, type: TYPES[path.extname(fixed)] };
   const prefix =
     pathname === "/"
       ? "/v2/"

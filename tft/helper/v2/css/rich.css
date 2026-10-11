@@ -1,9 +1,15 @@
+/*
+ * Texto rico (`.rt`: imagem de campeão/item dentro de uma frase) e "Próximo item" (`.nx-*`: item = receita, cada componente
+ * com a situação). Usado em várias telas e também pelo overlay (overlay/hud/index.html carrega este arquivo): mantenha os
+ * nomes das classes.
+ */
 @layer components {
-  /* Texto só para leitores de tela: o nome de campeão/item vira imagem e continua acessível. */
+  /* Texto só para leitor de tela. A definição de verdade está em base.css; esta cópia existe porque o overlay
+     (overlay/hud/draw.mjs escreve `<b class="sr">`) carrega tokens.css e rich.css, mas não base.css. */
   .sr {
     position: absolute !important;
-    width: 1px;
-    height: 1px;
+    inline-size: 1px;
+    block-size: 1px;
     margin: -1px;
     padding: 0;
     overflow: hidden;
@@ -12,7 +18,6 @@
     border: 0;
   }
 
-  /* Texto rico: imagem de campeão/item no lugar do nome, dentro de uma frase. */
   .rt {
     display: inline-flex;
     align-items: center;
@@ -25,8 +30,8 @@
     /* Com a imagem, o nome só existe para leitor de tela; legenda e fallback mostram o texto. */
     &:not(.has-legend):not(.is-text) .rt-name {
       position: absolute;
-      width: 1px;
-      height: 1px;
+      inline-size: 1px;
+      block-size: 1px;
       margin: -1px;
       overflow: hidden;
       clip-path: inset(50%);
@@ -39,7 +44,7 @@
     /* Sem ícone no catálogo, ou a imagem falhou ao carregar: marcador neutro com o nome em texto. */
     &.is-text {
       padding: 0 6px;
-      border-radius: 999px;
+      border-radius: var(--r-pill);
       background: var(--surface-2);
       color: var(--text);
       font-weight: 600;
@@ -50,7 +55,7 @@
     }
   }
   .rt[data-kind="item"] .pt {
-    border-radius: 6px;
+    border-radius: var(--r-xs);
   }
 
   /* Próximo item: item principal = base = componentes, cada um com a situação. */
@@ -66,27 +71,23 @@
     gap: 4px;
     & .op {
       color: var(--faint);
-      font-size: 11px;
+      font-size: var(--fs-xs);
     }
   }
   .row > .op {
     color: var(--faint);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .nx-part {
     position: relative;
     display: inline-flex;
     flex: none;
-    border-radius: 8px;
-    /* Foco por teclado nas peças que forem botões no futuro; hoje são só leitura. */
-    &:focus-visible {
-      outline: 2px solid var(--text);
-      outline-offset: 2px;
-    }
+    border-radius: var(--r-sm);
     & .pt {
-      border-radius: 8px;
+      border-radius: var(--r-sm);
       box-shadow: none;
     }
+    /* A situação vem em contorno (cor), traço (cheio/tracejado) e ícone no canto: nunca só a cor. */
     &[data-state="bank"] .pt {
       outline: 2px solid var(--go);
       outline-offset: 0;
@@ -108,19 +109,18 @@
   }
   .nx-mark {
     position: absolute;
-    right: -5px;
-    bottom: -5px;
+    inset: auto -5px -5px auto;
     display: grid;
     place-items: center;
-    width: 14px;
-    height: 14px;
+    inline-size: 14px;
+    block-size: 14px;
     border: 1px solid var(--line);
     border-radius: 50%;
-    background: var(--bg);
+    background: var(--surface);
     color: var(--muted);
     & .i {
-      width: 9px;
-      height: 9px;
+      inline-size: 9px;
+      block-size: 9px;
     }
     .nx-part[data-state="bank"] & {
       border-color: var(--go);
@@ -137,7 +137,7 @@
   }
   .nx-note {
     color: var(--amber);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 700;
     &[data-tone="go"] {
       color: var(--go);

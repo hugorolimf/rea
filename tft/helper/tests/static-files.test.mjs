@@ -65,6 +65,31 @@ test("staticTarget: /overlay/* serve só overlay/hud (HUD do overlay); o resto d
     assert.equal(staticTarget(root, p), null, p);
 });
 
+test("PWA: /sw.js e /manifest.webmanifest vêm de v2/ (o worker precisa estar na raiz para controlar a página); ícones png são servidos", () => {
+  assert.deepEqual(staticTarget(root, "/sw.js"), {
+    target: abs("v2", "sw.js"),
+    type: "text/javascript",
+  });
+  assert.deepEqual(staticTarget(root, "/manifest.webmanifest"), {
+    target: abs("v2", "manifest.webmanifest"),
+    type: "application/manifest+json",
+  });
+  assert.equal(staticTarget(root, "/v2/icons/icon-192.png").type, "image/png");
+  assert.equal(staticTarget(root, "/v2/icons/icon.svg").type, "image/svg+xml");
+  // Só esses dois nomes fixos: nada parecido vira rota estática da raiz, e o `Object.hasOwn` impede "constructor" etc.
+  for (const p of [
+    "/sw.mjs",
+    "/sw.js/",
+    "/v2sw.js",
+    "/constructor",
+    "/__proto__",
+    "/toString",
+  ])
+    assert.equal(staticTarget(root, p), null, p);
+  // O resto de v2/ continua só com tipos web (README e DESIGN em markdown não são servidos).
+  assert.equal(staticTarget(root, "/v2/DESIGN.md").type, undefined);
+});
+
 test("front: todo import estático de v2/ resolve, como URL, para um arquivo servido (inclui /core/*)", () => {
   const seen = new Set(),
     served = new Set(),

@@ -77,9 +77,9 @@ export function mountAugs(root, { onChoose, onRemove }) {
           const a = s.aug,
             state = s.record ? "done" : i === next ? "now" : "todo";
           const body = s.record
-            ? `<b>${esc(a?.name ?? s.record.name ?? s.record.id)}</b>${a?.traits?.length ? `<span class="aug-traits">${a.traits.map(traitChip).join("")}</span>` : ""}${readonly ? "" : `<button type="button" class="aug-drop" data-drop="${esc(s.record.id)}" aria-label="Desmarcar ${esc(a?.name ?? s.record.id)}">${glyph("x")}</button>`}`
+            ? `<b>${esc(a?.name ?? s.record.name ?? s.record.id)}</b>${a?.traits?.length ? `<span class="aug-traits">${a.traits.map(traitChip).join("")}</span>` : ""}${readonly ? "" : `<button type="button" class="aug-drop" data-drop="${esc(s.record.id)}" title="Desmarcar esta escolha" aria-label="Desmarcar ${esc(a?.name ?? s.record.id)}">${glyph("x")}</button>`}`
             : `<small>${state === "now" ? "escolha agora" : "a escolher"}</small>`;
-          return `<li class="aug-slot" data-state="${state}"${a?.desc ? ` title="${esc(plain(a.desc))}"` : ""}><span class="aug-stage">${s.stage}</span>${body}</li>`;
+          return `<li class="aug-slot" data-state="${state}"${state === "now" ? ' aria-current="step"' : ""}${a?.desc ? ` title="${esc(plain(a.desc))}"` : ""}><span class="aug-stage">${s.stage}</span>${body}</li>`;
         })
         .join("");
 
@@ -88,9 +88,10 @@ export function mountAugs(root, { onChoose, onRemove }) {
         offers.innerHTML = "";
         return;
       }
-      offers.innerHTML = `<p class="aug-head">Cartas na tela · ordem para <b>${advice.comp ? richText(advice.comp) : "sua comp"}</b></p><ol class="aug-cards">${advice.choices
+      offers.innerHTML = `<p class="aug-head">Cartas na tela · ordem para <b>${advice.comp ? richText(advice.comp) : "sua comp"}</b></p><ol class="aug-cards" aria-label="Cartas na tela, da melhor opção para a pior">${advice.choices
         .map((c, i) => {
-          const best = c.id === advice.pick;
+          const best = c.id === advice.pick,
+            { name: augName } = c;
           return `<li class="aug-card"${best ? ' data-pick=""' : ""}${c.reroll ? ' data-reroll=""' : ""}>
             <span class="aug-rank">${best ? `${glyph("check")} Recomendado` : `${i + 1}ª opção`}</span>
             <h3>${esc(c.name)}</h3>
@@ -98,7 +99,7 @@ export function mountAugs(root, { onChoose, onRemove }) {
             ${measuredLine(c)}
             <ul class="aug-why">${c.reasons.map((r) => `<li>${richText(r)}</li>`).join("")}</ul>
             ${c.reroll ? `<p class="aug-reroll">${glyph("roll")} Troque este card se ainda puder</p>` : ""}
-            ${readonly ? "" : `<button type="button" class="btn${best ? " btn-go" : ""}" data-choose="${esc(c.id)}">Escolhi este</button>`}
+            ${readonly ? "" : `<button type="button" class="btn${best ? " btn-go" : ""}" data-choose="${esc(c.id)}" aria-label="Escolhi este: ${esc(augName)}">Escolhi este</button>`}
           </li>`;
         })
         .join("")}</ol><p class="aug-note">${richText(advice.note ?? "")}</p>`;

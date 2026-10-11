@@ -1,0 +1,730 @@
+/*
+ * Componentes compartilhados do design system (ver v2/DESIGN.md e v2/gallery.html).
+ * Cada área de tela (hud.css, field.css, panel.css, comps.css...) só acrescenta o que é dela; botão, chip, selo,
+ * retrato, cartão, campo, aba, diálogo, dica, estado vazio e aviso moram aqui. Carregado antes dos arquivos de área.
+ */
+@layer components {
+  /* ============================================================ Botão */
+  .btn {
+    --btn-bg: var(--surface-2);
+    --btn-line: var(--line);
+    --btn-fg: var(--text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 5px 14px;
+    border: 1px solid var(--btn-line);
+    border-radius: var(--r-pill);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-2),
+      background var(--dur-2),
+      color var(--dur-2),
+      scale var(--dur-1);
+    &:hover:not(:disabled) {
+      --btn-line: var(--muted);
+    }
+    &:active:not(:disabled) {
+      scale: 0.97;
+    }
+    &:disabled,
+    &[aria-disabled="true"] {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+  /* Ação principal tingida (compatível com o uso antigo `btn btn-go`). */
+  .btn-go {
+    --btn-line: color-mix(in oklab, var(--go), transparent 45%);
+    --btn-bg: color-mix(in oklab, var(--go), transparent 84%);
+    --btn-fg: var(--go);
+    &:hover:not(:disabled) {
+      --btn-line: var(--go);
+      --btn-bg: color-mix(in oklab, var(--go), transparent 74%);
+    }
+  }
+  /* Ação principal sólida: uma por tela, no máximo. */
+  .btn-solid {
+    --btn-bg: var(--go-fill);
+    --btn-line: var(--go-fill);
+    --btn-fg: var(--on-fill);
+    &:hover:not(:disabled) {
+      --btn-bg: color-mix(in oklab, var(--go-fill), white 14%);
+      --btn-line: color-mix(in oklab, var(--go-fill), white 14%);
+    }
+  }
+  .btn-quiet {
+    --btn-bg: transparent;
+    --btn-line: transparent;
+    --btn-fg: var(--muted);
+    &:hover:not(:disabled) {
+      --btn-bg: var(--surface-2);
+      --btn-fg: var(--text);
+    }
+  }
+  .btn-danger {
+    --btn-line: color-mix(in oklab, var(--danger), transparent 50%);
+    --btn-bg: color-mix(in oklab, var(--danger), transparent 88%);
+    --btn-fg: var(--danger);
+  }
+  .btn-icon {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 6px;
+  }
+  .btn-sm {
+    min-height: 26px;
+    padding: 3px 10px;
+    font-size: var(--fs-xs);
+  }
+  .btn[aria-pressed="true"] {
+    --btn-bg: var(--surface-3);
+    --btn-line: var(--muted);
+  }
+  /* Botão que parece link (ações secundárias dentro de frases). */
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--blue);
+    font: inherit;
+    cursor: pointer;
+    &:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+    &:disabled {
+      color: var(--faint);
+      cursor: default;
+    }
+  }
+  /* Alvos de toque maiores em telas de toque (celular e tablet pela rede local). */
+  @media (pointer: coarse) {
+    .btn {
+      min-height: 40px;
+    }
+    .btn-icon {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  /* ============================================================ Chip, selo, score, tier */
+  .chip {
+    --chip-c: var(--muted);
+    --chip-line: var(--line);
+    --chip-bg: color-mix(in oklab, var(--surface), transparent 20%);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border: 1px solid var(--chip-line);
+    border-radius: var(--r-pill);
+    background: var(--chip-bg);
+    color: var(--chip-c);
+    font-size: var(--fs-xs);
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  /* Tons: classes antigas (chip-go, chip-best, chip-amber) e `data-tone`. */
+  :is(.chip-go, .chip[data-tone="go"]) {
+    --chip-c: var(--go);
+    --chip-line: color-mix(in oklab, var(--go), transparent 55%);
+    --chip-bg: color-mix(in oklab, var(--go), transparent 88%);
+  }
+  :is(.chip-best, .chip[data-tone="gold"]) {
+    --chip-c: var(--gold);
+    --chip-line: color-mix(in oklab, var(--gold), transparent 45%);
+    --chip-bg: color-mix(in oklab, var(--gold), transparent 82%);
+  }
+  :is(.chip-amber, .chip[data-tone="amber"]) {
+    --chip-c: var(--amber);
+    --chip-line: color-mix(in oklab, var(--amber), transparent 55%);
+    --chip-bg: color-mix(in oklab, var(--amber), transparent 88%);
+  }
+  .chip[data-tone="blue"] {
+    --chip-c: var(--blue);
+    --chip-line: color-mix(in oklab, var(--blue), transparent 55%);
+    --chip-bg: color-mix(in oklab, var(--blue), transparent 88%);
+  }
+  .chip[data-tone="violet"] {
+    --chip-c: var(--violet);
+    --chip-line: color-mix(in oklab, var(--violet), transparent 55%);
+    --chip-bg: color-mix(in oklab, var(--violet), transparent 88%);
+  }
+  .chip[data-tone="danger"] {
+    --chip-c: var(--danger);
+    --chip-line: color-mix(in oklab, var(--danger), transparent 50%);
+    --chip-bg: color-mix(in oklab, var(--danger), transparent 88%);
+  }
+
+  /* Score 0-100 da comp para a partida (no lugar das faixas S/A/B/C). */
+  .score {
+    display: inline-grid;
+    place-items: center;
+    min-width: 34px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 7px;
+    background: var(--surface-3);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    &[data-band="high"] {
+      background: var(--go-fill);
+      color: var(--on-fill);
+    }
+    &[data-band="mid"] {
+      background: var(--amber-fill);
+      color: var(--on-fill);
+    }
+    &[data-band="low"] {
+      background: var(--surface-3);
+    }
+    &[data-band="none"] {
+      color: var(--faint);
+    }
+  }
+  /* Faixa S–D (tier de itens e de comps). */
+  .tier {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: var(--r-xs);
+    background: var(--surface-3);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+  }
+  .tier-S {
+    background: var(--gold-fill);
+    color: var(--on-fill);
+  }
+  .tier-A {
+    background: var(--go-fill);
+    color: var(--on-fill);
+  }
+  .tier-B {
+    background: var(--blue-fill);
+    color: var(--on-fill);
+  }
+  .tier-C {
+    background: var(--surface-3);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .tier-D {
+    background: var(--danger-fill);
+    color: var(--on-danger-fill);
+  }
+  /* Tecla (dica de atalho). */
+  kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: var(--r-xs);
+    background: var(--surface-2);
+    color: var(--text);
+    font: 600 var(--fs-xs) / 1.5 var(--font);
+    text-align: center;
+  }
+
+  /* ============================================================ Retrato (campeão e item) */
+  /* `portrait()` em ui/glyphs.js: --s = lado; --ring-c = anel (cor do custo); sem imagem, mostra as iniciais. */
+  .pt {
+    --s: 28px;
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: var(--s);
+    height: var(--s);
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: calc(var(--s) * 0.36);
+    font-weight: 700;
+    box-shadow: 0 0 0 2px var(--ring-c, var(--line));
+    &::before {
+      content: attr(data-i);
+    }
+    & img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      object-fit: cover;
+    }
+    &.pt-item {
+      border-radius: 9px;
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+    &.is-done {
+      --ring-c: var(--go);
+    }
+    &.is-pending {
+      --ring-c: var(--amber);
+    }
+    &.is-dashed {
+      opacity: 0.7;
+      outline: 1.5px dashed var(--muted);
+      outline-offset: 1px;
+    }
+  }
+
+  /* ============================================================ Cartão e seção */
+  .card {
+    --card-accent: transparent;
+    display: grid;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+    &[data-tone="go"] {
+      --card-accent: var(--go);
+    }
+    &[data-tone="amber"] {
+      --card-accent: var(--amber);
+    }
+    &[data-tone="danger"] {
+      --card-accent: var(--danger);
+    }
+    &[data-tone]:not([data-tone=""]) {
+      border-color: color-mix(in oklab, var(--card-accent), transparent 55%);
+    }
+  }
+  .section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) 10px;
+    margin-bottom: var(--sp-3);
+    & h2 {
+      color: var(--muted);
+      font-size: var(--fs-xs);
+      font-weight: 700;
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+    }
+    &::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--line), transparent);
+      order: 1;
+    }
+    & .chips {
+      order: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-inline-size: 0;
+    }
+  }
+
+  /* ============================================================ Campos e controles */
+  :where(input[type="search"], input[type="text"], select) {
+    min-height: 32px;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--text);
+    &::placeholder {
+      color: var(--faint);
+    }
+    &:hover {
+      border-color: var(--muted);
+    }
+  }
+  :where(select) {
+    padding-right: 8px;
+    cursor: pointer;
+  }
+  @media (pointer: coarse) {
+    :where(input[type="search"], input[type="text"], select) {
+      min-height: 42px;
+      font-size: 16px; /* evita o zoom automático do iOS ao focar */
+    }
+  }
+  /* Controle segmentado (estilo de nível, abas curtas). `aria-pressed` marca a opção ativa. */
+  .seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    padding: 3px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    & button {
+      min-height: 28px;
+      padding: 4px 11px;
+      border: 0;
+      border-radius: var(--r-pill);
+      background: none;
+      color: var(--muted);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background var(--dur-2),
+        color var(--dur-2);
+      &:hover {
+        color: var(--text);
+      }
+      &[aria-pressed="true"] {
+        background: var(--surface-3);
+        color: var(--text);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+    }
+    @media (pointer: coarse) {
+      & button {
+        min-height: 38px;
+      }
+    }
+  }
+  /* Abas (lista de botões; `aria-current` ou `aria-selected` marca a ativa). */
+  .tabs {
+    display: flex;
+    gap: var(--sp-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+    & > li > button,
+    & > button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: var(--r-md);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      &:hover {
+        background: var(--surface-2);
+        color: var(--text);
+      }
+      &[aria-current="true"],
+      &[aria-selected="true"] {
+        border-color: var(--line);
+        background: var(--surface-2);
+        color: var(--text);
+      }
+    }
+  }
+  /* Interruptor (preferências). */
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    cursor: pointer;
+    & input {
+      appearance: none;
+      width: 34px;
+      height: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      background: var(--surface-3);
+      transition: background var(--dur-2);
+      cursor: pointer;
+      &::before {
+        content: "";
+        display: block;
+        width: 14px;
+        height: 14px;
+        margin: 2px;
+        border-radius: 50%;
+        background: var(--muted);
+        transition:
+          translate var(--dur-2) var(--ease-out),
+          background var(--dur-2);
+      }
+      &:checked {
+        background: color-mix(in oklab, var(--go), transparent 70%);
+        &::before {
+          translate: 14px 0;
+          background: var(--go);
+        }
+      }
+    }
+  }
+
+  /* ============================================================ Tabela */
+  .tbl {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-sm);
+    & caption {
+      padding-block: var(--sp-2);
+      color: var(--muted);
+      font-size: var(--fs-xs);
+      text-align: start;
+    }
+    & th {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--faint);
+      font-size: var(--fs-2xs);
+      font-weight: 700;
+      letter-spacing: var(--tracking-caps);
+      text-align: start;
+      text-transform: uppercase;
+    }
+    & td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    & tbody tr:hover {
+      background: color-mix(in oklab, var(--surface-2), transparent 40%);
+    }
+    & :is(td, th)[data-num] {
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+  .tbl-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  /* ============================================================ Estado vazio, erro e carregando */
+  .state {
+    display: grid;
+    justify-items: start;
+    gap: var(--sp-2);
+    max-inline-size: 560px;
+    padding: var(--sp-5) var(--sp-6);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--surface), transparent 30%);
+    color: var(--muted);
+    & h2,
+    & h3 {
+      color: var(--text);
+      font-size: var(--fs-lg);
+      font-weight: 700;
+    }
+    & > .i {
+      inline-size: 28px;
+      block-size: 28px;
+      color: var(--faint);
+    }
+    &[data-tone="danger"] {
+      border-color: color-mix(in oklab, var(--danger), transparent 50%);
+      & > .i {
+        color: var(--danger);
+      }
+    }
+  }
+  .skeleton-line {
+    block-size: 1em;
+    border-radius: var(--r-xs);
+    background: linear-gradient(100deg, var(--surface) 30%, var(--surface-3) 50%, var(--surface) 70%) 0 0 / 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  /* ============================================================ Pílula de estado (conexão, fonte, partida) */
+  .pill {
+    --pill-c: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    padding: 2px 10px 2px 8px;
+    border: 1px solid color-mix(in oklab, var(--pill-c), transparent 60%);
+    border-radius: var(--r-pill);
+    background: color-mix(in oklab, var(--pill-c), transparent 90%);
+    color: var(--pill-c);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    white-space: nowrap;
+    &::before {
+      content: "";
+      inline-size: 8px;
+      block-size: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    &[data-tone="ok"] {
+      --pill-c: var(--go);
+    }
+    &[data-tone="warn"] {
+      --pill-c: var(--amber);
+    }
+    &[data-tone="bad"] {
+      --pill-c: var(--danger);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      &[data-pulse]::before {
+        animation: pill-beat 1.8s ease-in-out infinite;
+      }
+    }
+  }
+  @keyframes pill-beat {
+    50% {
+      opacity: 0.35;
+      scale: 0.8;
+    }
+  }
+
+  /* ============================================================ Diálogo (<dialog class="dlg">) */
+  /* Estrutura: .dlg > .dlg-box > (.dlg-head, .dlg-body, .dlg-foot). Em tela estreita vira folha ancorada embaixo. */
+  .dlg {
+    inline-size: min(560px, calc(100vw - 32px));
+    max-inline-size: none;
+    max-block-size: min(86dvh, 820px);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: var(--shadow-pop);
+    &::backdrop {
+      background: var(--scrim);
+      backdrop-filter: blur(3px);
+    }
+    &:focus-visible {
+      outline: none;
+    }
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      translate var(--dur-3) var(--ease-out),
+      overlay var(--dur-3) allow-discrete,
+      display var(--dur-3) allow-discrete;
+    &:not([open]) {
+      opacity: 0;
+      translate: 0 12px;
+    }
+    @starting-style {
+      &[open] {
+        opacity: 0;
+        translate: 0 12px;
+      }
+    }
+    &::backdrop {
+      transition:
+        opacity var(--dur-2),
+        overlay var(--dur-3) allow-discrete,
+        display var(--dur-3) allow-discrete;
+    }
+    @media (max-width: 640px) {
+      inline-size: 100vw;
+      max-inline-size: 100vw;
+      max-block-size: 92dvh;
+      margin-block-end: 0;
+      border-end-start-radius: 0;
+      border-end-end-radius: 0;
+    }
+  }
+  .dlg-box {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    max-block-size: inherit;
+  }
+  .dlg-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--line-soft);
+    & h2 {
+      flex: 1;
+      min-width: 0;
+      font-size: var(--fs-lg);
+      font-weight: 700;
+    }
+  }
+  .dlg-body {
+    padding: var(--sp-4);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .dlg-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-top: 1px solid var(--line-soft);
+  }
+  /* Com um diálogo aberto a página de trás não rola. */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  /* ============================================================ Dica (ui/tooltip.js) e avisos temporários */
+  .tip {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    max-inline-size: min(320px, calc(100vw - 16px));
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface-3);
+    color: var(--text);
+    box-shadow: var(--shadow-2);
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    transition:
+      opacity var(--dur-1),
+      overlay var(--dur-1) allow-discrete,
+      display var(--dur-1) allow-discrete;
+    &:not(:popover-open) {
+      opacity: 0;
+    }
+    @starting-style {
+      &:popover-open {
+        opacity: 0;
+      }
+    }
+  }
+  .toasts {
+    position: fixed;
+    inset: auto var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px)) auto;
+    z-index: var(--z-toast);
+    display: grid;
+    gap: var(--sp-2);
+    justify-items: end;
+    max-inline-size: min(420px, calc(100vw - 2 * var(--sp-4)));
+    pointer-events: none;
+  }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface-3);
+    box-shadow: var(--shadow-2);
+    font-size: var(--fs-sm);
+    pointer-events: auto;
+    animation: toast-in var(--dur-3) var(--ease-out);
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      translate: 0 8px;
+    }
+  }
+}

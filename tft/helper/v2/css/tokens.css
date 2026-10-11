@@ -1,3 +1,12 @@
+/*
+ * Tokens do design system (ver v2/DESIGN.md). Tudo que é cor, tipografia, espaço, raio, sombra e movimento mora aqui;
+ * os componentes só leem `var(--...)`. Tema: `color-scheme: light dark` segue o sistema; `data-theme="light|dark"` no
+ * <html> (preferência do usuário, ui/shell.js) força um dos dois. Os pares claro/escuro usam `light-dark()`.
+ *
+ * Regra de cor: `--go`, `--amber`... são para TEXTO, traço e contorno (contraste AA com o fundo do tema); `--go-fill`...
+ * são para FUNDOS sólidos e levam sempre `--on-fill` por cima (iguais nos dois temas).
+ */
+
 /* Ordem das camadas: o que vem depois vence o que vem antes, sem brigar por especificidade. */
 @layer reset, tokens, base, layout, components, motion;
 
@@ -15,40 +24,159 @@
 
 @layer tokens {
   :root {
-    color-scheme: dark;
-    /* Superfícies e texto (OKLCH: luminosidade perceptual uniforme) */
-    --bg: oklch(0.155 0.02 255);
-    --surface: oklch(0.2 0.025 252);
-    --surface-2: oklch(0.245 0.03 250);
-    --line: oklch(0.34 0.03 245);
-    --line-soft: oklch(0.27 0.025 248);
-    --text: oklch(0.96 0.01 240);
-    --muted: oklch(0.76 0.03 240);
-    --faint: oklch(0.6 0.03 240);
-    /* Semântica */
-    --go: oklch(0.83 0.15 168);
-    --amber: oklch(0.8 0.14 78);
-    --violet: oklch(0.75 0.14 305);
-    --blue: oklch(0.77 0.11 245);
-    --gold: oklch(0.86 0.14 88);
-    --danger: oklch(0.69 0.19 25);
-    /* Custo dos campeões */
-    --cost-1: oklch(0.72 0.03 250);
-    --cost-2: oklch(0.82 0.13 165);
-    --cost-3: oklch(0.77 0.12 245);
-    --cost-4: oklch(0.73 0.17 305);
-    --cost-5: oklch(0.86 0.14 85);
-    /* Geometria */
-    --rail-w: 68px;
-    --panel-w: 348px;
-    --radius: 14px;
+    color-scheme: light dark;
+
+    /* ---- Superfícies e texto (OKLCH: luminosidade perceptual uniforme) ---- */
+    --bg: light-dark(oklch(0.965 0.008 245), oklch(0.155 0.02 255));
+    --bg-sunken: light-dark(oklch(0.935 0.01 245), oklch(0.125 0.018 255));
+    --surface: light-dark(oklch(0.995 0.003 245), oklch(0.2 0.025 252));
+    --surface-2: light-dark(oklch(0.945 0.01 245), oklch(0.245 0.03 250));
+    --surface-3: light-dark(oklch(0.915 0.014 245), oklch(0.29 0.032 250));
+    --line: light-dark(oklch(0.82 0.016 245), oklch(0.34 0.03 245));
+    --line-soft: light-dark(oklch(0.89 0.012 245), oklch(0.27 0.025 248));
+    --text: light-dark(oklch(0.22 0.03 255), oklch(0.96 0.01 240));
+    --muted: light-dark(oklch(0.4 0.03 250), oklch(0.76 0.03 240));
+    --faint: light-dark(oklch(0.5 0.03 250), oklch(0.62 0.03 240));
+    --scrim: light-dark(oklch(0.2 0.03 255 / 0.45), oklch(0.05 0.02 255 / 0.62));
+
+    /* ---- Semântica: texto/traço (--x) e fundo sólido (--x-fill) ---- */
+    --go: light-dark(oklch(0.46 0.12 165), oklch(0.83 0.15 168));
+    --amber: light-dark(oklch(0.49 0.12 68), oklch(0.8 0.14 78));
+    --violet: light-dark(oklch(0.48 0.17 305), oklch(0.75 0.14 305));
+    --blue: light-dark(oklch(0.47 0.13 250), oklch(0.77 0.11 245));
+    --gold: light-dark(oklch(0.48 0.11 82), oklch(0.86 0.14 88));
+    --danger: light-dark(oklch(0.5 0.19 27), oklch(0.69 0.19 25));
+    --go-fill: oklch(0.83 0.15 168);
+    --amber-fill: oklch(0.8 0.14 78);
+    --violet-fill: oklch(0.75 0.14 305);
+    --blue-fill: oklch(0.77 0.11 245);
+    --gold-fill: oklch(0.86 0.14 88);
+    --danger-fill: oklch(0.69 0.19 25);
+    --on-fill: oklch(0.2 0.03 250);
+    --on-danger-fill: oklch(0.98 0 0);
+
+    /* ---- Custo dos campeões (anel do retrato e selo de custo) ---- */
+    --cost-1: light-dark(oklch(0.6 0.03 250), oklch(0.72 0.03 250));
+    --cost-2: light-dark(oklch(0.62 0.15 160), oklch(0.82 0.13 165));
+    --cost-3: light-dark(oklch(0.6 0.14 250), oklch(0.77 0.12 245));
+    --cost-4: light-dark(oklch(0.58 0.19 305), oklch(0.73 0.17 305));
+    --cost-5: light-dark(oklch(0.72 0.15 85), oklch(0.86 0.14 85));
+
+    /* ---- Tipografia ---- */
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --fs-2xs: 10px;
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-md: 14px;
+    --fs-lg: 16px;
+    --fs-xl: clamp(18px, 1.2vw + 12px, 22px);
+    --fs-2xl: clamp(22px, 1.8vw + 14px, 30px);
+    --fs-hero: clamp(28px, 3vw + 12px, 44px);
+    --lh-tight: 1.2;
+    --lh-body: 1.45;
+    --tracking-caps: 0.1em;
+
+    /* ---- Espaço (escala de 4 px), raio, sombras ---- */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-7: 32px;
+    --sp-8: 48px;
     --gap: 20px;
-    /* Tipografia */
-    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-    /* Movimento: o JS publica as molas calculadas (math.js → linear()) */
+    --r-xs: 6px;
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
+    --r-pill: 999px;
+    --radius: 14px;
+    --shadow-1: light-dark(0 1px 2px oklch(0.3 0.03 250 / 0.12), 0 1px 2px oklch(0 0 0 / 0.35));
+    --shadow-2: light-dark(
+      0 6px 18px oklch(0.3 0.03 250 / 0.14),
+      0 8px 22px oklch(0 0 0 / 0.38)
+    );
+    --shadow-pop: light-dark(
+      0 14px 40px oklch(0.25 0.04 250 / 0.22),
+      0 18px 48px oklch(0 0 0 / 0.55)
+    );
+
+    /* ---- Camadas de empilhamento ---- */
+    --z-sticky: 10;
+    --z-nav: 20;
+    --z-popover: 40;
+    --z-dialog: 50;
+    --z-toast: 60;
+
+    /* ---- Geometria do app ---- */
+    --rail-w: 68px;
+    --appbar-h: 44px;
+    --bottomnav-h: 58px;
+    --panel-w: clamp(300px, 26vw, 360px);
+    --focus: var(--go);
+
+    /* ---- Movimento: o JS publica as molas calculadas (math.js → linear()) ---- */
+    --dur-1: 120ms;
+    --dur-2: 200ms;
+    --dur-3: 360ms;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
     --spring-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
     --spring-ms: 480ms;
     --settle-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
     --settle-ms: 700ms;
+  }
+
+  /* Preferência explícita do usuário (ui/shell.js escreve data-theme no <html>); sem ela vale o sistema. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+  /* Alto contraste do sistema: linhas e texto secundário mais fortes. */
+  @media (prefers-contrast: more) {
+    :root {
+      --line: light-dark(oklch(0.55 0.02 245), oklch(0.6 0.03 245));
+      --line-soft: light-dark(oklch(0.7 0.02 245), oklch(0.45 0.03 248));
+      --muted: light-dark(oklch(0.3 0.03 250), oklch(0.86 0.02 240));
+      --faint: light-dark(oklch(0.38 0.03 250), oklch(0.76 0.03 240));
+    }
+  }
+  /*
+   * Navegador sem `light-dark()` (anterior ao Chromium 123 / Firefox 120 / Safari 17.5): só o tema escuro, em valores
+   * simples, para a interface nunca ficar sem cor. Os fundos sólidos (--x-fill) já são valores simples.
+   */
+  @supports not (color: light-dark(red, blue)) {
+    :root {
+      color-scheme: dark;
+      --bg: oklch(0.155 0.02 255);
+      --bg-sunken: oklch(0.125 0.018 255);
+      --surface: oklch(0.2 0.025 252);
+      --surface-2: oklch(0.245 0.03 250);
+      --surface-3: oklch(0.29 0.032 250);
+      --line: oklch(0.34 0.03 245);
+      --line-soft: oklch(0.27 0.025 248);
+      --text: oklch(0.96 0.01 240);
+      --muted: oklch(0.76 0.03 240);
+      --faint: oklch(0.62 0.03 240);
+      --scrim: oklch(0.05 0.02 255 / 0.62);
+      --go: oklch(0.83 0.15 168);
+      --amber: oklch(0.8 0.14 78);
+      --violet: oklch(0.75 0.14 305);
+      --blue: oklch(0.77 0.11 245);
+      --gold: oklch(0.86 0.14 88);
+      --danger: oklch(0.69 0.19 25);
+      --cost-1: oklch(0.72 0.03 250);
+      --cost-2: oklch(0.82 0.13 165);
+      --cost-3: oklch(0.77 0.12 245);
+      --cost-4: oklch(0.73 0.17 305);
+      --cost-5: oklch(0.86 0.14 85);
+      --shadow-1: 0 1px 2px oklch(0 0 0 / 0.35);
+      --shadow-2: 0 8px 22px oklch(0 0 0 / 0.38);
+      --shadow-pop: 0 18px 48px oklch(0 0 0 / 0.55);
+    }
   }
 }
