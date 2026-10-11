@@ -18,26 +18,27 @@ possível saber. Verificado em **2026-10-10** (Set 18, TFT@18.4.0, patchline BR1
 
 ## Resumo: dado, fonte e confiabilidade
 
-| Dado                                                                         | Fonte                                                                                                                      | Método                                                                                                                                                  | Confiabilidade                                                                                       | Atraso                                                                 |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Id da partida, fila, set                                                     | `.sentry-native/<execução>.run/__sentry-event` (tags `game.id`, `game.queue`, `set_name`) e LCU `/lol-gameflow/v1/session` | arquivo / HTTPS local                                                                                                                                   | observado                                                                                            | ≤ 0,5 s (intervalo de leitura)                                         |
-| **Estágio-rodada** (`2-4`)                                                   | `__sentry-event`, tag `game.tft.round`                                                                                     | `game-log.mjs` → `parseSentryEvent`                                                                                                                     | **observado**                                                                                        | ≤ 0,5 s (observado: mudanças detectadas na leitura seguinte)           |
-| **Fase da rodada** (Planning, Combat, Draft = carrossel...)                  | `__sentry-event`, tag `game.tft.phase`                                                                                     | idem                                                                                                                                                    | **observado**                                                                                        | idem                                                                   |
-| Fase do cliente (InProgress etc.)                                            | LCU `/lol-gameflow/v1/gameflow-phase`                                                                                      | HTTPS local (`server.mjs`, `readLcu`)                                                                                                                   | observado                                                                                            | até 5 s (cache)                                                        |
-| Comp, itens equipados, tabuleiro de todos os jogadores                       | `Saved/Logs/TFTEoGStats.json` (`statsBlock.players[].boardPieces`)                                                         | leitura do arquivo (`capture.mjs`, a cada 0,5 s)                                                                                                        | observado, **só peças em campo**                                                                     | regravado pelo jogo durante a partida                                  |
-| Vida, colocação, aprimoramentos de cada jogador                              | `TFTEoGStats.json` (`health`, `ffaStanding`, `augments`)                                                                   | idem                                                                                                                                                    | observado                                                                                            | idem                                                                   |
-| **Ouro**                                                                     | GEP `me.gold` (banco do TFTAcademy) quando fresco; senão **sem fonte permitida em arquivo**                                | `gep-reader.mjs`; reserva: leitor de tela (`screen-reader.ps1`, OCR)                                                                                    | GEP: observado (0 é inferido de `{}`); tela: lido da tela                                            | GEP ≤ 1 s de resolução; tela ~2,5 s (`IntervalMs`)                     |
-| **Nível**                                                                    | GEP `me.xp.level` quando fresco; senão **sem fonte permitida em arquivo**                                                  | GEP; reserva: leitor de tela; se o OCR falha, derivado do total de XP (`4/10`); validado e, sem leitura, piso por XP passivo (`level.mjs`, ver "Nível") | GEP: observado; tela: lido da tela / derivado (piso)                                                 | idem                                                                   |
-| **XP**                                                                       | GEP `me.xp` (`atual/total`) quando fresco; senão **sem fonte permitida em arquivo**                                        | GEP; reserva: leitor de tela                                                                                                                            | GEP: observado; tela: lido da tela                                                                   | idem                                                                   |
-| **Reserva (bench)** do jogador                                               | GEP `bench.bench_pieces` quando fresco; **não reconstruível pelo log** (ver "Livro-razão de eventos")                      | `gep-reader.mjs` → `options.bench` (origem `gep`); sem GEP, vazia (a entrada manual saiu); o livro-razão dá só um teto (`unitLedger.bench.upperBound`)  | GEP: observado; teto: **estimado**                                                                   | GEP ≤ 1 s                                                              |
-| **Compras e fusões** do jogador (cada uma com o id da entidade)              | `Saved/Logs/TFT.log`, voz `Audio.Event.VO.Unit.Purchase` / `StarUp.2Star                                                   | 3Star`                                                                                                                                                  | `game-log.mjs` → `parseLogLine`; `unit-ledger.mjs`                                                   | **observado** (completo para compras da loja; faltam carrossel/prêmio) | 1 a 4 s (flush do log) |
-| Vendas, movimento tabuleiro<->reserva                                        | **não gravados** (só as tentativas recusadas de arrastar)                                                                  | n/a                                                                                                                                                     | sem fonte                                                                                            | n/a                                                                    |
-| **Banco de itens** do jogador                                                | GEP `bench.item_bench` (só a linha do jogador local) quando fresco; senão **sem fonte permitida em arquivo**               | GEP; reserva: leitor de tela (comparação de ícones)                                                                                                     | GEP: observado; tela: lido da tela                                                                   | GEP ≤ 1 s; tela idem + debounce (`ITEMS_SETTLE_MS`)                    |
-| **Loja** (5 cartas)                                                          | GEP `store.shop_pieces` quando fresco; senão **sem fonte permitida em arquivo**                                            | GEP; reserva: leitor de tela (OCR dos nomes)                                                                                                            | GEP: observado; tela: lido da tela                                                                   | GEP ≤ 1 s; tela idem                                                   |
-| **Aprimoramentos do jogador** (oferta e escolhidos)                          | GEP `augments.me` e `picked_augment` (banco do TFTAcademy), só com GEP ativo; senão leitor de tela (oferta) / manual       | `gep-reader.mjs` (`augmentResolver`); o registro manual prevalece sobre os escolhidos do GEP                                                            | GEP: **observado** (partida completa de 2026-10-11: 15 de 15 nomes no catálogo)                      | GEP ≤ 1 s                                                              |
-| **Wisps** da loja                                                            | GEP `store.shop_pieces` (entrada comum, sem evento próprio) + catálogo `{5b609ae2}`                                        | `wispCatalog` + `parseShop` (`screen.wisps`, `id: null` na loja)                                                                                        | GEP: **observado** (28 Wisps da loja na partida de 2026-10-11, todos no catálogo; 1 carta fora dele) | GEP ≤ 1 s                                                              |
-| Bancos dos rivais                                                            | **inexistente** (o jogo não expõe)                                                                                         | estimativa `hiddenHoldings` (`pool-tracker.mjs`)                                                                                                        | **estimado**                                                                                         | recalculado a cada análise                                             |
-| Itens recebidos no banco (só a contagem, `hints.itemsReceived`) e carrosséis | `Saved/Logs/TFT.log`                                                                                                       | `game-log.mjs` → `parseLogLine`                                                                                                                         | **estimado** (não diz qual item)                                                                     | 1 a 4 s (flush do log)                                                 |
+| Dado                                                                         | Fonte                                                                                                                      | Método                                                                                                                                                                                                 | Confiabilidade                                                                                       | Atraso                                                                 |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Id da partida, fila, set                                                     | `.sentry-native/<execução>.run/__sentry-event` (tags `game.id`, `game.queue`, `set_name`) e LCU `/lol-gameflow/v1/session` | arquivo / HTTPS local                                                                                                                                                                                  | observado                                                                                            | ≤ 0,5 s (intervalo de leitura)                                         |
+| **Estágio-rodada** (`2-4`)                                                   | `__sentry-event`, tag `game.tft.round`                                                                                     | `game-log.mjs` → `parseSentryEvent`                                                                                                                                                                    | **observado**                                                                                        | ≤ 0,5 s (observado: mudanças detectadas na leitura seguinte)           |
+| **Fase da rodada** (Planning, Combat, Draft = carrossel...)                  | `__sentry-event`, tag `game.tft.phase`                                                                                     | idem                                                                                                                                                                                                   | **observado**                                                                                        | idem                                                                   |
+| Fase do cliente (InProgress etc.)                                            | LCU `/lol-gameflow/v1/gameflow-phase`                                                                                      | HTTPS local (`server.mjs`, `readLcu`)                                                                                                                                                                  | observado                                                                                            | até 5 s (cache)                                                        |
+| Comp, itens equipados, tabuleiro de todos os jogadores                       | `Saved/Logs/TFTEoGStats.json` (`statsBlock.players[].boardPieces`)                                                         | leitura do arquivo (`capture.mjs`, a cada 0,5 s)                                                                                                                                                       | observado, **só peças em campo**                                                                     | regravado pelo jogo durante a partida                                  |
+| Vida, colocação, aprimoramentos de cada jogador                              | `TFTEoGStats.json` (`health`, `ffaStanding`, `augments`)                                                                   | idem                                                                                                                                                                                                   | observado                                                                                            | idem                                                                   |
+| **Ouro**                                                                     | GEP `me.gold` (banco do TFTAcademy) quando fresco; senão **sem fonte permitida em arquivo**                                | `gep-reader.mjs`; reserva: leitor de tela (`screen-reader.ps1`, glifos; ver "Leitor de tela próprio")                                                                                                  | GEP: observado (0 é inferido de `{}`); tela: lido da tela                                            | GEP ≤ 1 s de resolução; tela ~2,5 s (`IntervalMs`)                     |
+| **Nível**                                                                    | GEP `me.xp.level` quando fresco; senão **sem fonte permitida em arquivo**                                                  | GEP; reserva: leitor de tela (glifos, ver "Leitor de tela próprio"); se o número não é lido, derivado do total de XP (`4/10`); validado e, sem leitura, piso por XP passivo (`level.mjs`, ver "Nível") | GEP: observado; tela: lido da tela / derivado (piso)                                                 | idem                                                                   |
+| **XP**                                                                       | GEP `me.xp` (`atual/total`) quando fresco; senão **sem fonte permitida em arquivo**                                        | GEP; reserva: leitor de tela (glifos, ver "Leitor de tela próprio")                                                                                                                                    | GEP: observado; tela: lido da tela                                                                   | idem                                                                   |
+| **Reserva (bench)** do jogador                                               | GEP `bench.bench_pieces` quando fresco; **não reconstruível pelo log** (ver "Livro-razão de eventos")                      | `gep-reader.mjs` → `options.bench` (origem `gep`); sem GEP, vazia (a entrada manual saiu); o livro-razão dá só um teto (`unitLedger.bench.upperBound`)                                                 | GEP: observado; teto: **estimado**                                                                   | GEP ≤ 1 s                                                              |
+| **Compras e fusões** do jogador (cada uma com o id da entidade)              | `Saved/Logs/TFT.log`, voz `Audio.Event.VO.Unit.Purchase` / `StarUp.2Star                                                   | 3Star`                                                                                                                                                                                                 | `game-log.mjs` → `parseLogLine`; `unit-ledger.mjs`                                                   | **observado** (completo para compras da loja; faltam carrossel/prêmio) | 1 a 4 s (flush do log) |
+| Vendas, movimento tabuleiro<->reserva                                        | **não gravados** (só as tentativas recusadas de arrastar)                                                                  | n/a                                                                                                                                                                                                    | sem fonte                                                                                            | n/a                                                                    |
+| **Banco de itens** do jogador                                                | GEP `bench.item_bench` (só a linha do jogador local) quando fresco; senão **sem fonte permitida em arquivo**               | GEP; reserva: leitor de tela (comparação de ícones)                                                                                                                                                    | GEP: observado; tela: lido da tela                                                                   | GEP ≤ 1 s; tela idem + debounce (`ITEMS_SETTLE_MS`)                    |
+| **Loja** (5 cartas)                                                          | GEP `store.shop_pieces` quando fresco; senão **sem fonte permitida em arquivo**                                            | GEP; reserva: leitor de tela (OCR dos nomes)                                                                                                                                                           | GEP: observado; tela: lido da tela                                                                   | GEP ≤ 1 s; tela idem                                                   |
+| **Aprimoramentos do jogador** (oferta e escolhidos)                          | GEP `augments.me` e `picked_augment` (banco do TFTAcademy), só com GEP ativo; senão leitor de tela (oferta) / manual       | `gep-reader.mjs` (`augmentResolver`); o registro manual prevalece sobre os escolhidos do GEP                                                                                                           | GEP: **observado** (partida completa de 2026-10-11: 15 de 15 nomes no catálogo)                      | GEP ≤ 1 s                                                              |
+| **Wisps** da loja                                                            | GEP `store.shop_pieces` (entrada comum, sem evento próprio) + catálogo `{5b609ae2}`                                        | `wispCatalog` + `parseShop` (`screen.wisps`, `id: null` na loja)                                                                                                                                       | GEP: **observado** (28 Wisps da loja na partida de 2026-10-11, todos no catálogo; 1 carta fora dele) | GEP ≤ 1 s                                                              |
+| Bancos dos rivais                                                            | **inexistente** (o jogo não expõe)                                                                                         | estimativa `hiddenHoldings` (`pool-tracker.mjs`)                                                                                                                                                       | **estimado**                                                                                         | recalculado a cada análise                                             |
+| **Carrossel** (aberto agora e as peças que oferece: campeão + item)          | fase `Draft` do `__sentry-event`; GEP `round_type` "Carousel" e `carousel.carousel_pieces`; calendário x-4 (estimativa)    | `core/state/carousel.mjs`, `gep-reader.mjs` → `parseCarouselPieces`, `app/carousel-view.mjs`                                                                                                           | **observado** (jogo e GEP: 19 carrosséis em 5 partidas); calendário **estimado**                     | a cada leitura do estado (≤ 3 s)                                       |
+| Itens recebidos no banco (só a contagem, `hints.itemsReceived`) e carrosséis | `Saved/Logs/TFT.log`                                                                                                       | `game-log.mjs` → `parseLogLine`                                                                                                                                                                        | **estimado** (não diz qual item)                                                                     | 1 a 4 s (flush do log)                                                 |
 
 ## Dado a dado
 
@@ -240,16 +241,16 @@ supera para o ADQUIRIDO.
     (4 compartilham o ícone do item base) e os excluídos de `bench-candidates.mjs` só usam o ícone genérico de mecânica
     (`set18_mechanicicon`). Outra falha achada: a radiante `DA_X_Radiant` (7 itens) não era da família do item base e
     anulava a folga (item reconhecido virava "?").
-  - **Onde está a coluna** (`Locate-Column`, `Tft.FindFrame`): não se supõe; acha-se pela **moldura** dos espaços (linha clara
-    fina nas bordas esquerda e direita de cada quadro, molde medido na calibração, correlação normalizada: 0,9 a 1,0 na coluna
-    real e 0,3 a 0,5 fora dela; mediana entre os 10 espaços). Testado em 16:9, janela 2560x1351 com a coluna à esquerda e com
-    o HUD centralizado, e escurecida. Sem moldura por 3 laços (`bankGeometry.mode = "assumed"`), usa o retângulo 16:9 do HUD e
-    só aceita item com o mesmo rigor dos raros. Os campos de nível/ouro/XP continuam pelo retângulo centralizado (inalterado).
-    Deslocamento de tolerância ±1 px (x) e ±2 px (y).
+  - **Onde está a coluna** (`Locate-Column`, `Bank.Lattice`; **substituiu o molde `Tft.FindFrame` em 2026-10-11**, ver "Leitor de tela
+    próprio"): não se supõe; a grade dos espaços é **medida na imagem** (passo, primeiro topo e bordas laterais), porque o HUD não
+    escala linearmente com a altura (passo de 36 px em 720p e 56 px em 1149p; o molde de 1149p e as frações `$SLOT` erravam ~0,9 px por
+    espaço em 720p, 8 px no 10º). Sem grade confirmada por 3 laços (`bankGeometry.mode = "assumed"`), usa o retângulo 16:9 do HUD e só
+    aceita item com o mesmo rigor dos raros. Os campos de nível/ouro/XP continuam pelo retângulo centralizado.
   - **Diagnóstico ao vivo, sem imagem** (`GET /api/state` → `screen.bankDebug` e `screen.bankGeometry`): por espaço
     `{slot, value, best, d1, d2, mean, spread, kept}` (`best` = melhor candidato, `d1` sua distância, `d2` a do melhor de outra
     família, `mean`/`spread` o brilho e o desvio da assinatura, `kept` = valor mantido pela memória do espaço) e a geometria
-    `{mode: "frame"|"assumed", x, ncc, contrast, client}`. É a leitura de agora (não passa pelo debounce de `bank`).
+    `{mode: "frame"|"assumed", x, pitch, hits, edge, client}` (`pitch` = passo medido entre os espaços em px; `hits` = espaços, de 10,
+    cujo topo ou borda de baixo bateram na grade; `edge` = nitidez das bordas laterais). É a leitura de agora (não passa pelo debounce de `bank`).
     Com isso cada "?" se explica: `d1` > 0,6 (ou > 0,45 se raro) = ícone fora do que o leitor reconhece; `d2 − d1` pequeno =
     ambiguidade real (ex.: `DA_18_EmblemFloraFatalis` e `DA_18_EmblemJuggernaut` distam 0,405 entre si).
   - **Interface**: o banco mostra "N não reconhecidos: fora da análise" (a dica dá a proporção de componentes entre os
@@ -259,6 +260,29 @@ supera para o ADQUIRIDO.
     calibrados com 3 itens de uma coluna escurecida (cálculo pelos dados de `bankDebug` depois que o servidor reiniciar).
 - **Loja**: não aparece em nenhum arquivo (`TFTShopPlayerSubsystem` só registra tooltips e a falha de montagem no menu).
   Segue pelo leitor de tela.
+
+### Carrossel (aberto agora, peças que oferece e o que pegar)
+
+O carrossel (rodada em que todos escolhem um campeão com o item que ele traz) é detectado e lido SEM fonte nova: usa os arquivos do jogo e o GEP que o helper já lia. `core/state/carousel.mjs` (puro) decide; `app/carousel-view.mjs` monta o bloco `carousel` de `/api/state`.
+
+- **Quando é carrossel** (sinais independentes; vale o de maior confiança, e o desacordo fica em `conflict`):
+  1. **fase do jogo** (`game.tft.phase` do `__sentry-event`, `phaseKind`): `Draft` = carrossel, qualquer outra fase = não. Origem `game-log`, **observada**;
+  2. **GEP `match_info.round_type`** com `name: "Carousel"` (`type: "Carousel"`), só se for a MESMA rodada do estágio atual (um `round_type` de outra rodada é atraso do GEP). Origem `gep`, **observada**;
+  3. **calendário**: `x-4` a partir do estágio 2 (observado `2-4`, `3-4`, `4-4`, `5-4`, `6-4` em 5 partidas gravadas). Só **estimativa** (`confidence: "estimated"`, origem `schedule`).
+     A `1-1` é `Encounter` (PVE) em todas as partidas gravadas: no Set 18 **não há carrossel no estágio 1**.
+     Sem nenhum sinal o estado é `active: null` (desconhecido), nunca "não é carrossel".
+- **O que o carrossel oferece** (leitura real): GEP `carousel.carousel_pieces`, um evento no início de cada carrossel (mesmo segundo do `round_type`), coluna `round` = rodada:
+  `{"slot_1":{"name":"DA_18_MasterYi_AD","item_1":"DA_Component_RecurveBow","item_2":""}, ..., "slot_13":{...}}`. Cada peça é um **campeão com um item** (`item_2` nunca veio preenchido). Medido nos 5 jogos do banco do TFTAcademy: 19 carrosséis, 9 a 13 peças, **0 nomes fora do catálogo**.
+  Estágios 2 a 4: só componentes (e Espátula/Frigideira); do 5 em diante, itens completos e emblemas. É a oferta **inicial**: o GEP não grava quem escolheu o quê, nem a ordem de escolha, nem o tempo restante; a peça que alguém levou continua na lista.
+  A oferta só vale na rodada em que foi lida (o GEP não a apaga: a do carrossel anterior fica no banco); `screen.carouselOffer` = `{stage, slots, unknown, ageMs}` e `screen.gepRound` = `{stage, name, ageMs}`, só com GEP ativo (frescor de 60 s: o maior silêncio medido no carrossel foi 36 s).
+- **O que pegar**:
+  - **com a leitura** (`carousel.from: "reading"`): todas as peças em ordem de valor (`carousel.mjs:rankCarouselOffer`, a mesma conta da lista de prioridade): componente = o quanto fecha/começa item de quem importa (carry > tanque > demais; o banco de agora distribui); item completo de uma build do plano = pronto (poupa dois componentes); emblema = vale se o plano usa a sinergia; o resto vale 0. Soma um bônus pequeno se o campeão da peça é o carry (ou peça) do plano. Pesos **heurísticos** (mesma escala da conta de componentes), não medidos contra resultado de partida;
+  - **sem a leitura** (GEP ausente/velho/oferta de outra rodada: `from: "priority"`): lista dos até 5 componentes que mais valem **se aparecerem** (`carouselPicks`), com o motivo; a interface diz "prioridade: não lido" e o bloco traz `note`. Nunca é apresentada como leitura;
+  - as duas usam as builds da última análise (`recommendationBody()` do feed do overlay) e o banco de itens de AGORA; sem análise (ou de outra partida) a leitura sai na ordem do carrossel, sem nota, e a prioridade não existe (`note`).
+- **Ponte GEP própria** (`overwolf-bridge/`): já pede a feature `carousel` e grava `carousel.carousel_pieces` no mesmo esquema (coluna `round`; "0-0" antes da primeira rodada é ignorada, vale a rodada do último `round_type`). O TFTAcademy também pede `carousel` (`TFT_FEATURES`) e trata a chave `carousel_pieces`; nenhum outro dado de carrossel (escolhas, tempo) aparece nos eventos gravados nem nas chaves tratadas por ele.
+- **Outros eventos parecidos, não usados**: `match_info.item_select` (escolha de componentes/itens/aprimoramentos de rodadas de saque, como 4-1 e 5-1, não do carrossel) e `picked_item`. Ficam fora até haver um uso.
+- **Bloco no `/api/state`**: `carousel = { active, stage, round, source, confidence, signals: {phase, gep, schedule}, conflict, from, picks[], offer, plan, note }`; `picks[]` = `{rank, slot, championId, championName, itemId, itemName, kind, score, reason, completesNow, forChampion, forChampionId, target}` (nomes `null` quando só os ids são conhecidos: a interface os resolve pelo catálogo). Fora do carrossel `picks` é vazio e nada é calculado.
+- **Não verificado ao vivo**: o bloco ao vivo no servidor durante um carrossel real (a oferta, a detecção e a composição estão testadas com os payloads gravados e com o estado composto como o servidor o faz); a latência entre o início do carrossel e o `Draft` do `__sentry-event`; se o `Draft` aparece também em outras rodadas de escolha (o GEP as chama de `item_select`, não de `Carousel`).
 
 ### Comp, itens equipados e tabuleiros de todos os jogadores
 
@@ -275,6 +299,67 @@ supera para o ADQUIRIDO.
 - **Parâmetros (`BENCH_POLICY`)**: `keep = 0.5` (chance inicial de a cópia ter ficado no banco), `halfLifeMs = 180000`
   (meia-vida de 3 min), `maxCopies = 18` (teto por rival). **São estimativas; nunca apresentar como dado observado.**
 - Usado no cálculo de pool/rolagem (`server.mjs`, `hiddenHoldings(...)`).
+
+## MetaTFT offline (extensão `meta-store.mjs`)
+
+Os quatro conjuntos de meta passam por um módulo só, `meta-store.mjs`; o servidor e o script do atalho usam a mesma interface
+(`load`, `refresh`, `sync`, `freshness`, `status`). A recomendação não muda: só a camada de dados.
+
+| Conjunto (`nome`) | Origem (não oficial)                                                      | Cópia no repositório | Vence após |
+| ----------------- | ------------------------------------------------------------------------- | -------------------- | ---------- |
+| `comps`           | MetaTFT `tft-comps-api` (`comps_data`, `comps_stats`)                     | `meta-comps.json`    | 2 h        |
+| `builds`          | MetaTFT `unit_items_processed` (builds e desempenho por item)             | `meta-builds.json`   | 6 h        |
+| `stats`           | MetaTFT `tft-explorer-api` (peça × estrela × itens, sinergia × patamar)   | `meta-stats.json`    | 12 h       |
+| `augments`        | NoxuTFT (colocação medida) + MetaTFT `comp_augment_tiers` (tier por comp) | `augment-stats.json` | 6 h        |
+
+- **Funciona sem rede desde a primeira execução.** A leitura escolhe a cópia de `fetchedAt` mais recente que passa na validação,
+  entre (1) os snapshots do usuário em `tft/data/meta-store/<conjunto>/<set>__<patch>.json` (mais a cópia boa anterior de cada patch,
+  `.prev.json`) e (2) o snapshot embarcado no repositório (`meta-*.json`, que **nunca é reescrito em execução**; a pasta `tft/data/` fica
+  fora do Git). Sem nenhuma cópia válida o conjunto vem vazio (`origem: ausente`) e a interface avisa.
+- **Validação ao ler e ao gravar.** JSON ilegível ou cortado, outro `set`, `fetchedAt` inválido ou fora do esquema (comps sem unidades,
+  builds vazias, estatísticas sem sinergias...) descarta a cópia, que fica em `problems` (com o motivo) e a leitura cai na seguinte. O
+  download vai para uma pasta de preparo, é validado e só então promovido por escrita atômica (arquivo temporário + `rename`); resposta
+  ruim (set errado, HTTP 5xx, lista vazia) nunca substitui a cópia boa. A cópia boa do mesmo patch vira `.prev.json` antes de ser trocada.
+- **Recorte único (`meta-scope.mjs`).** Comps (`comps_stats`), estatísticas (`tft-explorer-api/*`, `meta-stats.mjs`) e as perguntas de
+  evidência (`evidence.mjs`) usam o mesmo filtro, definido só ali: `queue=1100&patch=current&days=3&rank=CHALLENGER,…,PLATINUM&permit_filter_adjustment=true`.
+  Sem ele o explorer devolve uma base antiga de outro set: em 2026-10-11, `total` sem filtro = 12.616 tabuleiros com ids `TFT17_*`; com ele,
+  7,55 milhões do Set 18. Foi o que contaminou o `meta-stats.json` daquele dia (1.023 chaves de peça, todas `TFT17_*`, 0 do catálogo) e o
+  `data/evidence-cache.json` (2.027 perguntas `DA_*`, todas com 0 partidas): trunfos, `options.conditional` e a medição de tabuleiros
+  ficaram vazios. Um teste (`tests/meta-scope.test.mjs`) garante que o recorte e a leitura do patch só existem em `meta-scope.mjs`.
+- **Fora do set.** Ao ler e ao baixar, uma cópia de `stats` que não cobre pelo menos metade dos campeões e das sinergias do catálogo
+  (`catalog.json`) é recusada com o motivo `fora do set: X de 74 campeões e Y de 36 sinergias…` (fica em `problems`, `freshness().outOfSet`
+  vira `true`) e a leitura cai na cópia seguinte; a do Set 18 cobre 65 de 74 e 36 de 36. No cache de evidência, ao ler o arquivo, são
+  descartadas as respostas sem a etiqueta do recorte atual (`scope`, hash do filtro), as que citam peça ou sinergia fora do catálogo e, por
+  último, o cache inteiro quando tudo o que sobrou tem 0 partidas (a partir de 5 respostas); o descarte vai para o log e as perguntas são
+  refeitas. Resposta condicional nova (`units_unique`, `traits`) com a maioria dos ids fora do catálogo é recusada e não entra no cache.
+- **Patch.** Cada patch publicado tem o seu arquivo e os 3 mais recentes ficam; se o patch novo estiver corrompido, a leitura volta ao
+  anterior. O patch vem de `unit_items_processed.region_patch_adjustment.selected_patch` ("18.4b"): `builds` o lê da própria resposta;
+  `comps` e `stats` o pedem à mesma rota (66 KB) em paralelo, porque `comps_stats` deixou de trazer `filter_adjustment.selected_patch`.
+  Sem o patch (rota fora do ar) o download segue com `patch: null` (`<set>__sem-patch.json`). `augments` não tem patch: um arquivo por set
+  e a reserva é o `.prev.json`.
+- **Frescor** (`freshness(nome)`, `status()`): `modo` = `em-dia` (dentro do prazo da tabela), `offline` (vencido e a última tentativa
+  falhou por rede ou prazo) ou `desatualizado` (vencido por outro motivo, p.ex. renovação ainda pendente ou resposta recusada); mais
+  `origem` (`local`, `repositorio`, `ausente`), `fetchedAt`, `patch`, `ageMs` e `recovered` (a leitura precisou de uma reserva). A última
+  tentativa de cada conjunto fica em `tft/data/meta-store/status.json`, então o servidor enxerga o resultado da sincronização do atalho.
+- **Onde aparece.** `GET /api/comps` e `GET /api/items` (e o evento SSE `meta`) trazem `freshness`; a interface mostra uma nota ao lado da
+  fonte que já exibia (`v2/js/meta-freshness.js`): "offline · dados de 5 h", "desatualizada · dados de 3 d · snapshot do repositório" etc.
+  Em dia e vindo da rede, não há nota.
+- **Atalho.** `start-all.ps1` roda `node scripts/meta-sync.mjs --timeout=12000` **antes** de subir o servidor (só quando ele ainda não
+  está no ar; se já está, ele mesmo renova em segundo plano). O script baixa só o que venceu, tem teto de 12 s (máximo 15 s; o
+  PowerShell ainda encerra o processo aos 18 s), imprime **uma linha** no resumo e sempre sai com 0:
+  `meta atualizada (comps, builds, ...; patch X)`, `meta em dia (dados de N atrás)`, `meta atualizada em parte (...)` ou
+  `meta offline: dados de N atrás (cópia local | snapshot do repositório)`. Opções: `--force`, `--only=comps,builds`, `--dir=PASTA` e
+  `--embed` (manutenção, nunca no atalho: o que foi baixado e validado nesta execução também regrava o snapshot do repositório,
+  `meta-*.json`; foi assim que o `meta-stats.json` foi refeito com o recorte em 2026-10-11).
+  O servidor continua renovando em segundo plano (comps a cada 15 min, builds 30 min, estatísticas e aprimoramentos 60 min, cada um só
+  se vencido) e, sem rede, segue com a cópia que tem.
+- Testes: `node --test tests/meta-store.test.mjs tests/meta-scope.test.mjs v2/js/meta-freshness.test.mjs` (rede ok, rede fora, cópia
+  corrompida, resposta ruim, troca de patch, prazo estourado, o script com a rede desligada, recorte em toda consulta, estatística e
+  evidência fora do set, cache inteiro com 0 partidas; disco real em pasta temporária e respostas no formato da MetaTFT, cujo explorer
+  falso responde outro set quando a consulta vem sem o recorte).
+  Sincronizar à mão: `node scripts/meta-sync.mjs --force` em `tft/helper`.
+- Limitações: os endpoints são não oficiais e podem mudar; a validação confere o esquema que o helper consome, não a exatidão dos números.
+  O prazo de 12 s do atalho vale para o conjunto inteiro; downloads que não terminam ficam para a renovação em segundo plano do servidor.
 
 ## GEP / TFTAcademy (banco de eventos do Overwolf, somente leitura)
 
@@ -331,22 +416,23 @@ Events Provider (GEP). Implementação: `gep-reader.mjs`; testes: `tests/gep-rea
 
 ### Eventos lidos (`feature.key`) e formato real
 
-| Evento                    | Payload (valores reais, truncados)                                                                                                                                                                                                       | Uso                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `me.gold`                 | `2`, `1`, `{}`                                                                                                                                                                                                                           | ouro (ver o `{}` abaixo)                             |
-| `me.xp`                   | `{"level":2,"current_xp":0,"xp_max":2}`                                                                                                                                                                                                  | nível e XP `"0/2"` (mesmo formato do leitor de tela) |
-| `match_info.round_type`   | `{"stage":"1-3","name":"PVE","type":"Minions_2","native_name":"Intro2"}`                                                                                                                                                                 | estágio-rodada                                       |
-| `match_info.match_state`  | `{"in_progress":true}`                                                                                                                                                                                                                   | fim de partida (zera a leitura de `{}`)              |
-| `store.shop_pieces`       | `{"slot_1":{"name":"DA_18_Sentry"},...,"slot_5":{...}}`; comprado vira `{"name":"Sold"}`                                                                                                                                                 | loja (5 espaços; vendida = vazio)                    |
-| `store.shop_visible`      | `"true"` / `"false"`                                                                                                                                                                                                                     | loja escondida não substitui a lida da tela          |
-| `bench.bench_pieces`      | `{"cell_1":{"name":"DA_18_Varus","level":"1","item_1":"","item_2":"","item_3":""},...}`; `{}` = vazia                                                                                                                                    | reserva (estrelas e itens por peça)                  |
-| `bench.item_bench`        | `[{"summoner","tag_line","bench_items":[{"name":"DA_Consumable_ItemRemover","count":2}]}, ...]`                                                                                                                                          | banco de itens (só a linha do jogador local)         |
-| `roster.player_status`    | `{"<nome>":{"index","health","xp","localplayer":true,"rank","tag_line"}, ...}`                                                                                                                                                           | só para achar quem é o jogador local (`localplayer`) |
-| `augments.me`             | **observado**: `{"augment_1":{"name"},"augment_2":{"name"},"augment_3":{"name"}}`, um evento a cada reroll de UMA carta; todos `""` = tela fechada                                                                                       | oferta de aprimoramentos                             |
-| `augments.picked_augment` | **observado**: `{"slot_1":{"name"},...,"slot_4":{"name"}}` CUMULATIVO (todos os escolhidos até agora, na ordem; vazios `""`), reenviado a cada escolha. `match_info`/`me` + `picked_augment` seguem aceitos por tolerância, nunca vistos | aprimoramentos escolhidos, em ordem                  |
+| Evento                     | Payload (valores reais, truncados)                                                                                                                                                                                                       | Uso                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `me.gold`                  | `2`, `1`, `{}`                                                                                                                                                                                                                           | ouro (ver o `{}` abaixo)                             |
+| `me.xp`                    | `{"level":2,"current_xp":0,"xp_max":2}`                                                                                                                                                                                                  | nível e XP `"0/2"` (mesmo formato do leitor de tela) |
+| `match_info.round_type`    | `{"stage":"1-3","name":"PVE","type":"Minions_2","native_name":"Intro2"}`                                                                                                                                                                 | estágio-rodada                                       |
+| `match_info.match_state`   | `{"in_progress":true}`                                                                                                                                                                                                                   | fim de partida (zera a leitura de `{}`)              |
+| `store.shop_pieces`        | `{"slot_1":{"name":"DA_18_Sentry"},...,"slot_5":{...}}`; comprado vira `{"name":"Sold"}`                                                                                                                                                 | loja (5 espaços; vendida = vazio)                    |
+| `store.shop_visible`       | `"true"` / `"false"`                                                                                                                                                                                                                     | loja escondida não substitui a lida da tela          |
+| `bench.bench_pieces`       | `{"cell_1":{"name":"DA_18_Varus","level":"1","item_1":"","item_2":"","item_3":""},...}`; `{}` = vazia                                                                                                                                    | reserva (estrelas e itens por peça)                  |
+| `bench.item_bench`         | `[{"summoner","tag_line","bench_items":[{"name":"DA_Consumable_ItemRemover","count":2}]}, ...]`                                                                                                                                          | banco de itens (só a linha do jogador local)         |
+| `roster.player_status`     | `{"<nome>":{"index","health","xp","localplayer":true,"rank","tag_line"}, ...}`                                                                                                                                                           | só para achar quem é o jogador local (`localplayer`) |
+| `carousel.carousel_pieces` | **observado**: `{"slot_1":{"name":"DA_18_MasterYi_AD","item_1":"DA_Component_RecurveBow","item_2":""},...}`, um evento no início de cada carrossel (coluna `round`)                                                                      | peças do carrossel: campeão + item                   |
+| `augments.me`              | **observado**: `{"augment_1":{"name"},"augment_2":{"name"},"augment_3":{"name"}}`, um evento a cada reroll de UMA carta; todos `""` = tela fechada                                                                                       | oferta de aprimoramentos                             |
+| `augments.picked_augment`  | **observado**: `{"slot_1":{"name"},...,"slot_4":{"name"}}` CUMULATIVO (todos os escolhidos até agora, na ordem; vazios `""`), reenviado a cada escolha. `match_info`/`me` + `picked_augment` seguem aceitos por tolerância, nunca vistos | aprimoramentos escolhidos, em ordem                  |
 
 Os dois últimos foram observados na partida completa de 2026-10-11 (a feature do escolhido é `augments`, não `me`). Nunca lidos (a consulta nem os seleciona): `board.opponent_board_pieces`, `match_info.battle_stats`, `round_outcome`,
-`board.board_pieces` (o tabuleiro próprio já vem do `TFTEoGStats.json`), `match_stats`, `carousel` e qualquer campo de rival.
+`board.board_pieces` (o tabuleiro próprio já vem do `TFTEoGStats.json`), `match_stats` e qualquer campo de rival. `carousel.carousel_pieces` É lido (a oferta do carrossel é a mesma para a mesa toda, não é dado de rival; ver "Carrossel").
 
 ### Cobertura medida (partida de 2026-09-11, 76 eventos em 60 s)
 
@@ -396,20 +482,32 @@ publicado):
 - **Formato**: `augments.me` = oferta `{augment_1..3:{name}}`, um evento por reroll (muda uma carta), `""` nos três = tela fechada (vem
   logo antes da escolha). `augments.picked_augment` = lista CUMULATIVA `{slot_1..4:{name}}` dos escolhidos até agora, reenviada a cada
   escolha (`parseAugmentPickedList` lê todos os nomes: quem liga o leitor no meio da partida não perde os anteriores). Os escolhidos se
-  acumulam em ordem, sem repetir, cada um com o estágio (`round_type` corrente) da primeira vez em que apareceu. Nomes com `ChampionItem`
-  são ignorados.
+  acumulam em ordem, sem repetir, cada um com o estágio da coluna `round` do evento (sem ela, o `round_type` corrente) da primeira vez
+  em que apareceu. Nomes com `ChampionItem` são ignorados. Auditoria de 2026-10-11 (7 partidas com escolha no `tft-events.db`): sempre
+  `event_type` `me`, `feature` `augments`, chaves `me` (oferta) e `picked_augment`; nas rodadas 2-1, 3-2 e 4-2 (`round_type.type`
+  `Augment_1..3`); cada reroll troca UMA carta (até 3 linhas extras por rodada); a oferta vazia e o `picked_augment` chegam no mesmo
+  segundo; os 78 nomes vistos (`DA_*`, ex. `DA_PandorasItemsI`, `DA_18_CaretakersAlly`) existem todos no `augments.json`.
+- **Troca (reroll)**: dentro da mesma rodada, a carta cujo nome mudou fica marcada `rerolled` até a oferta da rodada seguinte (cada carta
+  troca uma vez; a interface não sugere trocar a que já foi trocada).
 - **Mapeamento ao catálogo**: `augmentResolver` casa o nome com o id do `augments.json` (id exato; depois sem caminho/extensão; depois sem
-  diferenciar caixa, se único). Fora do catálogo = **desconhecido** (contado em `unknown`, nunca inventado).
-- **Campos**: `fields.augmentOffer` (ids do catálogo, `count`, `unknown`) e `fields.augmentPicked` (`[{id, stage}]`, `count`, `unknown`);
-  `gepStatus.coverage = {augmentOffer, augmentPicked, augmentUnknown, wisps}`.
-- **Precedência no estado** (`mergeGep`): a oferta do GEP substitui `screen.augments` (da tela) só quando **completa** (nenhuma carta
-  desconhecida) e com 2 ou 3 cartas; oferta vazia mantém a da tela. `screen.pickedAugments` (`[{id, stage}]`) só existe com GEP ativo.
-  `screen.sources.augments` e `screen.sources.pickedAugments` valem `"gep"`.
+  diferenciar caixa, se único). Fora do catálogo = **desconhecido** (contado em `unknown` e NOMEADO em `unresolved`, nunca inventado
+  nem descartado em silêncio).
+- **Campos**: `fields.augmentOffer` (ids do catálogo, `count`, `unknown`, `stage`, `cards: [{slot, id, text, rerolled}]`, `unresolved`) e
+  `fields.augmentPicked` (`[{id, stage}]`, `count`, `unknown`, `unresolved`); `gepStatus.coverage = {augmentOffer, augmentPicked,
+  augmentUnknown, augmentUnresolved, wisps}`.
+- **Estado** (`mergeGep`): aprimoramentos vêm **só do GEP, sem OCR** (a oferta que o leitor de tela lê dos cards é descartada).
+  `screen.augments` = ids da oferta aberta (`[]` = escolha fechada; null = sem fonte ou nenhum evento ainda), `screen.augmentOffer` =
+  `{open, stage, cards, unresolved, ageMs}`, `screen.pickedAugments` = `[{id, stage}]` e `screen.augmentSource` = `{state: "ativo" |
+  "aguardando" | "sem-fonte", source, reason, held, picked, unresolved}`. Os escolhidos são retidos na mesma partida quando o GEP fica
+  obsoleto por um momento (`holdPickedAugments` em app/state.mjs, `held: true`) e zeram na partida nova. `gameState.me.augmentOffer` e
+  `gameState.me.pickedAugments` têm origem `gep`.
 - **No servidor** (`POST /api/recommend`): o registro manual do usuário (`augments` não vazio ou `augmentsKnown`, inclusive lista vazia)
   **prevalece**. Sem ele valem os escolhidos do GEP (`options.augments`), que alimentam `matches.augments`, `chosenAugments` (cada item
   ganha `source` `"gep"` | `"manual"` e `stage`) e `augment-advice`. A oferta (`seen.augments`) é descartada quando uma das cartas já é
-  escolhida. Na interface (`v2/js/main.js`) a trilha mostra os escolhidos do GEP e, ao marcar/desmarcar à mão, o registro manual é
-  semeado com eles antes da edição.
+  escolhida. Na interface (`v2/js/main.js`, `v2/js/augs.js` `augOfferView`) a trilha mostra os escolhidos lidos agora e a oferta aberta
+  com a ordem da análise (só quando a análise é desta mesma oferta; senão "analisando"); não há botão de marcar: desmarcar só corrige
+  uma leitura errada (o registro manual é semeado com os do GEP antes da edição). Sem GEP: "aprimoramentos: sem fonte". O overlay usa a
+  mesma `augOfferView` no cartão "Aprimoramento" (elemento do carrossel), enquanto a escolha está aberta.
 
 **Wisps** (fogos-fátuos):
 
@@ -469,13 +567,12 @@ Além disso: `source: "gep"`, `confidence: "observed"`, `gameId`, `binding`, `la
 | loja                                         | GEP (loja visível) > tela                           | `"gep"` / `"screen"`                |
 | estágio                                      | **arquivo do jogo (`__sentry-event`)** > GEP > tela | `"game-log"` / `"gep"` / `"screen"` |
 | reserva                                      | GEP > nada (sem entrada manual)                     | `"gep"` / `null` (sem fonte)        |
-| oferta de aprimoramentos (`augments`)        | GEP (completa, 2 ou 3 cartas) > tela                | `"gep"` / `"screen"`                |
+| oferta de aprimoramentos (`augments`)        | só GEP (sem OCR; sem GEP = sem fonte)               | `"gep"` / ausente                   |
 | aprimoramentos escolhidos (`pickedAugments`) | só GEP (o registro manual prevalece no servidor)    | `"gep"` / ausente                   |
 | Wisps (`wisps`)                              | só GEP, com a loja do GEP ativa                     | `"gep"` / ausente                   |
 
 `screen.sourcesDetail.<campo> = {source, ageMs, confidence}` (+ `inferred` no ouro vindo de `{}`). O leitor de tela **continua rodando**
-durante a partida: é o reserva de cada campo acima e a fonte da oferta de aprimoramentos sempre que o GEP não a entrega completa
-(fonte inativa, oferta vazia ou com carta fora do catálogo).
+durante a partida: é o reserva de cada campo acima, menos dos aprimoramentos (a leitura de cards por OCR que ele ainda faz não é usada).
 Com o GEP ativo o nível do GEP é aceito sem a revalidação por OCR (`levelInfo.source = "gep"`).
 
 **GEP e tela nunca discordam na saída** (M7): há UM valor por campo. Regras de `core/state/precedence.mjs`:
@@ -517,6 +614,104 @@ sem publicar**, só os do jogador local. Dados de **rivais** (`item_bench` dos o
 **continuam não lidos nem expostos**. O helper também nunca liga `record_games` nem altera qualquer configuração do TFTAcademy. Para desligar a fonte, aponte `TFT_GEP_DB` para um caminho inexistente ou remova o
 TFTAcademy: ela vira `ausente` e o helper volta à tela.
 
+## Leitor de tela próprio (independência do GEP)
+
+Objetivo (decisão do usuário, 2026-10-11): o helper não pode depender do TFTAcademy/Overwolf para ouro, nível, XP, estágio, loja e banco de
+itens. A tela (`screen-reader.ps1` + `screen-reader.mjs`) é a fonte própria e **assume sozinha quando o GEP some**: a precedência
+`GEP > tela > estimativa` (`core/state/precedence.mjs`) já fazia isso e está coberta por `tests/screen-independence.test.mjs` (leitor real
+com processo falso, montador de estado e modelo da interface: todos os campos saem com `sources.<campo> = "screen"`, e o chip da interface
+mostra `GEP off · tela` com a lista dos campos lidos da tela, ou `GEP parado · tela`; sem leitura nenhuma o chip continua `GEP off` e a dica
+diz "Nada lido da tela agora"). O GEP segue como **gabarito** para medir a tela enquanto existir. Só captura pixels da janela do TFT, como antes.
+
+### Campos por confiabilidade (medido contra o GEP em partidas gravadas)
+
+Corpus: as 2 partidas completas gravadas pelo TFTAcademy em 2026-10-10 (vídeo 1280x720 H.264 + eventos do GEP), um quadro a cada 6 s
+(535 quadros; "antes" a cada 12 s), cada um lido a frio pelo `screen-reader.ps1` (`-TestManifest`). Só valem os campos que o GEP não mudou nos ±2,5 s em volta do
+quadro; com a barra de baixo escondida (carrossel, escolha de aprimoramento) o certo é **não ler** ouro, nível, XP e loja, e ler algo ali conta como falso.
+Recall = acertos / casos; precisão = acertos / (acertos + falsos); perda = não leu; falso = leu outro valor. "Antes" = o leitor
+anterior (OCR dos dígitos, molde `FindFrame` e frações `$SLOT`) nos mesmos vídeos, um quadro a cada 12 s.
+
+| Campo (método)                                     | Antes (recall)          | Agora: recall / precisão  | Casos | O que sobra (causas observadas)                                                                                                                                                                    |
+| -------------------------------------------------- | ----------------------- | ------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ouro** (glifos)                                  | 52%                     | **98,1% / 98,9%**         |   363 | perdas: número em transição; falsos: mudança de ouro entre o evento do GEP e o quadro                                                                                                              |
+| **Nível** (glifos + total do XP, `reconcileLevel`) | 92%                     | **98,4% / 100%**          |   492 | painel dourado por cima da barra de baixo (não há HUD de nível ali)                                                                                                                                |
+| **XP** (glifos, `atual/total`)                     | 71%                     | **97,8% / 99,6%**         |   462 | idem; o GEP e a tela divergem 1 rodada por alguns segundos no começo da rodada (+2 de XP passivo)                                                                                                  |
+| **Estágio** (glifos, rótulo varrido no cabeçalho)  | 90% (o estágio 1 nunca) | **98,6% / 99,0%**         |   492 | os 5 "falsos" são o **GEP uma rodada atrás** da tela (`1-1` x `1-2` no começo, `3-5` x `3-6` depois): a tela está certa (o log já registrava `vale a tela`)                                        |
+| **Loja** (nomes por OCR do Windows, só os 5 nomes) | 91%                     | **95,0% / 99,7%**         |  1864 | perdas: unidade arrastada para vender (o painel vira "Vender por N de ouro" e some), cartas ocultas por painel; nome curto some do OCR em um tamanho (agora tenta mais 3 aumentos: 93,1% -> 95,0%) |
+| **Banco de itens** (ícones; sem consumíveis)       | 73%                     | **97,2% / 99,4%**         |   720 | item **na mão** (o espaço fica vazio enquanto o jogador o arrasta, e o GEP ainda o conta); ícones de emblema/item pronto fora do catálogo; 434 de 448 quadros com o banco exato                    |
+| **Quantidade do removedor** (selo, glifos)         | 1% (lia sempre 1)       | **96,9%** (exata)         |   448 | com a tela escurecida por um painel o selo fica pequeno demais e a quantidade cai para 1                                                                                                           |
+| **Reserva (bench)**                                | sem fonte               | **sem leitura (decisão)** |     - | ver abaixo                                                                                                                                                                                         |
+
+**Antes → agora, por quê.** Os números "antes" vinham de três falhas medidas nos mesmos quadros: (1) o OCR do Windows lia mal os dígitos
+pequenos do HUD (ouro `494949` -> 49 só em metade dos quadros, o `1` fino do XP como `I`, o rótulo do estágio do estágio 1 em outro lugar do
+cabeçalho que a região fixa nunca olhava); (2) o HUD **não escala linearmente** com a altura da janela: o passo entre os espaços do banco é
+**36 px em 720p** (as frações `$SLOT` davam 35,1: 0,9 px a mais por espaço, **8 px no 10º**) e **56 px em 1149p**, então o molde de moldura
+(medido em 1149p) nunca era achado em janela pequena e a geometria "assumida" **exigia a evidência dos itens raros** (distância ≤ 0,45), recusando a Lágrima da
+Deusa a 0,50 (com segundo colocado a 1,47); (3) o ícone de um item repetido (dois Coletes) também caía fora do limite pelo mesmo motivo. Foi
+isso que a divergência registrada no M7 mostrava (`gep=[Tear, Tear, Gloves] tela=[]`, e o ouro `gep=1 tela=33`: o ouro da tela ficava velho).
+
+### Como o leitor lê agora
+
+- **Dígitos por glifo** (`Glyph` no `.ps1`; gabaritos em `screen-glyphs.json`): binariza o recorte pelo Otsu, separa os glifos por componentes
+  conectados (descarta o que a borda esquerda/direita do recorte corta), normaliza cada glifo pela **altura da linha** (grade 12x16, sem esticar
+  a largura, vizinho mascarado) e compara por distância RMS com os gabaritos do campo (`gold`, `level`, `xp`, `stage`, `badge`). Aceita se a
+  distância ≤ 0,25 (selo ≤ 0,20) e a folga para o melhor de **outro** caractere ≥ 0,03 (ou 1º a ≤ 70% do 2º); senão `?`. Tenta 6 limiares (múltiplos do
+  Otsu: os baixos fecham o anel do 0 que o traço fino abre, os altos separam o `/2` colado do XP e soltam o texto de um fundo claro) e **exige 2 limiares
+  concordando** em ouro e nível (um traço do cenário imita um `1` solto quando a barra de baixo some: 3 quadros). Texto gramatical por campo
+  (`\d{1,3}`, nível 1 a 11, `\d{1,2}/\d{1,3}`, `[1-9]-[1-7]`). O estágio é varrido em janelas do tamanho do rótulo sobre a faixa do topo (o rótulo muda de lugar:
+  0,401 da largura em 720p com o cabeçalho expandido e 0,384 na captura nativa com ele recolhido, e o painel do estágio 1 é mais estreito). Sem
+  `screen-glyphs.json` (ou numa instalação sem ele) volta ao OCR do Windows, bem menos preciso.
+- **Gabaritos** (`scripts/screen-glyphs.mjs`): montados dos próprios vídeos, com o GEP dizendo o que estava escrito, em 3 tamanhos (1x, 1,5x e 2x do
+  vídeo), até 5 centros por caractere (k-médias). Descarta rótulos que um gabarito treinado nas outras partidas contradiz (o GEP e a tela divergem) e só se
+  o caractere do rótulo é conhecido por elas. Cobertura: ouro 0 a 9; XP 0 a 6, 8 e `/` (**7 e 9 nunca apareceram**: o XP sobe de 2 em 2 e de 4 em 4; sem gabarito o dígito
+  vira `?`); estágio 1 a 7; nível 2 a 8 (9 a 11 saem pelo total do XP); selo 2 a 5. **Fora da amostra** (treino sem uma partida, teste na outra, todos os tamanhos): nível 100%,
+  XP 100% e 99,9%, estágio 99,9%, ouro 85% (perdas: dígitos que só uma das duas partidas teve) com 0 a 1 falso; **selo do removedor 43 a 55% com até 114 falsos**
+  (poucos dígitos vistos): por isso o selo é mais restrito e, com um dígito que ele não conhece, a quantidade cai para 1.
+- **Grade do banco medida na imagem** (`Locate-Column`, `Bank.Lattice`, `Bank.Column`): o topo de cada espaço é uma subida de brilho ao longo da largura do
+  espaço e a borda de baixo outra; acha-se o (primeiro topo, passo) que encaixa nas 10 subidas (topo e borda de baixo juntos, para não encaixar só nas bordas de baixo),
+  depois o par de bordas verticais separado por ~0,78 do passo. Confirmada com ≥ 3 espaços, bordas nítidas e a esquerda a ≥ 0,12 passo da borda da janela. Cada espaço vira um quadrado
+  32x32 do miolo (frações 0,09 / 0,14 / 0,90 / 0,84 do espaço, calibradas em 104 combinações contra os itens do GEP: distância média do item certo 0,085) e passa pela comparação de
+  ícones de sempre (`Classify-Slot`, limites inalterados). O diagnóstico ao vivo (`screen.bankGeometry`) agora traz `pitch`, `hits` e `edge`.
+- **Itens**: a Lágrima da Deusa lida a 0,12 a 0,31 (era recusada a 0,50), item repetido reconhecido nos dois espaços. O Duplicador de Campeão (3 tamanhos, ícone idêntico) vale como
+  `DA_Consumable_LesserChampionDuplicator` (consumível: não entra na análise). **Não reconhecidos hoje**: ícones de emblema e de item pronto que não casam com o do catálogo (Flora Fatalis,
+  Vanguard, Quicksilver, Edge of Night, Guinsoo: 20 itens perdidos em 720 casos), que seguem `?` sem virar outro item.
+- **Quantidade do removedor**: recorta o retângulo amarelo do selo (`Bank.YellowBox`) e lê o número escuro por glifo (texto invertido); sem amarelo vivo (tela escurecida) cai para o recorte do canto e, se nada, 1.
+- **Loja**: continua o OCR do Windows nos 5 nomes (nome -> campeão por distância de edição, `championResolver`); quando há texto na carta e o OCR volta vazio, tenta mais 3 aumentos.
+
+### Reserva (bench): sem leitura por ícone
+
+Os campeões da reserva são **modelos 3D parados nos espaços do tabuleiro, sem retrato nem ícone** (só uma barra de vida com marcas de estrela). Não há template de ícone que os identifique
+(os retratos de `assets/` são outra imagem) e uma biblioteca de aparência 3D por campeão exigiria capturas de todos os campeões em todas as poses. O que a tela dá: a barra de vida de cada unidade, **só no planejamento** (no combate
+as barras somem). Medido nas partidas gravadas (célula `bench_pieces.cell_N` do GEP = posição do espaço, 9 espaços): as barras apareceram em 43 de 120 quadros; nesses, acusam 165 das 185 células ocupadas (89%) **sem nenhum falso positivo** (36 dos 43 quadros exatos), mas no conjunto
+só 165 das 496 células ocupadas (33%), e **nenhuma identidade**. Por isso o campo **não foi implementado**: sem o GEP a reserva continua desconhecida (`sources.bench = null`, nunca
+uma lista vazia inventada), como já descrito em "Reserva (bench) e livro-razão de eventos". O caminho possível é combinar ocupação (barras) com o teto do livro-razão, só como **estimativa** e nunca no lugar do dado observado.
+
+### Divergências GEP x tela vistas nas partidas (não são erro da tela)
+
+O GEP não é perfeito como gabarito, e a medição deixa de fora ou sinaliza: **estágio** do GEP uma rodada atrás (minutos, nas duas direções; o log de divergência do M7 já mostrava `gep="1-1" tela="1-2"`); **XP** do GEP
+sem o +2 passivo no começo da rodada; **item na mão** (o GEP o conta, o espaço da tela fica vazio); **loja** com "Vender por N de ouro" no lugar das cartas ao arrastar uma unidade;
+**painel por cima** (moldura dourada no lugar da barra de nível/XP) com `shop_visible` ainda verdadeiro; e **a gravação do TFTAcademy pode ir além do último evento** do GEP (uma terceira partida, `b7f42f17`, tem 36 min de vídeo para 7 min de eventos e o
+arquivo não tem o átomo `moov`): fica de fora, e `truthAt` não dá verdade 30 s depois do último evento.
+
+### Como medir e refazer (Windows, ffmpeg no PATH; nada disso roda no servidor)
+
+- `node scripts/screen-accuracy.mjs [--game ID ...] [--every 6] [--scale 2]`: relatório por campo (acertos, perdas, falsos, recall, precisão, quadros de itens exatos) e as primeiras divergências, das partidas do banco do TFTAcademy
+  (vídeo + eventos, **somente leitura**; o deslocamento vídeo -> relógio do GEP é descoberto pelas mudanças bruscas da faixa da loja contra os `shop_visible`: 13,5 s e 15,75 s nas duas partidas). `--fixtures` mede os recortes guardados em `tests/fixtures/screen/`.
+  `--scale 1.5|2` lê os mesmos quadros reescalados (o vídeo é 720p; a tela nativa é maior).
+- `node scripts/screen-glyphs.mjs [--game ID ...] [--scales 1,1.5,2]`: remonta `screen-glyphs.json` (e imprime o acerto fora da amostra). Mais partidas gravadas cobrem os dígitos que faltam (7 e 9 do XP, o selo).
+- `node scripts/screen-fixtures.mjs`: regera `tests/fixtures/screen/` (24 telas 1280x720 pretas com só os recortes do HUD que o leitor usa, 2,2 MB, e a verdade esperada em `index.json`; nada do desktop).
+- Testes: `tests/screen-accuracy.test.mjs` (verdade, placar, relatório), `tests/screen-glyphs.test.mjs` (cobertura dos gabaritos, treino, limpeza), `tests/screen-fixtures.test.mjs` (o leitor inteiro sobre os recortes reais, com
+  pisos), `tests/screen-independence.test.mjs` (sem GEP a tela assume e o chip avisa) e `tests/item-bank.test.mjs` (coluna real, 4 layouts de janela, sem moldura de coluna).
+
+### Limites e o que não foi verificado
+
+- **Ao vivo, nada**: tudo foi medido sobre vídeos 720p H.264 de 2 partidas, mais **1 captura nativa** (2044x1149, tela de aprimoramento escurecida: o estágio `3-2` com o cabeçalho recolhido e os 3 itens do banco, incluindo o Duplicador, saíram certos)
+  e os mesmos quadros reescalados para 1,5x e 2x (2x: ouro 99,4%, nível 98,8%, XP 98,6%, estágio 99,6%, loja 94,3%, itens 96,9%, removedores 95 a 99%; os gabaritos incluem esses tamanhos, então isso mostra a independência de escala e **não** é medida
+  de captura nativa). A janela real do usuário (2560x1351, HUD centralizado ou não) e uma partida inteira ao vivo seguem **por confirmar** (`bankGeometry.mode` deve sair `frame`).
+- Os gabaritos de glifo foram montados nas mesmas partidas medidas: ouro, nível, XP, estágio e selo estão **em amostra**; itens e loja (ícones do catálogo e OCR) não treinam com elas, exceto os 4 números do miolo do espaço.
+- Nível 9 a 11 e dígitos 7 e 9 do XP nunca foram vistos ao vivo; selo do removedor só viu 2 a 5.
+- Não medido: carrossel com a tela cheia, reconexão, tela cheia exclusiva, outro tamanho de HUD nas opções do jogo, outro idioma (os nomes da loja usam o OCR do idioma do Windows).
+
 ## Overlay (janela sobre o jogo, sem fonte nova de dados)
 
 O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma fonte do jogo: ele é uma **apresentação** do que o servidor já calculou.
@@ -530,12 +725,26 @@ O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma f
   abas ocultas). Sem ela, o HUD mostra o estado e "aguardando análise".
 - **Origem dos números no HUD**: a mesma da interface (`v2/js/model.js`): ouro/nível/XP com a fonte GEP ou tela, `gepStatus` no chip, vida do snapshot
   do jogo. O overlay não reconcilia nem escolhe fontes.
-- **Sem dado de rivais além do que a interface já mostra**; nenhum aprimoramento é derivado no overlay.
+- **Sem dado de rivais além do que a interface já mostra**; nenhum aprimoramento é derivado no overlay (o cartão de aprimoramentos usa a
+  oferta do estado e a ordem da última análise, pela mesma `augOfferView` da interface).
 - **Duas leituras locais somente-leitura, só para posicionar a janela**: (1) a área cliente da janela do TFT (`UnrealWindow`, título "TFT…") por um
   PowerShell persistente (`EnumWindows`, `GetClientRect`, `ClientToScreen`), sem tocar no processo do jogo; (2) o `FullscreenMode` de
   `%LOCALAPPDATA%\TFT\Saved\Config\WindowsClient\GameUserSettings.ini` para avisar de tela cheia exclusiva. Nenhuma das duas alimenta o motor nem o estado da partida.
 - **Exibição**: janela transparente de outro processo (sem injeção, hook, memória, captura de tela ou automação de entrada); só aparece sobre o
   TFT em janela ou janela sem borda. Detalhes, atalhos e limites em `overlay/README.md`; opções e política em `pesquisa/overlay-opcoes.md`.
+
+## Compra na loja e itens por campeão (sem fonte nova)
+
+Duas regras de apresentação sobre dados que o servidor já entrega; nenhuma lê o jogo.
+
+- **Compra de peça que você já tem** (`core/pool/buy-copies.mjs`, usada por `v2/js/model.js`; interface e overlay leem o mesmo resultado). Entrada: `plan.board`
+  (`owned`, `stars`), `rec.pool` (`own` = cópias de 1★, `chancePerShop`, `remainingUpper`/`free`), ouro e a loja de agora (`screen.shop`, GEP ou tela).
+  Regra: peça do plano em campo ou na reserva, abaixo de 3★ e com cópias suficientes na pool para o próximo marco vira linha "Comprar" (`how: "copy"`) **somente
+  enquanto a loja a mostra**; texto "cópia · fecha o 2★/3★" (uma cópia fecha) ou "cópia · sobe para N★ (faltam K)". Prioridade: fecha estrela, depois o carry, depois
+  a chance de aparecer. `stage.buyNow` (peças que faltam) não mudou, nem o ranking das comps. Loja não lida: nenhuma linha de cópia e nenhum aviso.
+- **Itens por campeão** (`core/items/champion-items.mjs`, sobre `buildStates` da Formação). Entrada: `plan.itemPlans[*].ideal` (até 3), `equipped`, os donos dos itens
+  (`owners`) e o banco lido (`screen.items`). Cada item: `on` (equipado), `ready` (no banco ou monta agora), `move` (mover de outra peça), `taken`, `half`/`need`
+  (falta N). Passo "Itens dos campeões" do modelo (campeões em campo, com slot livre e item pendente, carry primeiro); sem banco lido o passo não aparece.
 
 ## Estado exposto pelo servidor
 
@@ -545,6 +754,7 @@ O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma f
   `{source, ageMs, confidence}` dos campos do GEP. `screen.pickedAugments` (`[{id, stage}]`) e `screen.wisps` (`[{slot, id, name, known}]`) só existem
   com GEP ativo. `gepStatus` (topo da resposta) é o estado da fonte GEP, com `recordGames` e `coverage` (ver "GEP / TFTAcademy"). `gameFiles` traz o estado bruto da leitura (`available`, `source`, `gameId`,
   `sameGame`, `stale`, `phase`, `stage`, `writtenAt`, `error` e `hints` marcadas `reliability: "estimated"`).
+- `GET /api/state` também traz `carousel` (aberto agora, peças lidas do GEP e o que pegar; ver "Carrossel") e, só com GEP ativo, `screen.gepRound` (`round_type`) e `screen.carouselOffer`.
 - `GET /api/state` também traz `unitLedger` (livro-razão de compras/fusões, ver "Reserva (bench) e livro-razão de eventos"): informativo,
   não alimenta a análise.
 - `POST /api/recommend`: usa a mesma rodada mesclada (`options.stage`). Os aprimoramentos escolhidos vêm do registro manual do usuário
@@ -552,6 +762,7 @@ O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma f
 
 ## Pendente de partida ao vivo
 
+- **Carrossel**: o bloco `carousel` do `/api/state` e o cartão do overlay durante um carrossel real (detecção pela fase `Draft`, oferta do GEP, ordem das peças, o cartão sobre o jogo); ver "Carrossel" em "Dado a dado".
 - **GEP**: a partida completa de 2026-10-11 (27 min, 3455 eventos) foi gravada pelo TFTAcademy e **reproduzida offline** contra o leitor
   (`pesquisa/gep-validacao-partida.md`: ouro, nível/XP, loja, reserva, banco de itens, aprimoramentos e Wisps conferem; `{}` = 0 visto 4
   vezes; linha local de `item_bench` única em 435 de 435 eventos; maior silêncio 36 s). O que ainda **só se confirma com o servidor ligado
@@ -563,6 +774,9 @@ O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma f
   os 15 nomes da partida casam com `augments.json`; `gepStatus.coverage.augmentUnknown` acusa o que não casar. Wisps: 28 de 29 cartas de
   `shop_pieces` fora do campeão casam com a etiqueta `{5b609ae2}` (a que sobra, `DA_18_MinorBloodRitual`, não está no catálogo).
 
+- **Leitor de tela próprio** (ver "Leitor de tela próprio"): só foi medido em vídeos 720p de 2 partidas, 1 captura nativa e quadros reescalados. Falta ao vivo, na janela real do usuário (2560x1351):
+  `screen.bankGeometry.mode` sair `frame` (com `pitch` perto de 0,049 a 0,050 da altura da janela), ouro/nível/XP/estágio lidos sem `?` (`/api/state` -> `screen.sources`), o chip `GEP off · tela` com o TFTAcademy fechado, o estágio 1
+  (rótulo em outro lugar) e o cabeçalho recolhido, e o selo do removedor com mais de 5.
 - Livro-razão ao vivo: a execução só é ligada à partida depois que o `__sentry-event` é regravado após o `BeginGame`; na validação foi
   testado com arquivos temporários e os logs de partidas passadas, não com uma partida em andamento. Confirmar que `unitLedger.available`
   vira `true` na primeira rodada e que `purchases.count` acompanha as compras feitas.
@@ -574,6 +788,80 @@ O overlay (`overlay/`, Electron oficial isolado nesse pacote) não lê nenhuma f
   (`game.tft.sequentialGames` > 1): a conferência por `game.id` cobre o caso, mas não foi exercitada com a segunda partida.
 - Fases de planejamento fora de `Planning` (nomes exatos de `PlanningArrival/Departure`), observadas só em parte.
 - Estágios 1-1 a 1-4 (PvE) e rodadas de aprimoramento: o formato `S-R` foi visto de 2-2 a 2-7; assume-se o mesmo nos demais.
+
+## GEP próprio (ponte ow-electron do helper, `overwolf-bridge/`)
+
+Pedido do usuário: rodar só com a dependência do Overwolf, sem o TFTAcademy. Análise estática (somente leitura de arquivos, com o
+jogo e o TFTAcademy abertos) de `resources\app.asar` do TFTAcademy 0.9.22 (Electron 42.7.1), extraindo para uma pasta temporária só
+`dist/main.cjs`, `dist/preload.cjs`, `package.json`, `_metadata.json` e `drizzle/*.sql`; a análise do REA
+(`analyze-javascript-application`, CLI, modo diretório) deu o inventário (1 BrowserWindow, 121 membros expostos pelo preload, 208
+operações IPC todas de canal dinâmico, sem addon nativo próprio) e as chamadas ao Overwolf foram lidas direto no `main.cjs`.
+Números de linha abaixo são do `dist/main.cjs` dentro do asar. **Nada do código do TFTAcademy foi copiado**: só o fluxo e os nomes de API.
+
+### O que o TFTAcademy faz com o Overwolf (comprovado por leitura estática)
+
+- É um app **ow-electron**: `package.json` declara `overwolf.uid` (mesmo valor de `APP_UID`, `main.cjs:204`), `overwolf.packages =
+  ["gep","recorder","overlay"]` e `timestamp`; `_metadata.json` traz hashes de `main.cjs` e `package.json` e uma assinatura JWT cujo
+  emissor é `overwolf.com` (integridade assinada pelo Overwolf, é isso que libera os pacotes em build distribuído).
+- GEP (`main.cjs:5213-5330`, classe `GameEventsService`): espera `app.overwolf.packages.on("ready", (e, nome, versão))` com `nome ===
+  "gep"`; então `gepApi = app.overwolf.packages.gep`, `gepApi.on("game-detected", (e, gameId, nome, gameInfo))` e **`e.enable()`**
+  (linha 5276; sem isso o GEP não entrega o jogo); depois `gepApi.setRequiredFeatures(gameId, features)` (5237). Eventos:
+  `new-info-update` e `new-game-event` (`(e, gameId, ...args)`; `args[0]` = `{feature, category, key, value}`), `game-exit`,
+  `elevated-privileges-required`, `error`; também `getInfo`, `getSupportedGames` e `getFeatures`.
+- IDs de jogo (`main.cjs:175-179`): `21570` (TFT), `28164` (TFT UE5, processo `TFTClient-Win64-Shipping.exe`) e `28162` (PBE); o id
+  reportado pode vir com sufixo (`matchesGameId`: `reportado === id || floor(reportado/10) === id`, linha 182).
+- Features pedidas (`TFT_FEATURES`, `main.cjs:561`): `gep_internal`, `live_client_data`, `me`, `match_info`, `match_stats`, `roster`,
+  `store`, `board`, `bench`, `carousel`, `augments`. Chaves tratadas (`TFTEventKeys`, ~linha 243): `round_start/end`, `round_outcome`,
+  `battle_state/start/end`, `match_state/start/end`, `local_player_damage`, `summoner_name`, `round_type`, `rank`, `game_data`,
+  `active_player`, `all_players`, `me`, `picked_augment`, `carousel_pieces`, `shop_pieces`, `shop_visible`, `item_select`,
+  `picked_item`, `bench_pieces`, `board_pieces`, `gold`, `player_rank`, `board_spectate`, `opponent`, `xp`. Observação: ele pede e
+  grava dados de rivais (`board_spectate`, `opponent`, `all_players`); a ponte própria não.
+- Gravação (`main.cjs:802-900`, `TFTEventDatabase`): `better-sqlite3` + Drizzle, `journal_mode = WAL`, migrações em
+  `app.asar.unpacked/drizzle` (migrações 0000 a 0013; tabelas `games`, `events`, `settings`, `riot_accounts`, `custom_comps`, `user_notes`,
+  `overlay_placements`). `insertEvent` grava `game_id, timestamp, event_type, feature, category, round, key, data(JSON)`.
+  `match_id` = `<PlatformID>_<GameId>` tirado da **linha de comando do processo do jogo** (`-GameId=`, `-PlatformID=`) em `startGame`
+  (823); a partida só nasce com `match_start`/`match_state` em andamento/`round_type` de abertura. `record_games` (`SettingsKeys`,
+  linha 4212; padrão `true`) desligada: não grava e apaga a partida no fim (`deleteGame`, 6978).
+- Gravação de vídeo: pacote `recorder` (`owElectronPackages.recorder`, `registerGames({gamesIds, all:false})` na 5937,
+  `ffmpegPath` do próprio pacote), `.mp4` em `tft-recordings`; `autoShutdownOnGameExit: true`. Não é necessário para o helper.
+- Overlay: pacote `overlay` (`createWindow`, `getActiveGameInfo`, `hotkeys.register`). O helper já tem overlay próprio (Electron comum).
+- Também usa o LCU (`queryLcu`, `/lol-gameflow/v1/session`) e o atualizador `electron-updater` apontando para
+  `electron-updates.overwolf.com/.../<APP_UID>` (1345): o canal de atualização é do Overwolf.
+
+### O que um app próprio exige (documentação pública do Overwolf, ow-electron)
+
+- Conta em dev.overwolf.com e **ideia do app aprovada pela DevRel** (status _Approved_); os pacotes `@overwolf/ow-electron`,
+  `@overwolf/ow-electron-builder` e os pacotes de jogo (GEP) só são liberados a contas aprovadas ("whitelisted"). Passo do usuário.
+- **App UID** gerado de `productName` + `author.name` do `package.json` (disponível em `process.env.OVERWOLF_APP_UID` após
+  `app.whenReady()`); `overwolf.packages: ["gep"]`. Nome sem "bot".
+- **Modo de desenvolvimento** (Windows, `ow-electron` >= 39.8.10, `ow-electron-builder` >= 26.9.0): roda GEP em build não assinado e não
+  empacotado, exige credencial de dev: `OW_DEV_KEY` (perfil aprovado, sem Console) ou `OW_CLI_EMAIL` + `OW_CLI_API_KEY` (Console, só após a QA).
+  Sem credencial o app abre mas os pacotes de jogo não carregam.
+- **Produção**: assinatura de código própria + integridade assinada pelo Overwolf (App UID do Console, `OW_BUILD_KEY`); QA da DevRel antes do lançamento.
+- **Política de dados** (página de TFT do GEP): a Riot proíbe dados de aprimoramentos em apps de terceiros; `roster`, `opponent`,
+  `board`/`opponent_board_pieces`, `item_bench`, `match_stats` e `battle_stats` trazem dados de outros jogadores. A ponte não pede
+  `augments`, `board`, `match_stats` nem `live_client_data`, e descarta tudo que não é do jogador local antes de gravar.
+
+### O que foi construído e como o helper o usa
+
+- `overwolf-bridge/` (projeto separado, ver o `README.md` dele): janela visível, bandeja, `GepService` (fluxo acima), filtro por lista de
+  permissão (`src/sanitize.cjs`), gravador SQLite com **o mesmo esquema** que o `gep-reader.mjs` lê (`src/recorder.cjs`) e status em
+  `127.0.0.1:18795`. Banco: `%APPDATA%\TFT Helper Bridge\tft-events.db` (`TFT_BRIDGE_DB` troca).
+- `gep-reader.mjs`: sem `file`/`TFT_GEP_DB`, `gepReader` consulta **ponte própria > TFTAcademy** (a segunda só é lida se a primeira não
+  está `ativo`); o resultado traz `origin` (`"proprio"` | `"tftacademy"`) e `origins`. `gepStatus.origin` chega a `/api/state`
+  (via `gepSummary`); **o chip da interface ainda não o mostra** (arquivos de `v2/` e `server.mjs` pertencem a outros agentes).
+  Precedência completa por campo: GEP fresco (própria, depois TFTAcademy) > leitor de tela > estimativa.
+- Testes: `node --test overwolf-bridge/test/bridge.test.mjs` (filtro, ponta a ponta até o `gep-reader`, precedência, `GepService` com
+  dublê do Overwolf) e `node --test tests/gep-reader.test.mjs` (sem regressão).
+
+### O que está e o que não está comprovado
+
+- Comprovado: nomes de API, ids de jogo, features, tratamento de eventos e esquema do TFTAcademy (leitura estática); filtro,
+  gravação e leitura pelo helper (testes com mensagens no formato documentado).
+- **Não comprovado**: o pacote `gep` do ow-electron rodando com este app (falta conta aprovada/`OW_DEV_KEY`); o formato real dos
+  argumentos dos eventos e de `gameInfo.commandLine` no `game-detected` na ponte; a janela e a bandeja no Electron (nunca iniciados);
+  o aceite do Overwolf (aprovação, QA, assinatura). Dependem do usuário: aprovação da ideia, chave de dev, nome/identidade final,
+  política de privacidade, ícone definitivo.
 
 ## Reprodução
 

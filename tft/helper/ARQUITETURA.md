@@ -41,7 +41,7 @@ agentes durante a leitura (ver 1.4), então a referência ali é pela função.
  │                     server.mjs:readBoardSnapshot (cache mtime)  ├ duas leituras/parses do mesmo arquivo
  ├ __sentry-event + TFT.log   game-log.mjs (estágio, fase; compras)
  ├ LCU (lockfile, GET)        server.mjs:readLcu (cache 5 s)
- ├ tela (OCR/ícones)          screen-reader.ps1 + screen-reader.mjs (ouro, nível, XP, loja, banco de itens)
+ ├ tela (glifos/ícones; OCR só na loja) screen-reader.ps1 + screen-reader.mjs (ouro, nível, XP, loja, banco de itens)
  ├ GEP/TFTAcademy (SQLite)    gep-reader.mjs  ........ NOVO, ainda não ligado ao servidor [V: grep "gep" em server.mjs vazio]
  └ manual/localStorage        v2/js/comps.js, augs.js  (comp fixada, trocas, aprimoramentos)
         |
@@ -382,7 +382,7 @@ Mapa completo arquivo -> destino está no apêndice A.
 - **Pipeline único no servidor.** O navegador não recalcula regra: só `model.js` (formato) e, para exibição instantânea, funções
   puras de `core/` já carregadas (ex.: conta de juros do medidor de ouro, que hoje tem `INTEREST_*` próprias). A análise
   continua em `POST /api/recommend` com o **mesmo formato de resposta** durante toda a migração (compatibilidade com o front e o mock).
-- **Tabelas por patch** (F0.2 do `PLANO-TOTAL.md`): `core/rules/tables/<patch>.json` com `fonte`, `confiança` e `verificado em`;
+- **Tabelas por patch** (F0.2 do `planos/a-fazer/PLANO-TOTAL.md`): `core/rules/tables/<patch>.json` com `fonte`, `confiança` e `verificado em`;
   trocar de patch muda dados, não código. O detector de patch (F0.4) marca a tabela como "não verificada".
 - **Modo sombra** (F0.7): `core/rules/policy.mjs` aceita `{ shadow: true }` por regra; o motor calcula, o `round-log` grava, a tela
   não mostra. Só é possível porque a regra existe num lugar.
@@ -687,6 +687,13 @@ GET /api/overlay ─▶ poll.mjs ─▶ view.mjs ─▶ hints.mjs ─▶ markers
   teclado ou mouse ao jogo. A janela é `focusable: false`, click-through por padrão e só captura o ponteiro sobre elementos do overlay no modo interativo.
 - **Dependência de entrada, não de saída**: o modo integrado só aparece com o TFT em janela ou janela sem borda; em tela cheia exclusiva o Windows esconde a janela
   e o overlay avisa a partir do `FullscreenMode` do ini local.
+- **Adaptação ao tamanho do jogo** (`hud/fit.mjs`, puro; `follow.mjs`, puro): o layout salvo é fração do **retângulo 16:9 do HUD** (`hudRect`), não do palco
+  (idêntico em janela 16:9; em ultrawide/4:3/retrato a coluna acompanha o HUD, sem migração de formato). A escala `--k` é a do HUD (o menor dos eixos) x a do
+  usuário, com piso 0,6 e teto 3. Colisões e falta de espaço se resolvem por prioridade (`ELEMENT_PRIORITY`): o mais importante fica onde o usuário o pôs, o
+  outro procura vaga na coluna e nas faixas livres sem cobrir banco, loja, nível/ouro e estágio, e o que não cabe é **recolhido** (o dock avisa) e volta
+  sozinho. É um layout **efetivo**, refeito a cada desenho; o salvo nunca é gravado por ele (no modo interativo vê-se o salvo). O acompanhamento da janela
+  ignora mudança de até 2 px, segue ao vivo (rastreador a 120 ms enquanto muda, 750 ms em repouso, ajuste exato 400 ms depois de assentar) e tolera a
+  ausência do jogo por 1,5 s antes de esconder o overlay (minimizado/fechado), reexibindo ao voltar. O contrato `overlayHost` v2 não mudou.
 
 ---
 
@@ -723,7 +730,7 @@ GET /api/overlay ─▶ poll.mjs ─▶ view.mjs ─▶ hints.mjs ─▶ markers
   `tactics.mjs`, `engine.mjs` (e as mudanças em curso), `item-holdings.mjs`, `item-edge.mjs` (função principal), `plan-progress.mjs`, `plan-state.mjs`,
   `analysis-keys.mjs`, `comp-score.mjs`, `playbook.mjs`, `decision.mjs`, `target-level.mjs`, `contest.mjs`, `replay.mjs`, `level.mjs`,
   `v2/js/{model,main,api,item-source,comp-items,items,traits}.js`, `server.mjs` (trechos de estado e todo o POST). Trechos: `game-log.mjs`, `carousel.mjs`,
-  `augment-advice.mjs`, `meta-builds.mjs`, `item-tiers.mjs`, `capture.mjs`, `gep-reader.mjs` (cabeçalho), `PLANO-TOTAL.md` (roadmap F0-F12).
+  `augment-advice.mjs`, `meta-builds.mjs`, `item-tiers.mjs`, `capture.mjs`, `gep-reader.mjs` (cabeçalho), `planos/a-fazer/PLANO-TOTAL.md` (roadmap F0-F12).
 - Conferências por script (em `scratchpad`, nada gravado no projeto): classificadores de item sobre `catalog.json` (11/39), papel de campeão (Leona),
   chance por loja com bancos fracionários (12/14), benchmark do pipeline por replay e perfil de CPU (`--cpu-prof`).
 - Suíte: 266 testes passam (`node --test match.test.mjs augment-advice.test.mjs engine-flex.test.mjs item-edge.test.mjs "v2/js/*.test.mjs" "tests/*.test.mjs"`).
@@ -1402,7 +1409,7 @@ Qualquer diferença fora do passo 3 de `shop-cache-d1` é defeito do M8b, não e
 
 ### Correção pontual de carga ao vivo (antes do M10b)
 
-Origem: `pesquisa/lentidao-ao-vivo.md` (seção "Correções aplicadas" lá). **Escrita e checada só com `node --check` e leitura; NADA foi executado**
+Origem: `planos/feitos/lentidao-ao-vivo.md` (seção "Correções aplicadas" lá). **Escrita e checada só com `node --check` e leitura; NADA foi executado**
 (nem suíte, nem golden, nem benchmark, por ordem do usuário). Seis edições mínimas; não muda a ordem das etapas do pipeline nem o motor, a tática ou
 os planos; o golden tem pipeline próprio (`tests/golden/harness.mjs`) e **não deve mudar**.
 
@@ -1532,6 +1539,26 @@ execuções. Gancho `onEvent` para o `diag.write` (`spawn ready result supersede
 - **Windows:** `new Worker(URL)` com `file:` href e `import()` do pipeline por `pathToFileURL` (caminho com `C:\`) foi tratado, mas só a primeira execução prova.
 - **Tempo de arranque da thread** (carregar o motor + catálogo) entra no 1º pedido depois de cada reinício; `start()` pré-aquece na subida do servidor.
 - **O harness do golden** continua sendo cópia do servidor; depois do M10b ele passa a chamar o mesmo pipeline que a thread (um único lugar), e a guarda `golden.test.mjs` x `server.mjs` é religada.
+
+### M10b (fechamento) - análise numa thread, resultado compartilhado e servidor que não para
+
+**Pedido do usuário:** "Servidor indisponível / demorou demais" e "o servidor nunca deve parar". **Estado:** implementado e testado (`tests/analysis-offload.test.mjs`, suíte completa); o servidor da 3218 NÃO foi reiniciado, então nada disto vale nele até um reinício.
+
+| Item                  | O que foi feito                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Thread de análise     | `app/analysis-pipeline.mjs` é a parte pesada de `run` (da base com evidência até a disputa), extraída sem mudar regra nem ordem; `app/analysis-thread.mjs` a roda numa `worker_thread` (dona do cache de evidência e do grafo de fatos); `app/analysis-runner.mjs` decide onde roda e cai para o processo principal (mesmo código) se a thread falhar. `planState.track` e o arquivo de trocas de plano ficam no servidor, com o que o pipeline capturou **antes** de aprimoramentos e disputa (a ordem de sempre). O JSON da resposta nasce na thread e o servidor só põe `metadata` na frente (`prependField`) e `planProgress` no fim (`appendFields`): ~1 MB que já não é reserializado nem reparseado (o feed do overlay o guarda como bytes). |
+| Fila                  | `createAnalysisWorker({ supersede: false })`: fila FIFO sem descarte (entradas diferentes — decisões do usuário, partida revista, adversário visto — nunca trocam de resultado). Prazo de 60 s por análise (`TFT_ANALYSIS_TIMEOUT_MS`); estouro recria a thread e o pedido falha com mensagem clara.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| AUTO e POST           | `createRecentResults` guarda cada resultado por **duas chaves**: a chave de análise da tela e o **conteúdo da entrada** da análise pesada; quem pedir qualquer uma recebe o resultado pronto ou espera o cálculo em andamento. Prazo de 2 min (a janela da chave) e descarte quando o estado/meta muda (`clear`).                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Base incremental      | Já era do grafo de fatos (M8b): o fato `comps.base` só refaz com entrada declarada diferente. Agora o grafo mora na thread e o teste fixa: só XP ou entrada igual não refaz a base; aprimoramento novo refaz.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Cliente               | `v2/js/api.js`: prazo da análise 60 s; passado ele, `GET /api/health` decide: servidor responde = erro `analyzing` ("Analisando a partida", não conta como queda de conexão); sem resposta = `network` ("Sem resposta do servidor").                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Servidor que não para | Requisição que falha vira 500 (ou fecha a conexão) e `clientError` responde 400; laços protegidos (`app/supervision.mjs`, `every`: erro vai ao log e a rodada seguinte roda, rodada presa é abandonada) para partida e metas; o laço automático abandona um tick preso (`maxTickMs`) e nunca deixa de reagendar; SSE quebrado sai da lista. `GET /api/health`: atraso do loop, onde a análise roda, fila, laço e idade do último ciclo de cada fonte. `supervisor.ps1` sobe o servidor de novo (espera 2, 4... 30 s) e não mexe em servidor que já está na porta; `stop.ps1` o encerra.                                                                                                                                                             |
+| Medição               | `scripts/bench-analysis.mjs` (sem porta): análise no event loop x na thread, por tipo de mudança, com atraso do loop.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+**Medição (cenário items-bank-lvl8, 5 análises por tipo, evidência congelada; atraso do loop p99 / máx em ms).** Máquina livre: no processo principal 305 / 305 (tudo), 287 (ouro), 128 (XP); na thread 13 (tudo), 16 (ouro), 24 (XP). Com 10 threads queimando CPU: processo principal 649 (tudo), 585 (ouro), 249 (XP); thread 42, 53, 54. Tempo de cada análise parecido (a thread soma o custo de mensagens: 204 x 206 ms livre, 517 x 428 ms saturado em "tudo"); o ganho é a resposta do servidor durante a análise.
+
+**Diferenças aceitas.** (1) `stages` do `TEMPO` ganha `espera` (fila da thread) e as etapas da thread; (2) com a thread, o `TEMPO` de evidência vem como texto da thread; (3) `TFT_ANALYSIS_WORKER=1` deixou de existir: a thread é o padrão e `=0` a desliga.
+
+**Pendências.** Memória: a thread guarda catálogo e meta em dobro (não medida ao vivo). Um erro de pilha da thread não chega ao `server.log` (só a mensagem). O benchmark ao vivo da 3218 não foi feito (o servidor lá é o antigo).
 
 ### M10b - o servidor conduz a análise sozinho (laço automático; thread de análise ainda atrás de opção)
 
@@ -1968,7 +1995,7 @@ leitura; testes escritos e ajustados por leitura). O passo **não acrescenta reg
 
 **Decisões do usuário aplicadas.** Um só piso de reroll rápido; superconjunto onde regras divergem; ESM puro em `core/` (sem `node:*`/`Date.now`/`Math.random`).
 Sobre o risco por vida e tendência: **só o que já estava na política** (`pressureOf`: ritmo da queda média em 3 rodadas até 15 de vida, ou 3+ perdas recentes com vida até 65).
-"Derrotas restantes pelo dano do estágio" (`pesquisa/02-economia-nivel-rolagem.md`, `PLANO-TOTAL.md` F3) **não está na política atual** e portanto **não foi acrescentado**.
+"Derrotas restantes pelo dano do estágio" (`pesquisa/02-economia-nivel-rolagem.md`, `planos/a-fazer/PLANO-TOTAL.md` F3) **não está na política atual** e portanto **não foi acrescentado**.
 
 **O que existe agora (`core/economy/`, importa só de `core/`)**
 
@@ -2163,3 +2190,15 @@ Notas:
 3. **Efeito de M2 que baixa o `fit`** (`items-bank-lvl8`, `viewed-rival`: -5,5 em 20 comps): é o lado "papel deixa de ser `flex`" da decisão 1 (superconjunto): a Morellonomicon equipada, que casava com qualquer portador, agora só casa com portador AP; comps sem portador AP livre perdem o ponto de compatibilidade. A mudança de ordem do ranking se limita a posições baixas (54º-59º), nunca às 3 recomendações exibidas.
 4. `tests/golden/scenarios.mjs`: a `desc` de `shop-cache-d1` passou a descrever o M8b (a asserção D1 do `tests/golden.test.mjs` já estava invertida pelo M8b e passa: `cached[2] != cached[1]` e `cached == fresh`, e o passo 3 esperado difere do passo 2, o que no esperado antigo era igual: `compRanking` com o mesmo `scoreParts.shop`/`score` nos dois).
 5. Tempo: o golden inteiro leva ~14,6 s; a triagem, ~4 s; o `golden-verify`, ~15 s.
+
+## Compra de cópias e itens por campeão (apresentação; sem mudança de plano nem de ranking)
+
+Duas regras novas moram em `core/` e são lidas por `v2/js/model.js`, que a interface e o overlay (`overlay/hud/view.mjs`) já compartilham:
+
+- `core/pool/buy-copies.mjs` (`copyBuys`, `nextStar`): a lista "Comprar" do servidor (`stage.buyNow`) só tem peças que faltam; peça do plano em campo ou na
+  reserva (abaixo de 3★, com cópias na pool para o próximo marco) ganha uma linha `how: "copy"` que só aparece enquanto a loja a mostra. O servidor
+  (`stage.mjs`, `golden`) não mudou: a loja de agora é lida no cliente (`shop-match.js`), que é mais fresca que a do instante da análise.
+- `core/items/champion-items.mjs` (`championItems`, `stateBrief`): os até 3 itens ideais de um campeão com a situação de cada um (`locateItem`/`buildStates`, a regra
+  da Formação) e o rótulo curto. Passo "Itens dos campeões" do modelo, cartão "Itens dos campeões" do overlay (até 4, o resto "+N") e linha `buildsRow` da interface.
+
+Testes: `v2/js/buy-copies.test.mjs`, `tests/champion-items.test.mjs`, `tests/overlay-hints.test.mjs` (dica `Compre` de cópia). Detalhes em `overlay/README.md` e `FONTES-DE-DADOS.md`.

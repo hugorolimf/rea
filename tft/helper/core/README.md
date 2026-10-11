@@ -12,11 +12,13 @@ recomendação estão em `../app/recommend-facts.mjs` e a simulação de rolagem
 chave usa `graph/index.mjs` em vez de um `Map` com chave montada à mão; uma entrada grande pode declarar `identity`, a projeção
 que dá a chave dela) e `pool/` (M4: `tables.mjs` com
 `POOL`, `ODDS`, `SHOP` e `BUYABLE_ODDS`; `copies.mjs` com cópias por estrela e pool livre fracionária; `shop.mjs` com a chance
-por slot e por loja; `curve.mjs` com a chance acumulada por ouro) e `economy/` (M5b: `policy.mjs` com `POLICY`, todos os limiares de
+por slot e por loja; `curve.mjs` com a chance acumulada por ouro; `buy-copies.mjs` com a regra de compra de cópias de peças do plano que você já tem) e `economy/` (M5b: `policy.mjs` com `POLICY`, todos os limiares de
 ouro e de vida; `tables.mjs` com a renda, os juros e o HP máximo; `gold.mjs` com juros, renda, projeção e as lojas ao alcance; `pressure.mjs`
-com a faixa de vida e a tendência; `rounds.mjs` com o calendário que a projeção usa) e `items/` (M6: a posse de itens. `stock.mjs`
+com a faixa de vida e a tendência; `rounds.mjs` com o calendário que a projeção usa), `comps/` (`reach.mjs`: o alcance de uma comp,
+a chance de montá-la a tempo e a parte esperada dela no prazo, com as peças em campo e na reserva, as estrelas, a pool livre, os
+rivais, o ouro, o nível e a vida; entra no `p` da colocação esperada que ordena as comps em `../engine.mjs`) e `items/` (M6: a posse de itens. `stock.mjs`
 gasta uma cópia uma vez; `holdings.mjs` diz onde está cada item, na Formação e comp a comp; `bank.mjs` reparte o banco entre as
-builds da aba Comps; `moves.mjs` lê os passes de "Passar itens"; `owned.mjs` tem as contas sem localização. O valor de cada
+builds da aba Comps; `moves.mjs` lê os passes de "Passar itens"; `owned.mjs` tem as contas sem localização; `champion-items.mjs` dá, para cada campeão, os até 3 itens ideais com a situação de cada um e o rótulo curto que a interface e o overlay desenham; motor único de itens: `builds.mjs` decide QUAL build cada campeão usa, a publicada na comp como na aba Comps, ou a reserva declarada e marcada; `scenarios.mjs` tem as fachadas por cenário; `comp-bank.mjs`, os itens do banco que combinam com a comp na aba Comps; ver `../planos/feitos/itens-motor-unico.md`). O valor de cada
 situação é política do motor e fica em `../item-holdings.mjs`). O servidor serve esta pasta ao navegador em `/core/*` (só `.mjs`/`.js`/`.html`/`.css`/`.svg`); a interface
 importa por caminho relativo (`../../core/...` a partir de `v2/js/`), que resolve igual no Node e no navegador.
 

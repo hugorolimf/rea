@@ -1,4 +1,11 @@
 data/
 helper/overlay/node_modules/
 helper/overlay/overlay.config.json
+helper/overlay/overlay.config.json.bak-*
+helper/overlay/overlay.config.json.*.tmp
 helper/overlay/overlay.log
+# Capturas de tela do jogo usadas pelos testes do antigo leitor de tela (binários; podem mostrar nomes de jogadores).
+helper/tests/fixtures/screen/
+helper/.old/ocr/tests/fixtures/screen/
+# Listagens de arquivos locais da varredura (caminhos e nomes da máquina do usuário).
+helper/pesquisa/varredura-listagens/

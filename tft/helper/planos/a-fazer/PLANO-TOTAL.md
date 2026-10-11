@@ -1,6 +1,6 @@
 # PLANO-TOTAL - Evoluir o TFT Helper com o que os melhores jogadores fazem
 
-Autor: `tft-estrategista`. Data: 2026-10-10. Set 18 (Enchanted Wilds), patch 18.4/18.4B. Base: pesquisas `00` a `07` desta pasta (lidas integralmente), mais conferência direta de `rules.mjs`, `data/match-history.jsonl`, `data/lobby-boards.jsonl`, `data/scouting-captures.jsonl`, `data/plan-changes.jsonl`.
+Autor: `tft-estrategista`. Data: 2026-10-10. Set 18 (Enchanted Wilds), patch 18.4/18.4B. Base: pesquisas `00` a `07` da pasta `pesquisa/` (lidas integralmente), mais conferência direta de `rules.mjs`, `data/match-history.jsonl`, `data/lobby-boards.jsonl`, `data/scouting-captures.jsonl`, `data/plan-changes.jsonl`.
 Este documento é só plano: nenhum código foi alterado, nenhum `POST /api/recommend` foi feito, o servidor da 3218 não foi tocado, nenhuma captura de tela foi feita.
 
 ## Sumário
