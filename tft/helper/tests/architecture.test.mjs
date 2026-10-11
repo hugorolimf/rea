@@ -31,7 +31,7 @@ const ALL = listSources();
 
 /** Código de teste, ferramentas offline e fixtures: não são o produto, ficam fora das regras. */
 const isSupport = (f) =>
-  f.endsWith('.test.mjs') ||
+  f.endsWith(".test.mjs") ||
   f.startsWith("tests/") ||
   f.startsWith("scripts/") ||
   f === "v2/js/catalog-fixture.mjs" ||
@@ -92,13 +92,8 @@ test("leitor estático: acha imports estáticos, multilinha e dinâmicos", () =>
 
 /** Exceções de T1 (arquivo importador -> alvo). Só encolhe. */
 const T1_EXCEPTIONS = {
-  // O servidor e os motores importam do diretório do navegador: v2/js/traits.js e item-source.js são, na prática, núcleo.
-  // M3 move traits para core/catalog; M6 move item-source para core/facts/holdings (reexport fino em v2/js).
-  "engine.mjs -> v2/js/traits.js":
-    "D7: regra de traços/emblemas mora no navegador (M3)",
-  "tactics.mjs -> v2/js/traits.js": "D7 (M3)",
-  "server.mjs -> v2/js/traits.js":
-    "D7: servidor usa emblemTraitMap/traitsWithEmblems (M3)",
+  // O servidor e os motores importam do diretório do navegador: v2/js/item-source.js é, na prática, núcleo.
+  // M6 move item-source para core/facts/holdings (reexport fino em v2/js). (Traços saíram em M3: core/catalog/traits.mjs.)
   "engine.mjs -> v2/js/item-source.js":
     "D8: posse de itens da Formação usada pelo motor (M6)",
   "item-holdings.mjs -> v2/js/item-source.js":
@@ -133,10 +128,13 @@ test("T1: o núcleo só importa do núcleo; v2/ e servidor respeitam as camadas 
     const browser = from.startsWith("v2/") || from === "live-mock.js";
     if (browser && spec.startsWith("node:"))
       add(key, "navegador importa node:*");
+    // Único caminho relativo permitido para fora de v2/: o núcleo. O servidor serve /core/* ao lado de /v2/*, então
+    // "../../core/x.mjs" a partir de /v2/js/ resolve para /core/x.mjs no navegador e para o arquivo no Node (testes).
     if (
       from.startsWith("v2/") &&
       to &&
       !to.startsWith("v2/") &&
+      !inCore(to) &&
       !spec.startsWith("/")
     )
       add(key, "v2/ importa fora de v2/ por caminho relativo");
@@ -427,11 +425,7 @@ const RULES = [
     owner: "core/catalog/traits.mjs",
     view: "code",
     pattern: /\bminUnits\b/g,
-    baseline: {
-      "engine.mjs": [1, "thresholdsOf (M3)"],
-      "server.mjs": [1, "breakpoints do /api/catalog (M3)"],
-      "tactics.mjs": [3, "t.effects.find / patamares (M3)"],
-    },
+    baseline: {},
   },
   {
     id: "trait-solo-rule",
@@ -440,9 +434,48 @@ const RULES = [
     owner: "core/catalog/traits.mjs",
     view: "strings",
     pattern: /Only active while fielding/g,
+    baseline: {},
+  },
+  {
+    id: "trait-count-loop",
+    covers: "D7 / 1.2-f",
+    what: "laço que conta sinergias (counts[t] = (counts[t] ?? 0) + 1) fora da regra de traços",
+    owner: "core/catalog/traits.mjs",
+    view: "code",
+    pattern: /\(\s*counts?(?:\[t\]|\.get\(t\))\s*\?\?\s*0\s*\)\s*\+\s*1/g,
+    baseline: {},
+  },
+  {
+    id: "emblem-trait-rule",
+    covers: "D7 / 1.2-f",
+    what: "mapa de emblema -> sinergia e soma de emblema (traitsWithEmblems/emblemTraitMap) fora da regra de traços",
+    owner: "core/catalog/traits.mjs",
+    view: "code",
+    pattern: /\btraitsWithEmblems\b|\bemblemTraitMap\b/g,
     baseline: {
-      "engine.mjs": [1, "soloOnly: só o motor conhece a regra (M3)"],
+      "v2/js/traits.js": [
+        2,
+        "reexport fino de core/catalog/traits.mjs (fica: back-compat do front e dos testes)",
+      ],
     },
+  },
+  {
+    id: "trait-first-breakpoint",
+    covers: "D7 / 1.2-f",
+    what: "primeiro patamar de uma sinergia (Math.min(...(patamares?.length ? patamares : [2]))) fora da regra de traços",
+    owner: "core/catalog/traits.mjs",
+    view: "code",
+    pattern: /Math\.min\(\s*\.\.\.\(\s*\w+\.get\(\w+\)\?\.length/g,
+    baseline: {},
+  },
+  {
+    id: "emblem-name-parse",
+    covers: "D7 / 1.2-f",
+    what: "sinergia de um emblema lida do nome do item (/ Emblem$/) fora da regra de traços",
+    owner: "core/catalog/traits.mjs",
+    view: "strings",
+    pattern: /\/ Emblem\$\//g,
+    baseline: {},
   },
   {
     id: "stage-round-parse",
@@ -577,7 +610,7 @@ const RULES = [
     pattern:
       /\b(?:\w*[cC]ache\w*|SIMS|pending\w*|rankedCache|wantsCache)\s*=\s*new Map\(/g,
     baseline: {
-      "engine.mjs": [3, "roleCache/thresholdCache/termCache por chamada (M8)"],
+      "engine.mjs": [2, "roleCache/termCache por chamada (M8)"],
       "evidence.mjs": [
         1,
         "cache do explorer: E/S real, fica em sources/ (não migra)",
@@ -833,7 +866,7 @@ test("D1: toda opção que o motor lê entra na chave da base ou está justifica
 /* ---------- D12: server.mjs só transporte ---------- */
 
 /** Teto de linhas de server.mjs (D12). Só baixa; a meta de M9 é < 400. */
-const SERVER_MAX_LINES = 1409;
+const SERVER_MAX_LINES = 1394;
 
 test("D12: server.mjs não cresce (teto de linhas só baixa; meta de M9: < 400)", () => {
   const lines = read("server.mjs").split("\n").length;

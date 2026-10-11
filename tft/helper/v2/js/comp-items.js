@@ -14,6 +14,8 @@
  *    não aproveita, item fora do catálogo): `unused`, com o motivo.
  * O item equipado no campeão (`equipped`) conta como `on` e não gasta o banco.
  */
+import { countUnitTraits, firstBreakpoint } from "./traits.js";
+
 /** Id do item base de um radiante ("DA_VoidStaffRadiant" e "DA_TitansResolve_Radiant" valem o item comum). */
 export const baseItemId = (id) => String(id).replace(/_?Radiant$/, "");
 
@@ -41,19 +43,12 @@ export function emblemBases(items) {
  * (`breakpoints`: Map sinergia → patamares; sem o patamar conhecido, 2) contando os campeões da comp que já a têm.
  */
 function traitsToGain(comp, carryTraits, champions, breakpoints) {
-  const counts = new Map();
-  for (const id of new Set(comp.units))
-    for (const t of new Set(champions.get(id)?.traits ?? []))
-      counts.set(t, (counts.get(t) ?? 0) + 1);
+  const counts = countUnitTraits(comp.units, (id) => champions.get(id)?.traits);
   return new Set(
     [...counts]
       .filter(
         ([t, n]) =>
-          !carryTraits.has(t) &&
-          n + 1 >=
-            Math.min(
-              ...(breakpoints.get(t)?.length ? breakpoints.get(t) : [2]),
-            ),
+          !carryTraits.has(t) && n + 1 >= firstBreakpoint(breakpoints.get(t)),
       )
       .map(([t]) => t),
   );

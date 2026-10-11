@@ -4,8 +4,10 @@ Regra de ouro: **uma regra, um lugar.** Toda regra do jogo ou política do helpe
 dados) dentro de `core/`. Nenhum outro módulo recalcula, reinterpreta ou "arredonda de novo" um valor que `core/` já
 produz: ele o **lê**.
 
-Esta pasta nasce vazia (M1 de `../ARQUITETURA.md`). Cada passo seguinte da migração move uma regra para cá e apaga a
-exceção correspondente em `../tests/architecture.test.mjs`.
+Esta pasta nasceu vazia (M1 de `../ARQUITETURA.md`). Cada passo da migração move uma regra para cá e apaga a
+exceção correspondente em `../tests/architecture.test.mjs`. Já moram aqui: `catalog/traits.mjs` (traços, patamares, solo e
+emblemas; M3). O servidor serve esta pasta ao navegador em `/core/*` (só `.mjs`/`.js`/`.html`/`.css`/`.svg`); a interface
+importa por caminho relativo (`../../core/...` a partir de `v2/js/`), que resolve igual no Node e no navegador.
 
 ## O que pode morar aqui
 

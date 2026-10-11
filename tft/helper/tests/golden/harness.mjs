@@ -36,7 +36,10 @@ import {
   snapshotSignature,
 } from "../../analysis-keys.mjs";
 import { filterKey } from "../../evidence.mjs";
-import { emblemTraitMap, traitsWithEmblems } from "../../v2/js/traits.js";
+import {
+  emblemTraitMap,
+  traitsWithEmblems,
+} from "../../core/catalog/traits.mjs";
 
 export const HERO_ID = "47445859";
 export const SET = "TFTSet18";

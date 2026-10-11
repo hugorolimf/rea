@@ -699,17 +699,19 @@ ranking por rolagem, a chance de montar pode usar `shopsAhead` em degraus (ex.: 
 
 ## Progresso da migração
 
-Estado: **M0 e M1 concluídos e verificados offline** (2026-10-10, executor `tft-migracao`, base: commit `49a17de4`, 350 testes verdes).
-Nada de regra foi movido nem alterado: os dois passos só fixam o comportamento e medem. Sem commit (cabe ao orquestrador).
+Estado: **M0, M1 e M3 concluídos e verificados offline** (2026-10-10, executor `tft-migracao`; M0/M1 sobre o commit `49a17de4`, 350 testes;
+M3 sobre `03f522fc`, 404 testes). M0 e M1 só fixaram o comportamento e mediram; o M3 é o primeiro a mover regra (traços e emblemas
+para `core/catalog/traits.mjs`) com o golden **idêntico**. Sem commit (cabe ao orquestrador).
 
-| Passo                       | Estado    | Observação                                                        |
-| --------------------------- | --------- | ----------------------------------------------------------------- |
-| M0 caracterização + medição | feito     | golden de 18 arquivos, `server.mjs` com `TEMPO` no log, 4 scripts |
-| M1 rede de arquitetura      | feito     | catraca com 20 regras (T2), T1, T3, D1, D12, D5; `core/README.md` |
-| M2..M10                     | pendentes | M3 e M2 são os próximos (dados puros, menor risco)                |
+| Passo                       | Estado    | Observação                                                                                                      |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- |
+| M0 caracterização + medição | feito     | golden de 18 arquivos, `server.mjs` com `TEMPO` no log, 4 scripts                                               |
+| M1 rede de arquitetura      | feito     | catraca com 20 regras (T2), T1, T3, D1, D12, D5; `core/README.md`                                               |
+| M3 traços e emblemas        | feito     | `core/catalog/traits.mjs`; golden idêntico; T1 7 -> 4 exceções; T2 `trait-*` 6 -> 0; rota `/core/*`; 421 testes |
+| M2, M4..M10                 | pendentes | M2 (catálogo de itens e campeões) é o próximo de menor risco; ele muda número (D2/D9), com `legacy` antes       |
 
-Suíte: `node --test tests/*.test.mjs v2/js/*.test.mjs *.test.mjs` = **404 testes verdes** (350 anteriores + 24 do golden + 30 de
-arquitetura). Leva 35-52 s com a máquina folgada; com o jogo aberto e processos concorrentes uma execução só do golden passou de 5 min (ver "Achados").
+Suíte: `node --test tests/*.test.mjs v2/js/*.test.mjs *.test.mjs` = **421 testes verdes** (404 do fim do M1 + 11 de `core-traits` + 2 de
+`static-files` + 4 regras T2 novas). Leva 30-52 s com a máquina folgada; com o jogo aberto e processos concorrentes uma execução só do golden passou de 5 min (ver "Achados").
 
 ### Como usar o que o M0/M1 criou
 
@@ -884,7 +886,89 @@ gera `rec.decision` (só o mock), e `p.roll` em `v2/js/ui/panel.js` vem do view-
   teste diz o que fazer; não é para afrouxar o número.
 - Os fixtures `fixtures/meta` são cópias de 2026-10-10; o golden não acompanha atualizações de meta (de propósito).
 
-### Próximo passo: M3 (traços) ou M2 (catálogo de itens e campeões)
+### M3 - traços e emblemas
 
-M3 é o de menor risco (remove 3 das 7 exceções de T1 e as de `trait-*`). M2 muda número em 11 itens (D2) e Leona (D9): primeiro o modo
-`legacy` (golden idêntico), depois a tabela única com o diff aprovado; coordenar com `tft-motor-itens` (mesmo `engine.mjs`).
+**O que mudou.** A regra de traços e emblemas passou de `v2/js/traits.js` (pasta do navegador) para `core/catalog/traits.mjs` (ESM puro,
+sem imports, carregável no servidor e no navegador). O módulo reúne o que estava espalhado:
+
+| Regra (função em `core/catalog/traits.mjs`)                                                                                       | Substitui                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `emblemTraitMap`, `traitsWithEmblems`, `unmappedEmblems`, `countTraits`                                                           | as quatro de `v2/js/traits.js` (movidas sem mudar o corpo; `countTraits` agora é de fato usada)                          |
+| `tallyTraits(units, emblems)` -> `{counts, byEmblem}`                                                                             | os laços de contagem de `engine.traits` e de `tactics.plan`, e o de `history.activeTraits` (via `countTraits`)           |
+| `countUnitTraits(ids, traitsOf)`, `firstBreakpoint(steps)`                                                                        | os laços de `comps.activeTraits` e `comp-items.traitsToGain` (contagem de uma comp de meta) e o `Math.min(...[2])` x2    |
+| `traitThresholds(trait, max)`, `traitStatus(thresholds, count)`                                                                   | `engine.thresholdsOf` + o cálculo de `active/solo/tier/next` do motor; `active/next` do plano; `breakpoints` do servidor |
+| `soloTraitNames(traits, exempt)`                                                                                                  | `engine.soloOnly` (texto "Only active while fielding 1" do catálogo, liberado por aprimoramento)                         |
+| `emblemRecipes(items, traitNames)`                                                                                                | `engine.emblemRecipes` (filtro `DA_`) e `tactics.emblemByTrait` (filtro por traço do set): dois filtros viraram um       |
+| `traitBook(catalog, {maxUnits, exempt})`: `of`, `status`, `tally`, `summary`, `legal`, `thresholds`, `recipes`, `solo`, `emblems` | o índice por chamada que `engine`, `tactics` e `server` montavam cada um (`maxUnits: 12` no motor, como antes)           |
+
+**Consumidores.** `engine.mjs` (`traitBook` com `maxUnits: 12` e `exempt: options.augmentTraits`; `traits()`/`legal()` viram uma chamada),
+`tactics.mjs` (`book.tally/status/of/recipes`; o campo `e.apiName/composition` do emblema virou `e.id/parts`), `server.mjs` (`traitRules.of`,
+`.emblems`, `.thresholds`), `v2/js/history.js`, `v2/js/comps.js`, `v2/js/comp-items.js` (via `./traits.js`) e o harness do golden
+(`tests/golden/harness.mjs`, só o caminho do import). `v2/js/traits.js` ficou como **reexport fino** (7 linhas; o relativo `../../core/...` resolve
+igual no Node e no navegador) porque ainda tem consumidores (`history`, `comps`, `comp-items`, `tests/traits.test.mjs`, `comp-items.test.mjs`).
+
+**Servir o núcleo ao navegador.** O front é servido de `/v2/*`, então `../../core/catalog/traits.mjs` a partir de `/v2/js/traits.js` vira
+`/core/catalog/traits.mjs`. O servidor não tinha essa rota. Em vez de acrescentar um segundo bloco ao `server.mjs`, a resolução de estáticos foi
+extraída para `static-files.mjs` (`staticTarget(root, pathname)`: `/`, `/v2/*` e `/core/*`; só `.html .js .mjs .css .svg`; nunca sai da pasta) e o
+bloco de rota ficou menor. Resultado: `server.mjs` 1.408 -> 1.393 linhas (o teto de D12 desceu de 1.409 para 1.394), mesmas respostas para
+`/` e `/v2/*`. `/core/README.md` e qualquer outro tipo dão 404. Não toquei no servidor da 3218: a rota `/core/*` só existe depois de um
+reinício dele (ver o risco 1 abaixo: o processo em execução lê `v2/` do disco a cada requisição, então já entrega o `traits.js` novo).
+
+**Golden: antes/depois.** `tests/golden.test.mjs` (24 testes, 18 respostas completas de 0,7-1,2 MB) passou **sem nenhuma regravação**: idêntico
+(nenhum `UPDATE_GOLDEN`). O golden não exercita o traço solo (nenhum cenário põe 2 campeões de Rival), então a equivalência desse caminho foi
+fixada por um teste novo, abaixo. Perturbar `traitStatus` (`next`) quebra os 17 cenários do golden (os 7 testes de `strategy` seguem verdes); perturbar o limite do solo não quebra nenhum (por isso o teste dedicado).
+
+**Diferenças de comportamento: nenhuma no catálogo atual.** Há três equivalências que valem só para o catálogo/dados atuais e estão registradas aqui:
+
+1. `emblemRecipes` junta dois filtros: o do motor exigia `apiName` com `DA_` e **não** exigia traço do set; o do plano exigia traço do set e **não** `DA_`.
+   Neste catálogo os dois dão a mesma lista (todo emblema com 2 componentes é `DA_` e de traço do set; teste `emblemRecipes = os dois filtros de antes`).
+   Num patch futuro com um emblema `TFT_...` ou com traço desconhecido, o motor deixaria de ver/passaria a ver um emblema: o teste acusa na hora.
+2. Patamares (`traitStatus`): o motor ignora patamares acima de 12 (`maxUnits: 12`) e o plano não; o catálogo não tem patamar acima de 9, então coincidem. A diferença
+   continua explícita nos dois pontos de uso (`traitBook(catalog, {maxUnits: 12})` no motor; `traitBook(catalog)` no plano e no servidor).
+3. `comps.activeTraits`/`comp-items.traitsToGain`: o laço de antes usava `Set` por campeão e por traço; `countUnitTraits` mantém isso (sem itens, sem emblema).
+
+**Testes novos.**
+
+- `tests/core-traits.test.mjs` (11 testes): os laços **antigos copiados sem mudança** (motor, plano, histórico, comps/comp-items, receitas) contra as funções do núcleo
+  em ~1.500 tabuleiros sorteados (semente fixa) com o catálogo real, incluindo emblemas repetidos, cópias do mesmo campeão e o traço solo (Rival) com e sem
+  aprimoramento que o libera; casos de `traitStatus`, `traitThresholds`, `countTraits`; `v2/js/traits.js` reexporta as mesmas funções; o módulo do núcleo não importa nada.
+- `tests/static-files.test.mjs` (2 testes): `staticTarget` (raiz, v2, core, tipos, `..`, prefixos parecidos) e **todo import estático alcançável de `v2/js/main.js`,
+  resolvido como URL, cai num arquivo que o servidor serve** (inclui `/core/catalog/traits.mjs`).
+- `tests/architecture.test.mjs`: 4 regras T2 novas que travam a regressão (`trait-count-loop`, `trait-first-breakpoint`, `emblem-trait-rule`, `emblem-name-parse`).
+
+**Catraca: o que desceu.**
+
+| Item                                                              | Antes                                                                       | Depois                                                                                                  |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| T1: exceções                                                      | 7 (3 para `v2/js/traits.js`)                                                | **4** (só `item-source.js`, M6)                                                                         |
+| T1: regra nova                                                    | `v2/` não podia importar fora de `v2/` por caminho relativo                 | permitido **só** `v2/ -> core/` (o servidor serve `/core/*` ao lado de `/v2/*`; é o reexport de traits) |
+| T2 `trait-breakpoints` (`minUnits`)                               | 5 (tactics 3, engine 1, server 1)                                           | **0**                                                                                                   |
+| T2 `trait-solo-rule`                                              | 1 (engine)                                                                  | **0**                                                                                                   |
+| T2 `trait-count-loop` / `-first-breakpoint` / `emblem-name-parse` | (regras novas; achavam 5 laços, 2 `Math.min` e 2 `/ Emblem$/` fora do dono) | **0**                                                                                                   |
+| T2 `emblem-trait-rule`                                            | (regra nova)                                                                | 2: o reexport `v2/js/traits.js` (permanente, com motivo)                                                |
+| T2 `unbounded-memo-maps` (`engine.mjs`)                           | 3                                                                           | **2** (o `thresholdCache` virou o cache do livro de traços)                                             |
+| D12: teto de linhas do `server.mjs`                               | 1.409                                                                       | **1.394**                                                                                               |
+| T3: `CORE_CANDIDATES`                                             | `v2/js/traits.js` era candidato                                             | continua (agora é só reexport de `core/`, pura)                                                         |
+
+**Medição.** O benchmark do pipeline (`scripts/bench.mjs`) ficou inconclusivo: a máquina estava saturada por outros processos (a mediana por
+leitura foi de 71 ms numa execução e 121 ms e 417 ms nas seguintes, e `tactics`/`json`, que o M3 não alterou, subiram na mesma proporção).
+O caminho que mudou, `traits(board)`, medido em processo único com 2.000 tabuleiros de 9 peças: laço antigo 64-88 us por tabuleiro, `book.summary` 23-68 us (igual ou
+melhor). Reler `bench.mjs` com a máquina quieta antes de usar como base do M4.
+
+**Riscos e pendências do M3.**
+
+- **1. O servidor da 3218 precisa ser reiniciado por quem o controla, e isso é urgente.** O processo em execução serve `v2/` lendo o disco a cada requisição
+  (`Cache-Control: no-cache`), então o navegador já recebe o `v2/js/traits.js` novo, que importa `../../core/catalog/traits.mjs`; o código antigo do servidor não tem a rota
+  `/core/*` e responde 404. Um 404 num `import` estático derruba o grafo de módulos de `main.js` (a interface inteira, não só Histórico/Comps) na próxima
+  recarga da página. Reiniciar o servidor e recarregar a página é um passo só. Sem reinício, nada do lado do servidor muda (o processo tem o `engine.mjs` e o `tactics.mjs`
+  antigos na memória). Não reiniciei nem fiz GET no servidor vivo.
+- Bug anterior, não tocado: na rota estática, `res.writeHead(200)` roda antes de `fs.readFile`; um arquivo ausente (`/v2/x.js`, `/core/x.mjs`) cai no `catch` e tenta
+  `writeHead` outra vez (erro de cabeçalhos já enviados, 400 do `catch` externo). Corrigir ler o arquivo antes de escrever o cabeçalho é uma linha, mas é mudança de comportamento; fica para o orquestrador decidir.
+- `unmappedEmblems` e o emblema "Phantom" (copia a sinergia mais ativa, sem traço fixo) continuam fora do mapa; é regra de produto, não de M3.
+- Emblema de **aprimoramento** (`server.augmentEmblem`, `makeAugmentEmblem` no harness) continua no servidor: é o motor de aprimoramentos (M9), não o catálogo de traços.
+- `tactics.mjs` ainda tem regex de papel/cobertura de item (`VoidStaff|LastWhisper|...`) e `/Emblem|ThiefsGloves/`: pertencem ao catálogo de itens (M2).
+
+### Próximo passo: M2 (catálogo de itens e campeões)
+
+M2 muda número em 11 itens (D2) e Leona (D9): primeiro o modo `legacy` (golden idêntico), depois a tabela única com o diff aprovado (decisão 1:
+superconjunto de papéis); coordenar com `tft-motor-itens` (mesmo `engine.mjs`). Depois: M4 (pool e loja, D3 com pool fracionária).

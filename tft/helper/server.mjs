@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze } from "./engine.mjs";
-import { emblemTraitMap, traitsWithEmblems } from "./v2/js/traits.js";
+import { traitBook } from "./core/catalog/traits.mjs";
+import { staticTarget } from "./static-files.mjs";
 import { tactics } from "./tactics.mjs";
 import { captureBoards } from "./capture.mjs";
 import { playbook } from "./playbook.mjs";
@@ -254,7 +255,7 @@ const augmentById = new Map(augmentList.map((a) => [a.id, a]));
 // a sinergia (apiName) e o item do emblema. No Set 18 o de emblema se chama "X Emblem" e vem sem traits.
 const traitApiByName = new Map(catalog.traits.map((t) => [t.name, t.apiName]));
 // Item de emblema → sinergia, derivado do catálogo (mesma regra do motor e da interface).
-const emblemTraits = emblemTraitMap(catalog.items, traitApiByName.keys());
+const traitRules = traitBook(catalog);
 function augmentEmblem(a) {
   if (!a.id.startsWith("DA_")) return null; // aprimoramentos de sets antigos têm nomes de sinergia que não são os do 18
   const named = /^(.+) (?:Crest|Crown|Circlet|Emblem)$/.exec(
@@ -769,12 +770,12 @@ handle = async (req, res) => {
           // Tipo (completed, component, radiant, artifact, emblem, other) e se é consumível: a aba Comps relaciona o banco ao carry por eles.
           kind: kindOf(i.apiName, i.composition ?? []),
           consumable: isConsumable(i.apiName),
-          // Sinergia que o item dá a quem o equipa (emblemas); a interface soma com a regra de traits.js.
-          trait: emblemTraits.get(i.apiName) ?? null,
+          // Sinergia que o item dá a quem o equipa (emblemas); a interface soma com a regra de core/catalog/traits.mjs.
+          trait: traitRules.emblems.get(i.apiName) ?? null,
         })),
         traits: catalog.traits.map((t) => ({
           name: t.name,
-          breakpoints: t.effects.map((e) => e.minUnits),
+          breakpoints: traitRules.thresholds(t.name),
           icon: icons["trait:" + t.apiName] ?? null,
         })),
       });
@@ -1309,7 +1310,7 @@ handle = async (req, res) => {
               const c = catalog.champions.find(
                 (c) => c.apiName === u.championName,
               );
-              const t = traitsWithEmblems(c?.traits, u.itemNames, emblemTraits);
+              const t = traitRules.of(c?.traits, u.itemNames);
               return {
                 ...u,
                 name: c?.name ?? u.championName,
@@ -1347,32 +1348,16 @@ handle = async (req, res) => {
       res.writeHead(301, { Location: "/" + url.search + url.hash });
       return res.end();
     }
-    if (
-      req.method === "GET" &&
-      (url.pathname === "/" || url.pathname.startsWith("/v2/"))
-    ) {
-      // Interface: arquivos estáticos de ./v2, apenas tipos web e sem sair do diretório.
-      const base = path.resolve(root, "v2"),
-        target = path.resolve(
-          base,
-          url.pathname === "/" ? "index.html" : url.pathname.slice(4),
-        ),
-        types = {
-          ".html": "text/html; charset=utf-8",
-          ".js": "text/javascript",
-          ".mjs": "text/javascript",
-          ".css": "text/css",
-          ".svg": "image/svg+xml",
-        },
-        type = types[path.extname(target)];
-      if (!type || !target.startsWith(base + path.sep))
-        return json(404, { error: "Rota não encontrada." });
+    // Interface (./v2) e núcleo puro (./core, o mesmo que o servidor importa): estáticos, só tipos web.
+    const asset = req.method === "GET" && staticTarget(root, url.pathname);
+    if (asset) {
+      if (!asset.type) return json(404, { error: "Rota não encontrada." });
       try {
         res.writeHead(200, {
-          "Content-Type": type,
+          "Content-Type": asset.type,
           "Cache-Control": "no-cache",
         });
-        return res.end(await fs.readFile(target));
+        return res.end(await fs.readFile(asset.target));
       } catch {
         return json(404, { error: "Arquivo não encontrado." });
       }

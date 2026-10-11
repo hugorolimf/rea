@@ -2,6 +2,7 @@
  * Seleção de comp: funções puras sobre as comps de meta (/api/comps) e o encaixe calculado pelo motor
  * para a partida atual (`compRanking` de /api/recommend). Não decide nada novo; só junta, filtra e ordena.
  */
+import { countUnitTraits, firstBreakpoint } from "./traits.js";
 
 /** Estilo de nível da comp: reroll em um nível, Fast 8 ou Fast 9. */
 export function styleOf(comp) {
@@ -82,18 +83,9 @@ const fold = (s) =>
  * [{name, count}] com a maior contagem primeiro. Um campeão solto com a sinergia não a ativa.
  */
 export function activeTraits(comp, champions, breakpoints = new Map()) {
-  const counts = new Map();
-  for (const id of new Set(comp.units))
-    for (const t of new Set(champions.get(id)?.traits ?? []))
-      counts.set(t, (counts.get(t) ?? 0) + 1);
+  const counts = countUnitTraits(comp.units, (id) => champions.get(id)?.traits);
   return [...counts]
-    .filter(
-      ([name, n]) =>
-        n >=
-        Math.min(
-          ...(breakpoints.get(name)?.length ? breakpoints.get(name) : [2]),
-        ),
-    )
+    .filter(([name, n]) => n >= firstBreakpoint(breakpoints.get(name)))
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
 }

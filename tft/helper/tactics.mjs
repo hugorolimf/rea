@@ -1,7 +1,7 @@
 import { isContested } from "./economy.mjs";
 import { carouselPicks } from "./carousel.mjs";
 import { baseItemId } from "./item-tiers.mjs";
-import { emblemTraitMap, traitsWithEmblems } from "./v2/js/traits.js";
+import { traitBook } from "./core/catalog/traits.mjs";
 /**
  * Lista de itens desejados de um campeão: a build da comp escolhida primeiro, depois a build geral publicada.
  * Mesma ordem em build(), Passar itens (itemMoves) e item do banco (stage.mjs).
@@ -93,17 +93,12 @@ export function tactics(analysis, catalog, options = {}) {
       "Inferido por habilidade, estrelas e itens observados; não por dano medido.",
   };
   // Emblemas montáveis (espátula/frigideira + componente) concedem a sinergia do nome a quem equipa.
-  const traitNames = new Set(catalog.traits.map((t) => t.name));
-  // Sinergias de uma peça do plano: as do campeão mais as de emblemas equipados nela (regra única em traits.js).
-  const emblemTrait = emblemTraitMap(catalog.items, traitNames);
+  // Sinergias de uma peça do plano: as do campeão mais as de emblemas equipados nela (regra única em
+  // core/catalog/traits.mjs, a mesma do motor, do servidor e da interface).
+  const book = traitBook(catalog);
   const traitsOfUnit = (id, equipped) =>
-    traitsWithEmblems(byId.get(id)?.traits ?? [], equipped, emblemTrait).traits;
-  const emblemByTrait = new Map(
-    catalog.items
-      .filter((i) => /Emblem/.test(i.apiName) && i.composition?.length === 2)
-      .map((i) => [i.name.replace(/ Emblem$/, ""), i])
-      .filter(([name]) => traitNames.has(name)),
-  );
+    book.of(byId.get(id)?.traits ?? [], equipped).traits;
+  const emblemByTrait = new Map(book.recipes.map((e) => [e.trait, e]));
   const item = (id) => {
     const i = items.get(id);
     return {
@@ -593,25 +588,21 @@ export function tactics(analysis, catalog, options = {}) {
       else
         t.reason = `Segure ${t.exit.name} ${outStars}★ em campo. Só troque quando ${t.enter.name} estiver ${required}★ (você tem ${copies} de ${3 ** (required - 1)} cópias).`;
     }
-    const counts = {},
-      byEmblem = {};
-    for (const u of planned) {
-      const base = byId.get(u.id)?.traits ?? [];
-      for (const t of traitsOfUnit(u.id, u.items)) {
-        counts[t] = (counts[t] ?? 0) + 1;
-        if (!base.includes(t)) byEmblem[t] = (byEmblem[t] ?? 0) + 1;
-      }
-    }
-    const traits = Object.entries(counts).map(([name, count]) => {
-      const t = catalog.traits.find((t) => t.name === name);
+    const { counts, byEmblem } = book.tally(
+      planned.map((u) => ({
+        traits: byId.get(u.id)?.traits ?? [],
+        items: u.items,
+      })),
+    );
+    const traits = [...counts].map(([name, count]) => {
+      const { active, next } = book.status(name, count);
       return {
         name,
         count,
         // Peças que contam para a sinergia só por um emblema equipado.
-        emblem: byEmblem[name] ?? 0,
-        active: (t?.effects ?? []).some((e) => e.minUnits <= count),
-        next:
-          (t?.effects ?? []).find((e) => e.minUnits > count)?.minUnits ?? null,
+        emblem: byEmblem.get(name) ?? 0,
+        active,
+        next,
       };
     });
     const coverage = new Set();
@@ -675,23 +666,23 @@ export function tactics(analysis, catalog, options = {}) {
           );
           const holder =
             holders.find((b) =>
-              options.metaBuilds?.get(b.championId)?.includes(e.apiName),
+              options.metaBuilds?.get(b.championId)?.includes(e.id),
             ) ??
             holders.find((b) => b.role === "tank") ??
             holders[0] ??
             null;
           const stock = [...stockAll],
             missing = [];
-          for (const id of e.composition) {
+          for (const id of e.parts) {
             const at = stock.indexOf(id);
             if (at < 0) missing.push(id);
             else stock.splice(at, 1);
           }
           emblem = {
-            ...item(e.apiName),
+            ...item(e.id),
             holder: holder?.name ?? null,
             holderId: holder?.championId ?? null,
-            craftable: stockAll.includes(e.apiName) || missing.length === 0,
+            craftable: stockAll.includes(e.id) || missing.length === 0,
             missing: missing.map(item),
           };
           if (holder && emblem.craftable)

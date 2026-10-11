@@ -1,4 +1,4 @@
-import { traitsWithEmblems } from "./traits.js";
+import { countTraits, traitStatus } from "./traits.js";
 /**
  * Histórico de partidas: funções puras sobre os registros de /api/history. Só apresentação;
  * os registros guardam fila, colocação, duração e o tabuleiro final do Hero.
@@ -41,7 +41,7 @@ export function summarize(records) {
 /**
  * Sinergias ativas no tabuleiro final: cada campeão conta uma vez por sinergia (cópias repetidas não somam).
  * `champions` é Map id→{traits}; `breakpoints` é Map nome→[mínimos]; `emblems` é Map item→sinergia: emblema equipado
- * num campeão que ainda não tem a sinergia soma 1 para ela (regra de traits.js).
+ * num campeão que ainda não tem a sinergia soma 1 para ela (regra de core/catalog/traits.mjs).
  */
 export function activeTraits(
   units,
@@ -50,21 +50,18 @@ export function activeTraits(
   limit = 4,
   emblems = new Map(),
 ) {
-  const count = new Map(),
-    items = new Map();
-  for (const u of units)
-    items.set(u.id, [...(items.get(u.id) ?? []), ...(u.items ?? [])]);
-  for (const [id, equipped] of items)
-    for (const t of traitsWithEmblems(
-      champions.get(id)?.traits,
-      equipped,
-      emblems,
-    ).traits)
-      count.set(t, (count.get(t) ?? 0) + 1);
+  const count = countTraits(
+    units.map((u) => ({
+      id: u.id,
+      traits: champions.get(u.id)?.traits,
+      items: u.items,
+    })),
+    emblems,
+  );
   return [...count]
     .map(([name, n]) => {
       const steps = breakpoints.get(name) ?? [];
-      return { name, count: n, tier: steps.filter((m) => n >= m).length };
+      return { name, count: n, tier: traitStatus(steps, n).tier };
     })
     .filter((t) => t.tier > 0)
     .sort((a, b) => b.tier - a.tier || b.count - a.count)

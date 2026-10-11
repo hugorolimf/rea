@@ -15,7 +15,7 @@ import { baseItem } from "./v2/js/item-source.js";
 import { buildItemPlan, planPoints } from "./item-plan.mjs";
 import { isPlanItem, itemValueTable } from "./item-value.mjs";
 import { compScore } from "./comp-score.mjs";
-import { emblemTraitMap, traitsWithEmblems } from "./v2/js/traits.js";
+import { traitBook } from "./core/catalog/traits.mjs";
 export { POOL, ODDS };
 const STICKY_BONUS = 10;
 // Com evidência medida (evidence.mjs), o total é a colocação esperada convertida em pontos: 0,1 de colocação
@@ -284,80 +284,39 @@ export function analyze(snapshot, catalog, options) {
   }
   const traitMap = new Map(catalog.traits.map((t) => [t.name, t])),
     traitByApi = new Map(catalog.traits.map((t) => [t.apiName, t.name]));
-  const thresholdCache = new Map();
-  const thresholdsOf = (name) => {
-    let t = thresholdCache.get(name);
-    if (!t) {
-      t = (traitMap.get(name)?.effects ?? [])
-        .map((e) => e.minUnits)
-        .filter((n) => n <= 12);
-      thresholdCache.set(name, t);
-    }
-    return t;
-  };
-  // Emblema equipado numa peça sua dá a sinergia do nome a ela enquanto estiver na comp.
-  // Regra única em v2/js/traits.js, derivada do catálogo (todo item "X Emblem" cujo X é uma sinergia do set).
-  const emblemTrait = emblemTraitMap(catalog.items, traitMap.keys());
-  const traitsOfItems = (c, items) =>
-    traitsWithEmblems(c.traits, items, emblemTrait);
+  // Traços, emblemas, patamares e traço solo: regra única em core/catalog/traits.mjs (patamares acima de 12 peças não
+  // contam no tabuleiro). Um emblema equipado numa peça sua dá a sinergia do nome a ela enquanto estiver na comp.
+  // Sinergia solo: um aprimoramento escolhido pode liberá-la (Aminimigos → Rival).
+  const book = traitBook(catalog, {
+    maxUnits: 12,
+    exempt: options.augmentTraits ?? [],
+  });
+  const thresholdsOf = book.thresholds;
+  const emblemRecipes = book.recipes;
+  // A peça do tabuleiro com os itens que a gente tem nela, no formato que o livro de sinergias conta.
+  const traitUnit = (c) => ({
+    traits: c.traits,
+    items: own.get(key(c))?.items,
+  });
   function traitsOf(c) {
-    return traitsOfItems(c, own.get(key(c))?.items).traits;
+    return book.of(c.traits, own.get(key(c))?.items).traits;
   }
   // Sinergias de uma peça com os itens dela: `traits` já inclui os emblemas e `emblemTraits` lista só os vindos deles.
   const traitsFor = (c, items) => {
-    const r = traitsOfItems(c, items);
+    const r = book.of(c.traits, items);
     return { traits: r.traits, emblemTraits: r.added };
   };
   const unitTraits = (u) => {
     const c = byId.get(u.championName);
     return c ? traitsFor(c, u.itemNames) : { traits: [], emblemTraits: [] };
   };
-  // Sinergia que só vale com uma peça dela em campo (texto do catálogo: "Only active while fielding 1"): duas no
-  // mesmo tabuleiro desligam a sinergia, a menos que um aprimoramento escolhido a libere (Aminimigos → Rival).
-  const soloOnly = new Set(
-    catalog.traits
-      .filter((t) => /Only active while fielding 1\b/i.test(t.desc ?? ""))
-      .map((t) => t.name)
-      .filter((n) => !(options.augmentTraits ?? []).includes(n)),
-  );
-  const legal = (board) =>
-    [...soloOnly].every(
-      (n) => board.filter((c) => traitsOf(c).includes(n)).length < 2,
-    );
+  const legal = (board) => book.legal(board.map(traitUnit));
   function traits(board) {
-    const counts = {};
-    for (const c of board)
-      for (const t of traitsOf(c)) counts[t] = (counts[t] ?? 0) + 1;
-    for (const n of soloOnly) if (counts[n] >= 2) delete counts[n];
-    return Object.entries(counts).map(([name, count]) => {
-      const thresholds = thresholdsOf(name);
-      const reached = thresholds.filter((n) => n <= count);
-      return {
-        name,
-        count,
-        active: reached.length > 0,
-        solo: thresholds[0] === 1,
-        tier: reached.length,
-        next: thresholds.find((n) => n > count) ?? null,
-      };
-    });
+    return book.summary(board.map(traitUnit));
   }
   // Emblemas: Espátula/Frigideira + componente (ou emblema pronto no banco) dão a sinergia do nome a uma peça.
   // Para cada comp, o melhor emblema ao alcance: fechar o próximo patamar de uma sinergia vale muito; reforçar
   // uma sinergia ativa vale pouco. Sem o outro componente no banco, o emblema conta 60% (falta pegá-lo).
-  const emblemRecipes = catalog.items
-    .filter(
-      (i) =>
-        i.apiName.startsWith("DA_") &&
-        /Emblem/.test(i.apiName) &&
-        i.composition?.length === 2,
-    )
-    .map((i) => ({
-      id: i.apiName,
-      name: i.name,
-      trait: i.name.replace(/ Emblem$/, ""),
-      parts: i.composition,
-    }));
   const bankFree = options.inventory ?? [];
   // Itens que dá para pôr numa peça de uma comp: o banco e o que está equipado em peça que SAI dela (o Avatar fica).
   // Cada item leva de onde vem: o de peça que sai custa mover (HOLD_VALUE.move). Emblema equipado numa peça que
