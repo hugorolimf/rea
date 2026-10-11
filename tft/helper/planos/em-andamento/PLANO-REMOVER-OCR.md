@@ -1,5 +1,21 @@
 # Plano: remover a leitura de tela (OCR/glifos/ícones) e ficar com o GEP
 
+> **Executado em 2026-10-11** na branch `tft-helper-sem-ocr`, com as decisões do usuário dessa data:
+>
+> - sem OCR, com o TFTAcademy como fonte (D1 e D2 aceitas);
+> - lacunas como desconhecido explícito, inclusive o começo da partida (D5);
+> - ponte própria adiada (D3);
+> - tudo de OCR movido para `.old/ocr/` em vez de apagado (D6 e D7);
+> - `FALLBACK_LEVEL = 7` mantido (D4 em aberto).
+>
+> Diferenças em relação ao texto abaixo:
+>
+> - P2 e P4 foram fundidos: não há flag `TFT_SCREEN_READER`, o leitor saiu do sistema de uma vez;
+> - o estado neutro (P3) se chama `seen` no `/api/state`;
+> - os motivos de cada lacuna estão em `noSource`.
+>
+> O que é cada arquivo arquivado e como restaurar está em `.old/ocr/README.md`. O texto abaixo é o plano como foi escrito.
+
 Pedido do usuário (2026-10-11): "Crie um plano para deixar salvo para remover o OCR do meu sistema, já que já obtemos os dados
 através do GEP." Este documento é **só planejamento**. Nenhum código foi alterado, nenhuma suíte foi rodada, o servidor da porta
 3218 não foi tocado e o `tft-events.db` original não foi escrito: ele foi copiado e a cópia foi aberta somente para leitura.

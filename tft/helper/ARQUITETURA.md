@@ -35,13 +35,16 @@ agentes durante a leitura (ver 1.4), então a referência ali é pela função.
 
 ### 1.1 Fluxo hoje [V]
 
+Retrato de 2026-10-10. A leitura de tela citada nesta seção (`screen-reader.*`, `reconcileLevel`, `mergeSources`) foi removida em
+2026-10-11 e está no arquivo histórico `.old/ocr/README.md` (ver a decisão 7 em "Decisões do usuário" e, em "Progresso da migração", o registro "Remoção da leitura de tela").
+
 ```
  fontes (cada uma com seu formato e sua idade)
  ├ TFTEoGStats.json    capture.mjs (watch+500 ms, parse próprio)  ┐
  │                     server.mjs:readBoardSnapshot (cache mtime)  ├ duas leituras/parses do mesmo arquivo
  ├ __sentry-event + TFT.log   game-log.mjs (estágio, fase; compras)
  ├ LCU (lockfile, GET)        server.mjs:readLcu (cache 5 s)
- ├ tela (glifos/ícones; OCR só na loja) screen-reader.ps1 + screen-reader.mjs (ouro, nível, XP, loja, banco de itens)
+ ├ tela (glifos/ícones; OCR só na loja) screen-reader.ps1 + screen-reader.mjs (ouro, nível, XP, loja, banco de itens) (removido em 2026-10-11)
  ├ GEP/TFTAcademy (SQLite)    gep-reader.mjs  ........ NOVO, ainda não ligado ao servidor [V: grep "gep" em server.mjs vazio]
  └ manual/localStorage        v2/js/comps.js, augs.js  (comp fixada, trocas, aprimoramentos)
         |
@@ -81,7 +84,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
 
 | Papel                                                      | Lugar                                                                                                                                                                                                                                                        |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Fonte do banco                                             | `screen-reader.mjs` (+ `.ps1`, ícones, filtro `CONSUMABLE` de `item-tiers.mjs`); `bankReading` em `v2/js/items.js`                                                                                                                                           |
+| Fonte do banco                                             | `screen-reader.mjs` (+ `.ps1`, ícones, filtro `CONSUMABLE` de `item-tiers.mjs`; removido em 2026-10-11); `bankReading` em `v2/js/items.js`                                                                                                                   |
 | Fonte dos equipados                                        | `boardPieces[].itemNames` (`TFTEoGStats.json`); Luva do Ladrão tratada em `server.mjs` (POST)                                                                                                                                                                |
 | Entrada do motor                                           | `v2/js/api.js:recommendPayload` (`inventory: screen.items`); `server.mjs:validate`; `item-holdings.mjs:recommendInventory` (já ligado em `server.mjs`, prefere a leitura fresca à do cliente)                                                                |
 | **Regra da Formação** (a que o usuário quer como canônica) | `v2/js/item-source.js`: `ownersOf`, `locateItem`, `buildStates`                                                                                                                                                                                              |
@@ -103,7 +106,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Constantes | `rules.mjs:GAME` (`interestStep`, `interestMax`, `baseIncome`, `streakGold`, `shopCost`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Regra      | `economy.mjs`: `interestOf`, `nextTier`, `tierFloor`, `streakGold`, `incomeOf`, `projectGold`, `sellValue`, `bestSpend`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Fonte      | tela (`screen-reader`), manual inexistente; GEP (`gep-reader.mjs: parseGold`) ainda não ligado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Fonte      | tela (`screen-reader`, removido em 2026-10-11), manual inexistente; GEP (`gep-reader.mjs: parseGold`) ainda não ligado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Cópias** | `engine.mjs:analyze` (`goldNow = options.gold ?? 30`, `income`, `shops = 3 + floor((gold + 4*income - 10)/shopCost)`: renda sem sequência e com default de 30 g, diferente de `incomeOf`); `engine.mjs` (`rollBudget` com piso 20/50 por `health <= 35`); `playbook.mjs` (`gold < 50`, `gold >= 50`); `decision.mjs` (`gold < 30`); `target-level.mjs` (`gold >= 50`); `v2/js/model.js` (`GOLD_PER_SHOP = 2`, `INTEREST_STEP = 10`, `INTEREST_CAP = 50`) usadas por `ui/hud.js`; `v2/js/math.js` (`cumulativeCurve`, `shopsFor`: binomial de reserva no cliente); `plan-progress.mjs` (copia `state.gold`) |
 
 #### c) Nível, XP, estágio
@@ -112,7 +115,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tabela                            | `rules.mjs:GAME.xpToNext`, `passiveXp`, `stageOneRounds`...                                                                                                                                                                                                                                                           |
 | Regra                             | `rules.mjs`: `levelFromXp`, `levelsForXp`, `reconcileLevel`, `roundNumber`, `passiveXpBetween`, `levelFloor`                                                                                                                                                                                                          |
-| Validação/estado                  | `screen-reader.mjs:accept` (chama `reconcileLevel`), `level.mjs:levelTracker.apply` (âncora, piso), `game-log.mjs:mergeSources` (precedência do estágio), `server.mjs:seenState` (**chamada em `/api/state` e de novo em `/api/recommend`**; `apply` é com estado)                                                    |
+| Validação/estado                  | `screen-reader.mjs:accept` (chama `reconcileLevel`; removidos em 2026-10-11), `level.mjs:levelTracker.apply` (âncora, piso), `game-log.mjs:mergeSources` (precedência do estágio), `server.mjs:seenState` (**chamada em `/api/state` e de novo em `/api/recommend`**; `apply` é com estado)                           |
 | Custo de subir                    | `economy.mjs:levelCostOf` (parse de "atual/total")                                                                                                                                                                                                                                                                    |
 | **Cópias de parse "atual/total"** | `v2/js/model.js:parseXp`, `economy.mjs:levelCostOf`, `rules.mjs:levelsForXp`/`levelFromXp`/`levelFloor` (regex própria cada uma)                                                                                                                                                                                      |
 | **Cópias de parse "S-R"**         | `server.mjs` (regex em `/api/recommend`), `v2/js/model.js:parseStage`, `plan-progress.mjs:rank`, `rules.mjs:roundNumber`, `level.mjs` (regex), `economy.mjs:roundIndex` (privada e **sem uso**)                                                                                                                       |
@@ -124,7 +127,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
 | Papel                              | Lugar                                                                                                                                                                                                                                                                                                    |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Odds                               | `rules.mjs:ODDS` (patch 18.3, marcada "não confirmada no 18.4")                                                                                                                                                                                                                                          |
-| Leitura                            | `screen-reader` (5 nomes -> ids); `server.mjs` POST: `options.shop = seen.shop.map(...)`                                                                                                                                                                                                                 |
+| Leitura                            | `screen-reader` (5 nomes -> ids; removido em 2026-10-11); `server.mjs` POST: `options.shop = seen.shop.map(...)`                                                                                                                                                                                         |
 | Chance por slot / por loja         | **duas implementações**: `engine.mjs:analyze -> probability()` (denominador **fracionário**; alimenta `pool[].chancePerSlot/chancePerShop`, `stage.mjs`, `tactics`) e `economy.mjs:slotChance` + `likelyFree` + `freeByCost` (denominador **arredondado**; alimenta `roll.mjs`, `closeCurve`, `rollSim`) |
 | Lojas ao alcance                   | `engine.mjs` (`shops`, ver b); `roll.mjs:teamOf` (orçamento); `strategy.mjs` (`shopsIn`); `v2/js/math.js:shopsFor`                                                                                                                                                                                       |
 | Cartas viram ação                  | `stage.mjs` (`cards`, `comprar`/`segurar`/`ignorar`, `MIN_ODDS = 10`); `engine.mjs` (`shopHits` no `compScore`, **ver D1**); `roll.mjs:teamOf` (compra da loja sai da pool antes de simular); `strategy.mjs` (`shopBuys`, `shopSpend`)                                                                   |
@@ -252,7 +255,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
 - **Modelo de tela** (`ViewModel`): reorganiza decisões para desenhar. Não decide nada de jogo (como `v2/js/model.js` já
   declara no cabeçalho).
 - **Fonte** (`Source`): adaptador de E/S que entrega fatos parciais com metadados. É o único lugar que conhece formato de arquivo,
-  SQLite, OCR, LCU ou rede.
+  SQLite, LCU ou rede.
 
 ### 2.2 Camadas (direção única: de baixo para cima)
 
@@ -262,7 +265,7 @@ Notação: **regra** = onde a regra deveria morar; **cópias** = outros lugares 
  3 facts     core/facts/*   (grafo memoizado, graph.mjs)       funções puras de entradas nomeadas; early cutoff
  2 state     core/state/*   (schema, reduce, precedence)       GameState com Field<T> = valor + fonte + confiança + idade
  1 rules     core/rules/*   core/catalog/*                     tabelas do patch, política, índices do catálogo (puro)
- 0 sources   sources/*      (gamefile, sentry, lcu, screen, gep, manual, meta, explorer)   E/S; falam com o estado por "ações"
+ 0 sources   sources/*      (gamefile, sentry, lcu, gep, manual, meta, explorer)   E/S; falam com o estado por "ações"
  app/        recommend.mjs, state.mjs, trackers (plan-state, streak, match), recording (capture, replay, lobbies)   orquestra e persiste
  server.mjs  HTTP, SSE, estáticos                              nada de regra
 ```
@@ -277,10 +280,10 @@ Regras de importação (verificadas por teste, seção 3.3): `core/` não import
 /** Um valor lido de alguma fonte. null = desconhecido; nunca um palpite (um palpite tem confidence "estimated"). */
 /** @template T @typedef {{
  *   value: T | null,
- *   source: "gamefile"|"sentry"|"lcu"|"gep"|"screen"|"manual"|"derived"|"estimated",
- *   confidence: "observed"|"read"|"derived"|"manual"|"estimated",
+ *   source: "gamefile"|"sentry"|"lcu"|"gep"|"manual"|"derived"|"estimated",   // sem "screen" desde 2026-10-11
+ *   confidence: "observed"|"derived"|"manual"|"estimated",                       // sem "read" desde 2026-10-11
  *   at: number | null,          // epoch ms da observação (não da regravação do arquivo)
- *   stale: boolean              // fora da janela de frescor da fonte (HOLD_MS da tela, GEP_STALE_MS, ...)
+ *   stale: boolean              // fora da janela de frescor da fonte (GEP_STALE_MS, ...)
  * }} Field<T> */
 
 /** @typedef {{
@@ -363,10 +366,10 @@ tft/helper/
     rules/    game.mjs (lê tables/<patch>.json) · policy.mjs (POLICY, thresholds, SWITCH_COST...) · tables/18.4.json
     catalog/  index.mjs · items.mjs · champions.mjs · traits.mjs (de v2/js/traits.js, que fica como reexport)
     math/     shop-math.mjs (binomialPmf, closeCurve, rollSim, mulberry32, bestSpend: hoje em economy.mjs)
-    state/    schema.mjs (typedefs + validate) · reduce.mjs · precedence.mjs · level.mjs (reconcileLevel/levelFloor)
+    state/    schema.mjs (typedefs + validate) · reduce.mjs · precedence.mjs · level.mjs (levelFloor/levelConsistent/reduceLevel)
     facts/    graph.mjs · economy.mjs · pool.mjs · shop.mjs · holdings.mjs · traits.mjs · force.mjs · lobby.mjs · clock.mjs
     engines/  comps/ · plan/ · roll/ · items/ · augments/ · contest/
-  sources/    gamefile.mjs · sentry.mjs · tftlog.mjs · lcu.mjs · screen.mjs · gep.mjs · manual.mjs · meta.mjs · explorer.mjs
+  sources/    gamefile.mjs · sentry.mjs · tftlog.mjs · lcu.mjs · gep.mjs · manual.mjs · meta.mjs · explorer.mjs
   app/        state.mjs (junta as fontes -> GameState) · recommend.mjs (pipeline) · trackers/ (plan-state, streak, match) · recording/ (capture, replay, lobbies) · telemetry.mjs
   server.mjs  rotas, SSE, estáticos (incluindo /core/*), nada de regra
   v2/         navegador: main.js, model.js (view-model), ui/*
@@ -387,7 +390,7 @@ Mapa completo arquivo -> destino está no apêndice A.
 - **Modo sombra** (F0.7): `core/rules/policy.mjs` aceita `{ shadow: true }` por regra; o motor calcula, o `round-log` grava, a tela
   não mostra. Só é possível porque a regra existe num lugar.
 - **Fonte nova** = um adaptador em `sources/` que devolve `Field`s; a precedência por campo mora em `state/precedence.mjs`
-  (ex.: `me.gold`: `gep` fresco > `screen` > null). Nada mais muda (3.A).
+  (ex.: `me.gold`: `gep` fresco > null). Nada mais muda (3.A).
 - **Relógio explícito**: `clock.now` entra no estado; `hiddenHoldings` e `streak.trend` recebem o tempo por entrada (acaba o
   arredondamento a 0,5 só para estabilizar a chave de cache, D13).
 
@@ -397,14 +400,15 @@ Mapa completo arquivo -> destino está no apêndice A.
 
 ### 3.1 Exemplos (o que você edita, o que se ajusta sozinho, o que prova)
 
-**A) Mudar a origem do ouro** (GEP no lugar do OCR): `gep-reader.mjs` já entrega `parseGold` com frescor.
+**A) Mudar a origem do ouro** (GEP no lugar do OCR; feito: o M7 pôs o GEP na frente e, em 2026-10-11, a leitura de tela foi
+removida, então o GEP é a única fonte do ouro): `gep-reader.mjs` já entrega `parseGold` com frescor.
 
 - Edita: `sources/gep.mjs` (devolve `Field<number>` com `source: "gep"`), uma linha em `state/precedence.mjs`
-  (`me.gold: ["gep", "screen"]` por frescor).
+  (os candidatos de `me.gold`; hoje só `"gep"`).
 - Ajusta sozinho: `economy.income/shopsAhead/pressure`, estratégia, roll, `stage` (cartas "sem ouro"), `plan-progress`, o selo de fonte no
-  HUD (`Field.source`), e o motor de comps (`shopsAhead`). `level.effective`, que hoje desconfia de OCR, aceita
-  `confidence: "observed"` sem a plausibilidade extra.
-- Prova: teste de precedência (GEP fresco, GEP velho, GEP ausente), golden do pipeline com `gold` vindo das duas fontes.
+  HUD (`Field.source`), e o motor de comps (`shopsAhead`). `level.effective` aceita `confidence: "observed"` do GEP depois de
+  `levelConsistent`.
+- Prova: teste de precedência (GEP fresco, GEP velho, GEP ausente = desconhecido com motivo), golden do pipeline.
 
 **B) Mudar uma regra de item** (ex.: "item só em peça que fica e que usa o item" passa a contar como `moveStay`):
 
@@ -492,7 +496,8 @@ estruturais e só valem a pena depois.
 - `engine` pesos e política: `STICKY_BONUS`, `PLACEMENT_POINTS`, `SWITCH_COST`, `Z95`, pesos de `buildFit`, `extend`, `patchBias`: mudar a
   forma de montar a comp/build **não foi pedido** (restrição herdada). Os passos apenas **trocam a origem** do número, nunca o valor.
 - `tactics.build` (tabelas de pontos por papel e a ordem da meta) e a seleção/ordenação de comps: idem.
-- `screen-reader.ps1`/`.mjs` (OCR e ícones) e `gep-reader.mjs`: são adaptadores; só mudam de pasta e passam a devolver `Field`.
+- `gep-reader.mjs`: é adaptador; só muda de pasta e passa a devolver `Field`. (`screen-reader.ps1`/`.mjs`, OCR e ícones, estavam aqui
+  com a mesma regra; removidos em 2026-10-11, ver `.old/ocr/README.md`.)
 - `capture.mjs`, `replay.mjs`, `lobbies.mjs`, `match.mjs`, `unit-ledger.mjs`: gravação e histórico, outro assunto. (Anotado: `capture.mjs`
   e `server.readBoardSnapshot` leem e parseiam o mesmo arquivo; unificar é bom, mas depois de M7.)
 - `evidence.mjs` (cliente de rede com cache em disco), `meta-*.mjs`, `augment-stats.mjs`: viram `sources/`, sem mudar.
@@ -616,7 +621,7 @@ ranking por rolagem, a chance de montar pode usar `shopsAhead` em degraus (ex.: 
 6. **Contrato do cliente (M7):** o servidor passa a ser a fonte de `level/gold/inventory`; o cliente envia só decisões do usuário. Aceita
    mudar `recommendPayload` mantendo o antigo como compatível por um tempo? E o `live-mock.js` acompanha?
 7. **Precedência entre fontes** quando GEP e OCR discordam, e se o GEP, quando fresco, **sempre** vence (e o que fazer com o piso
-   derivado de `level.mjs`).
+   derivado de `level.mjs`). Respondida em "Decisões do usuário", item 7 (revisto em 2026-10-11: não há mais OCR).
 8. **Checkpoint no Git antes do M0** (62 itens não rastreados, 55 modificados; nada disso está commitado) e política de branch para a migração.
 
 ### 6.2 Riscos
@@ -678,9 +683,10 @@ GET /api/overlay ─▶ poll.mjs ─▶ view.mjs ─▶ hints.mjs ─▶ markers
 
 - **Uma regra, um lugar**: as dicas (`hints.mjs`) só escolhem, ordenam e ancoram o que `view.mjs` extraiu do que o servidor já calculou (`buy` cruzado com a
   loja por `v2/js/shop-match.js`, `roll`, `level`, `economy`, `wisps`); a única regra nova é de apresentação (categorias, verbosidade, tetos).
-- **Geometria única**: `hud/geometry.mjs` guarda as frações do HUD (loja, banco, ouro, nível, XP, estágio) e o porte de `Hud-Rect`. O `screen-reader.ps1` continua
-  com os seus números (arquivo ao vivo, não editado); `tests/overlay-geometry.test.mjs` lê o `.ps1` e falha se divergirem. Valores derivados, sem medição no
-  leitor (cartão inteiro da loja, folga do banco e da área nível/XP), estão marcados `[ESTIMADO]` e são corrigidos pela calibração (`calibration`, por controles).
+- **Geometria única**: `hud/geometry.mjs` guarda as frações do HUD (loja, banco, ouro, nível, XP, estágio) e o porte de `Hud-Rect`, só para posicionar o
+  overlay (não captura pixels). Até 2026-10-11 os números vinham do `screen-reader.ps1` e `tests/overlay-geometry.test.mjs` lia o `.ps1` para conferir; com a
+  leitura de tela removida, o teste fixa os valores literais (a conferência antiga está em `.old/ocr/`). Valores derivados, sem medição (cartão inteiro da loja,
+  folga do banco e da área nível/XP), estão marcados `[ESTIMADO]` e são corrigidos pela calibração do overlay (`calibration`, por controles).
 - **Camadas**: `config.mjs` (Node) importa os parsers de `hud/` (`parseLayout`, `parseCalibration`, `parseHintSettings`), que são puros e rodam no navegador e no
   Node; nenhum módulo de `hud/` importa `node:*`. O main revalida tudo o que a página manda (nada vindo da página é confiável).
 - **Fronteira de segurança**: a ponte `overlayHost` só pede ajustes da própria janela (posição, ignorar mouse, salvar configuração); não existe método que envie
@@ -699,30 +705,30 @@ GET /api/overlay ─▶ poll.mjs ─▶ view.mjs ─▶ hints.mjs ─▶ markers
 
 ## Apêndice A - Destino de cada arquivo (proposta)
 
-| Hoje                                                                                                                 | Destino                                                                                                                                                                               | Observação                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `rules.mjs`                                                                                                          | `core/rules/game.mjs` + `core/rules/tables/<patch>.json`; funções de nível -> `core/state/level.mjs`                                                                                  | reexport em `/rules.mjs`                                                     |
-| `economy.mjs`                                                                                                        | `core/rules/policy.mjs` (POLICY), `core/facts/economy.mjs` (juros, renda, pressão, XP), `core/math/shop-math.mjs` (`closeCurve`, `rollSim`, `bestSpend`, `mulberry32`, `binomialPmf`) | reexport em `/economy.mjs`                                                   |
-| `level.mjs`, `streak.mjs`, `pool-tracker.mjs`                                                                        | `core/state/level.mjs` (redutor), `core/facts/economy.mjs` (sequência pura), `core/facts/pool.mjs`                                                                                    | a parte com estado do `levelTracker`/`streakTracker` fica em `app/trackers/` |
-| `engine.mjs`                                                                                                         | `core/engines/comps/*`                                                                                                                                                                | último passo (M9)                                                            |
-| `evidence.mjs`                                                                                                       | `sources/explorer.mjs` (rede/cache) + `core/engines/comps/evidence-filters.mjs` (filtros puros)                                                                                       |                                                                              |
-| `item-edge.mjs`, `comp-score.mjs`                                                                                    | `core/engines/comps/`                                                                                                                                                                 |                                                                              |
-| `item-holdings.mjs`                                                                                                  | `core/facts/holdings.mjs`                                                                                                                                                             | M6                                                                           |
-| `tactics.mjs`                                                                                                        | `core/engines/plan/*` (posições, transições, passar itens), `core/engines/items/build.mjs`, `core/facts/lobby.mjs` (ameaça)                                                           |                                                                              |
-| `stage.mjs`, `plan-progress.mjs`, `target-level.mjs`                                                                 | `core/engines/plan/*`                                                                                                                                                                 |                                                                              |
-| `strategy.mjs`, `roll.mjs`                                                                                           | `core/engines/roll/*`                                                                                                                                                                 |                                                                              |
-| `carousel.mjs`, `contest.mjs`, `augment-advice.mjs`                                                                  | `core/engines/items/carousel.mjs`, `core/engines/contest.mjs`, `core/engines/augments.mjs`                                                                                            |                                                                              |
-| `plan-state.mjs`                                                                                                     | `app/trackers/plan-state.mjs` (persistência)                                                                                                                                          |                                                                              |
-| `playbook.mjs`, `decision.mjs`                                                                                       | remover (decisão 5)                                                                                                                                                                   |                                                                              |
-| `analysis-keys.mjs`                                                                                                  | removido em M8                                                                                                                                                                        |                                                                              |
-| `game-log.mjs`, `unit-ledger.mjs`, `screen-reader.*`, `gep-reader.mjs`, `bench-candidates.mjs`, `server.mjs:readLcu` | `sources/*`                                                                                                                                                                           |                                                                              |
-| `meta-comps.mjs`, `meta-builds.mjs`, `meta-stats.mjs`, `augment-stats.mjs`                                           | `sources/meta.mjs` (E/S) + `core/catalog` (formatos)                                                                                                                                  |                                                                              |
-| `capture.mjs`, `replay.mjs`, `lobbies.mjs`, `match.mjs`, `diagnostics.mjs`                                           | `app/recording/*`, `app/telemetry.mjs`                                                                                                                                                |                                                                              |
-| `team-code.mjs`, `build-*.mjs`, `download-assets.mjs`                                                                | `app/` e `tools/`                                                                                                                                                                     |                                                                              |
-| `server.mjs`                                                                                                         | `server.mjs` (HTTP) + `app/recommend.mjs` + `app/state.mjs`                                                                                                                           |                                                                              |
-| `v2/js/traits.js`, `item-source.js`                                                                                  | `core/catalog/traits.mjs`, `core/facts/holdings.mjs` (reexports finos em `v2/js/`)                                                                                                    |                                                                              |
-| `v2/js/comp-items.js`                                                                                                | `core/engines/items/comp-items.mjs` (consome `holdings`)                                                                                                                              |                                                                              |
-| `v2/js/model.js`, `ui/*`, `api.js`, `main.js`                                                                        | ficam em `v2/`                                                                                                                                                                        | `model.js` importa de `/core/*` só utilitários de formato                    |
+| Hoje                                                                                                                                            | Destino                                                                                                                                                                               | Observação                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `rules.mjs`                                                                                                                                     | `core/rules/game.mjs` + `core/rules/tables/<patch>.json`; funções de nível -> `core/state/level.mjs`                                                                                  | reexport em `/rules.mjs`                                                     |
+| `economy.mjs`                                                                                                                                   | `core/rules/policy.mjs` (POLICY), `core/facts/economy.mjs` (juros, renda, pressão, XP), `core/math/shop-math.mjs` (`closeCurve`, `rollSim`, `bestSpend`, `mulberry32`, `binomialPmf`) | reexport em `/economy.mjs`                                                   |
+| `level.mjs`, `streak.mjs`, `pool-tracker.mjs`                                                                                                   | `core/state/level.mjs` (redutor), `core/facts/economy.mjs` (sequência pura), `core/facts/pool.mjs`                                                                                    | a parte com estado do `levelTracker`/`streakTracker` fica em `app/trackers/` |
+| `engine.mjs`                                                                                                                                    | `core/engines/comps/*`                                                                                                                                                                | último passo (M9)                                                            |
+| `evidence.mjs`                                                                                                                                  | `sources/explorer.mjs` (rede/cache) + `core/engines/comps/evidence-filters.mjs` (filtros puros)                                                                                       |                                                                              |
+| `item-edge.mjs`, `comp-score.mjs`                                                                                                               | `core/engines/comps/`                                                                                                                                                                 |                                                                              |
+| `item-holdings.mjs`                                                                                                                             | `core/facts/holdings.mjs`                                                                                                                                                             | M6                                                                           |
+| `tactics.mjs`                                                                                                                                   | `core/engines/plan/*` (posições, transições, passar itens), `core/engines/items/build.mjs`, `core/facts/lobby.mjs` (ameaça)                                                           |                                                                              |
+| `stage.mjs`, `plan-progress.mjs`, `target-level.mjs`                                                                                            | `core/engines/plan/*`                                                                                                                                                                 |                                                                              |
+| `strategy.mjs`, `roll.mjs`                                                                                                                      | `core/engines/roll/*`                                                                                                                                                                 |                                                                              |
+| `carousel.mjs`, `contest.mjs`, `augment-advice.mjs`                                                                                             | `core/engines/items/carousel.mjs`, `core/engines/contest.mjs`, `core/engines/augments.mjs`                                                                                            |                                                                              |
+| `plan-state.mjs`                                                                                                                                | `app/trackers/plan-state.mjs` (persistência)                                                                                                                                          |                                                                              |
+| `playbook.mjs`, `decision.mjs`                                                                                                                  | remover (decisão 5)                                                                                                                                                                   |                                                                              |
+| `analysis-keys.mjs`                                                                                                                             | removido em M8                                                                                                                                                                        |                                                                              |
+| `game-log.mjs`, `unit-ledger.mjs`, `gep-reader.mjs`, `server.mjs:readLcu` (`screen-reader.*` e `bench-candidates.mjs`: removidos em 2026-10-11) | `sources/*`                                                                                                                                                                           |                                                                              |
+| `meta-comps.mjs`, `meta-builds.mjs`, `meta-stats.mjs`, `augment-stats.mjs`                                                                      | `sources/meta.mjs` (E/S) + `core/catalog` (formatos)                                                                                                                                  |                                                                              |
+| `capture.mjs`, `replay.mjs`, `lobbies.mjs`, `match.mjs`, `diagnostics.mjs`                                                                      | `app/recording/*`, `app/telemetry.mjs`                                                                                                                                                |                                                                              |
+| `team-code.mjs`, `build-*.mjs`, `download-assets.mjs`                                                                                           | `app/` e `tools/`                                                                                                                                                                     |                                                                              |
+| `server.mjs`                                                                                                                                    | `server.mjs` (HTTP) + `app/recommend.mjs` + `app/state.mjs`                                                                                                                           |                                                                              |
+| `v2/js/traits.js`, `item-source.js`                                                                                                             | `core/catalog/traits.mjs`, `core/facts/holdings.mjs` (reexports finos em `v2/js/`)                                                                                                    |                                                                              |
+| `v2/js/comp-items.js`                                                                                                                           | `core/engines/items/comp-items.mjs` (consome `holdings`)                                                                                                                              |                                                                              |
+| `v2/js/model.js`, `ui/*`, `api.js`, `main.js`                                                                                                   | ficam em `v2/`                                                                                                                                                                        | `model.js` importa de `/core/*` só utilitários de formato                    |
 
 ## Apêndice B - O que li e como conferi
 
@@ -747,7 +753,7 @@ GET /api/overlay ─▶ poll.mjs ─▶ view.mjs ─▶ hints.mjs ─▶ markers
 4. **Resposta tática imediata com a base de uma leitura atrás:** decisão delegada. Regra: aceitar somente se a defasagem for limitada (no máximo uma leitura), explícita no payload (`stale`/`ageMs`) e corrigida por SSE; caso contrário, esperar a análise completa.
 5. **Código que ninguém exibe** (`playbook`, `decision`, `recommendations[i].roll`): **remover** (M5), depois de confirmar por busca que nenhum consumidor os lê.
 6. **Servidor como fonte de ouro, nível e inventário:** sim, quando fizer sentido (o cliente passa a mandar só decisões do usuário); manter o campo do cliente apenas para partida revista.
-7. **Precedência GEP × leitura de tela:** nunca devem discordar na saída. Um único valor por campo, escolhido por `core/state/precedence`: GEP fresco e consistente > leitura de tela > estimativa. Quando as fontes divergem, usa-se o GEP, registra-se a divergência (log + contador no `/api/state`) e o valor não oscila entre fontes (histerese: só troca após N leituras concordantes). A leitura de tela vira verificação cruzada.
+7. **Precedência entre fontes** (revista em 2026-10-11): **GEP > arquivos do jogo > desconhecido explícito**. Um único valor por campo, escolhido por `core/state/precedence`. Ouro, nível, XP, loja, banco de itens, removedores, Wisps e aprimoramentos só o GEP (TFTAcademy) observa: vale o GEP fresco e consistente; sem ele o campo fica desconhecido, com o motivo em `noSource` ("GEP off · sem fonte"), e nada é inventado (o nível pode sair como piso derivado, sempre marcado). O estágio é o único campo com duas fontes: nele o arquivo do jogo (Sentry) vale mais que o GEP, com histerese (só troca após 3 leituras) e a divergência GEP × arquivo do jogo registrada (log + contador no `/api/state`). A leitura de tela foi removida em 2026-10-11 por decisão do usuário, revogando a versão anterior desta decisão ("GEP fresco e consistente > leitura de tela > estimativa; a leitura de tela vira verificação cruzada"); ver `.old/ocr/README.md` e `PLANO-REMOVER-OCR.md`. Em aberto: o nível de reserva `FALLBACK_LEVEL = 7` (`core/state/inputs.mjs`, marcado `levelEstimated`) continua.
 8. **Commit de checkpoint antes do M0:** autorizado. Antes de commitar: suíte verde, varredura de segredos (PlayerKey, token LCU, chave RSO, PUUID, nomes de jogadores) nos arquivos novos e nas fixtures, e `data/` pessoal fora do commit.
 
 ---
@@ -767,9 +773,10 @@ para `core/catalog/traits.mjs`) com o golden **idêntico**. Sem commit (cabe ao 
 | M8b fatos do pipeline no grafo  | escrito   | `app/recommend-facts.mjs` (18 fatos) + `roll-sim.mjs` (`roll.sim`); `analysis-keys.mjs`, `analysisCache`, `baseAnalysisCache`, `pendingBase` e `SIMS` saem; **D1 corrigido** (a loja entra na base): golden **não executado**, esperado idêntico salvo `shop-cache-d1` passo 3; `manual-memo-key` 5 -> 1, `server-option-assembly` 33 -> 17 (seção "M8b" abaixo)                 |
 | M4 pool e loja                  | escrito   | `core/pool/` (4 módulos); `**` 5, `ODDS[`, `3 **` e 10 % saem do produto; golden **não executado**, diffs esperados na seção "M4" abaixo                                                                                                                                                                                                                                         |
 | M2 catálogo de itens e campeões | escrito   | `core/catalog/{items,champions}.mjs`; 11 itens (D2) mudam de papel no motor, golden **não executado**, 12 de 18 arquivos devem mudar (seção "M2" abaixo)                                                                                                                                                                                                                         |
-| M7 camada de estado e fontes    | escrito   | `core/state/` + `app/state.mjs`; GEP x tela com uma fonte por campo (histerese 3, divergência contada); servidor fonte de ouro/nível/itens; rota estática 404 limpo; golden **não executado**, esperado **idêntico** (seção "M7" abaixo)                                                                                                                                         |
+| M7 camada de estado e fontes    | escrito   | `core/state/` + `app/state.mjs`; GEP x tela com uma fonte por campo (histerese 3, divergência contada; a tela saiu em 2026-10-11, ver "Remoção da leitura de tela"); servidor fonte de ouro/nível/itens; rota estática 404 limpo; golden **não executado**, esperado **idêntico** (seção "M7" abaixo)                                                                            |
 | M5b limiares de ouro e vida     | escrito   | `core/economy/` (5 módulos); `interest-constants`, `hp-literal-threshold` e `gold-default` a 0, `gold-literal-threshold` a 1; golden **não executado**, esperado **idêntico** (seção "M5b" abaixo)                                                                                                                                                                               |
 | M6 posse de itens               | escrito   | `core/items/` (5 módulos); o estoque, a Formação, o motor, a aba Comps e o checklist leem a mesma regra; `item-stock-consumption`, `radiant-base-id`, `item-recipe-length` a 0, `component-id-literal` a 1 (mock), T1 sem exceção; golden **não executado**, esperado **idêntico**; 3 diferenças só na Formação (UI, fora do golden) e 2 detalhes invisíveis (seção "M6" abaixo) |
+| Remoção da leitura de tela      | escrito   | 2026-10-11, branch `tft-helper-sem-ocr`: GEP como fonte única do jogador, `noSource`, rótulo "lido", leitor movido para `.old/ocr/`; golden: só `levelSource` e textos mudam (seção "Remoção da leitura de tela" abaixo)                                                                                                                                                         |
 | M5c..M10                        | pendentes | ver a seção de cada passo                                                                                                                                                                                                                                                                                                                                                        |
 
 Suíte: `node --test tests/*.test.mjs v2/js/*.test.mjs *.test.mjs` = **421 testes verdes** (404 do fim do M1 + 11 de `core-traits` + 2 de
@@ -835,7 +842,7 @@ separados) e `UPDATE_GOLDEN=1` não reescreve nenhum arquivo numa 4ª. Nenhuma d
 fica no `SIMS`). A resposta tem **0,74-1,2 MB** (o levantamento anterior media 432 KB): `compRanking` ~580 KB (60 comps com
 evidência) e `recommendations` ~210 KB; a v2 desenha só `recommendations[0]` ou `preview`.
 
-`GET /api/state`, offline com os módulos reais do servidor (sem abrir porta, sem o leitor de tela, sem gravar):
+`GET /api/state`, offline com os módulos reais do servidor (sem abrir porta, sem o leitor de tela, que foi removido em 2026-10-11, sem gravar):
 
 | Medida                                                                                | Resultado                                                                                     |
 | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -1584,15 +1591,15 @@ o pipeline no processo principal; o item 4 (a thread) ficou **atrás de `TFT_ANA
 **O laço (política, `app/auto-refresh.mjs`).**
 
 1. **Tick barato** a cada 3 s (`TFT_AUTO_REFRESH_MS`): `probe()` = fase do cliente em cache (`lcu()`, que `watchMatch` já renova a cada 2 s) ou, sem cliente, `matches.status()` em `live`. Sem partida
-   não há leitura de estado nem análise. Com partida, `sources.sync(true)` (leitor de tela; idempotente como já era em `/api/state`) e `readState()`.
+   não há leitura de estado nem análise. Com partida, `sources.sync(true)` (leitor de tela; idempotente como já era em `/api/state`; removido em 2026-10-11, hoje o laço só chama `readState()`) e `readState()`.
 2. **O estado** é o corpo que `GET /api/state` devolve (`buildStateBody`), então o laço vê o que a interface vê e alimenta o feed do overlay (`recordState`). Se uma rota o montou há menos de 0,8 tick,
-   o laço o reaproveita (a interface aberta não dobra o custo). GEP e arquivos do jogo são lidos dentro de `stateHub.seen`, a cada tick: ficam ativos sem cliente conectado; o leitor de tela é o único
-   com processo próprio, ligado e desligado pelo laço.
+   o laço o reaproveita (a interface aberta não dobra o custo). GEP e arquivos do jogo são lidos dentro de `stateHub.seen`, a cada tick: ficam ativos sem cliente conectado; o leitor de tela era o único
+   com processo próprio, ligado e desligado pelo laço (removido em 2026-10-11: o laço não liga nem desliga leitor nenhum).
 3. **A chave** = `analysisKey(estado, decisionPayload(estado, { ...padrões, ...decisões lembradas }), agora)`. Se já há resultado (ou cálculo em andamento) para ela em `results`, nada a fazer (`same`).
    Chave nova: respeita o intervalo mínimo (3 s desde a última análise; dobra a cada falha seguida até 30 s) e roda `refresh` = `recommender.run(decisões, { source: "auto" })`. A janela de 120 s está dentro da chave: o jogo parado
    renova a cada 2 min, como a interface.
 4. **Guardas iguais às da interface:** partida nova sem tabuleiro próprio (`match.boardReady === false`) e jogador local ausente não analisam; snapshot de outro set (409) não repete a mesma chave.
-5. **Fim da partida:** a sonda diz que acabou -> `sources.sync(false)`, zera o estado do laço e volta a só sondar. Uma partida nova (outro `gameId`) analisa na primeira leitura.
+5. **Fim da partida:** a sonda diz que acabou -> `sources.sync(false)` (removido em 2026-10-11 com o leitor de tela), zera o estado do laço e volta a só sondar. Uma partida nova (outro `gameId`) analisa na primeira leitura.
 6. **Falhas** nunca derrubam o laço: o erro vira `AVISO` no log (no máximo 1 por minuto por texto) e o recuo cresce. `ENOENT` (arquivo do jogo ainda ausente) é silencioso.
 7. **Medição (`TEMPO`):** `AUTO tick` (tick que leu estado sem analisar) e `AUTO analise` entram no resumo por minuto (p50/p95/máx); cada análise nova imprime `AUTO recomendação <etapas>` (as mesmas etapas do POST); a linha `carga:` ganhou
    `auto: em partida|sem partida ticks= analises= iguais= esperas= recusadas= erros=`. `TFT_AUTO_REFRESH=0` desliga o laço.
@@ -1629,7 +1636,7 @@ fora do repositório, que `server.mjs` ficou com 0 em todas e `app/recommend.mjs
 armazém por chave ficou em `app/auto-refresh.mjs` (`createRecentResults`) e **não** é um `Map` de cache com chave manual dentro do pipeline; não acrescentei exceção.
 
 **Testes novos (não executados).** `tests/auto-refresh.test.mjs` (13): sem partida só sonda; chave igual não reanalisa e chave nova sim com o intervalo mínimo; janela de 120 s; decisões lembradas (padrões, entram na chave e no pipeline, parciais);
-o POST seguinte acerta o cache e o cálculo em andamento é compartilhado; fim de partida desliga o leitor de tela e outra partida recomeça na hora; guardas; falha com recuo e aviso único; 409; tick sem sobreposição; `start`/`stop` com timers falsos;
+o POST seguinte acerta o cache e o cálculo em andamento é compartilhado; fim de partida desliga o leitor de tela (removido em 2026-10-11) e outra partida recomeça na hora; guardas; falha com recuo e aviso único; 409; tick sem sobreposição; `start`/`stop` com timers falsos;
 `TEMPO`/contadores; `createRecentResults` (cache, junto, falha, limite). `tests/analysis-key.test.mjs` (6): equivalência com a chave antiga, janela, decisões cliente x servidor, padrões, sensibilidade, pureza. `tests/plan-state.test.mjs` (+1): decisões por partida,
 persistência, estado antigo, reset. Traçados à mão; se algum falhar, suspeitar primeiro de erro de rastreio meu.
 
@@ -1798,7 +1805,7 @@ resultado e que as ÚNICAS diferenças são as aceitas (lista item a item abaixo
 `item-tiers.mjs` ficou como reexport fino (`CONSUMABLE`, `isConsumable`, `baseItemId`, `kindOf`) porque `tests/item-tiers.test.mjs`,
 `comp-items.test.mjs` e `catalog-fixture.mjs` ainda importam o nome antigo. Consumidores trocados: `engine.mjs`, `tactics.mjs`, `stage.mjs`,
 `meta-builds.mjs` (`roleOf` usa `itemRole`), `server.mjs` (3 linhas: imports, Luva do Ladrão, Avatar), `item-edge.mjs`, `plan-progress.mjs`,
-`carousel.mjs`, `screen-reader.mjs`, `gep-reader.mjs`, `item-value.mjs`, `v2/js/items.js` (importa `../../core/catalog/items.mjs`, servido por
+`carousel.mjs`, `screen-reader.mjs` (removido em 2026-10-11), `gep-reader.mjs`, `item-value.mjs`, `v2/js/items.js` (importa `../../core/catalog/items.mjs`, servido por
 `/core/*`), `build-items.mjs`. **Não toquei** nos arquivos de posse de itens (M6): `item-holdings.mjs`, `item-plan.mjs`, `v2/js/item-source.js`,
 `v2/js/comp-items.js`; as cópias de `baseItem`/`isComponent`/`composition.length === 2` que eles têm ficam como exceções da catraca.
 
@@ -1832,7 +1839,7 @@ compatível) e `unitTerms.matching` (item equipado casa com o papel da peça ou 
 **Outras equivalências (valem só para o catálogo e os dados atuais; registradas, sem diferença hoje).**
 
 1. `Dragon` (motor) virou `DragonsClaw`: no catálogo só `DA_DragonsClaw` e `DA_DragonsClawRadiant` contêm "Dragon". `Runaans` (motor) virou `Runaan` (stage/meta-builds). Nenhum id casa dois papéis (testado).
-2. `stage.bankItems` excluía `Component_|Consumable_|Reforger`; agora exclui `isComponent || isConsumable` (superconjunto: também `Potion`, `Booster`, `Masterwork`, `LuckyItemChest`). O banco lido da tela e do GEP já tira consumíveis, então não muda nada hoje.
+2. `stage.bankItems` excluía `Component_|Consumable_|Reforger`; agora exclui `isComponent || isConsumable` (superconjunto: também `Potion`, `Booster`, `Masterwork`, `LuckyItemChest`). O banco lido da tela (removida em 2026-10-11) e do GEP já tira consumíveis, então não muda nada hoje.
 3. Em `tactics.build`, o `utility` do item usava `id === "DA_VoidStaff"` e `id === "DA_LastWhisper"` (exato) mas regex para Sunfire/Morello/RedBuff; agora os três usam regex (inclui o radiante). Só muda se um radiante de cobertura estiver no banco **e** na lista desejada da peça.
 4. `championRole` usa a heurística do motor (inclui `resist`) também no plano. Só a **Leona** muda de papel pela heurística (ap -> tank no `tactics`). **No golden não muda nada**: a meta congelada dá `tank` à Leona (`roleOf` da build dela), e a meta vale primeiro. Ao vivo só muda se o servidor não tiver a build da Leona.
 5. `isComponent` (`startsWith("DA_Component_")`) e `/Component_/.test` (substring) eram usados como se fossem a mesma coisa; no catálogo atual todo id com `Component_` começa com `DA_Component_`.
@@ -1900,6 +1907,10 @@ fica mais fácil); nenhum outro teste de `engine`/`stage`/`tactics`/`meta-builds
 
 ### M7 - camada de estado e fontes (`core/state/`, `app/state.mjs`)
 
+**Nota (2026-10-11):** registro histórico. A leitura de tela foi removida depois dele: o que segue sobre a tela (precedência e divergência
+GEP × tela, `levelSource` "tela", `reconcileLevel`, `createStateHub({screen, ...})`, `mergeSources`) não vale mais. O estado atual está no
+registro "Remoção da leitura de tela", abaixo, e em `FONTES-DE-DADOS.md`, "Precedência por campo".
+
 **Aviso: nada foi executado.** Por ordem do usuário, o golden, a suíte e os benchmarks ficam para a rodada final do orquestrador. Validei só com
 `node --check` em todos os arquivos tocados, import (carga) dos módulos novos, um leitor estático da catraca T2 (cópia fiel de `RULES`, ver abaixo) e
 revisão linha a linha. Os testes novos foram traçados à mão; se algum falhar, é erro meu de rastreio, não regra: reportar.
@@ -1914,7 +1925,7 @@ revisão linha a linha. Os testes novos foram traçados à mão; se algum falhar
 | `core/state/precedence.mjs` (novo) | Precedência por campo (`gold`, `level` + `xp`, `stage`, `shop`, `items`) com histerese e divergência: `reduceSources(memória, {gameId, seen, gep})` -> `{memory, picks, events, divergence}`. Puro                                                                                   |
 | `core/state/game-state.mjs` (novo) | `buildGameState(seen)` -> `GameState` normalizado (`clock.{stage,phase,phaseKind}`, `me.{gold,level,xp,shop,itemBank,removers,bench}`, cada um um `Field`) e `summarizeState` (listas viram contagem)                                                                                |
 | `core/state/inputs.mjs` (novo)     | `analysisInputs(seen, {augments, estimatedLevel, live})`: a única tradução estado -> `options` (`level`, `levelEstimated`, `levelSource`, `gold`, `xp`, `stage`, `shop`, `removers`, `hasRemover`, `augmentIds`)                                                                     |
-| `app/state.mjs` (novo)             | `createStateHub({screen, gameFiles, gep, now, onDivergence})`: chama as fontes, valida o nível, decide a fonte de cada campo, aplica o GEP onde vale e guarda a memória (nível confirmado, fonte ativa, contadores)                                                                  |
+| `app/state.mjs` (novo)             | `createStateHub({screen, gameFiles, gep, now, onDivergence})` (sem `screen` desde 2026-10-11): chama as fontes, valida o nível, decide a fonte de cada campo, aplica o GEP onde vale e guarda a memória (nível confirmado, fonte ativa, contadores)                                  |
 | `rules.mjs`, `level.mjs`           | `rules.mjs` reexporta as seis funções de nível e monta `GAME` com os MESMOS objetos de `XP`; `level.mjs` ficou só com a memória por partida em volta de `reduceLevel`                                                                                                                |
 | `game-log.mjs`, `gep-reader.mjs`   | Estágio via `parseStage`; `sources.bench` passou de `"manual"` para `null` (a entrada manual foi removida; a reserva só existe com GEP fresco); `mergeGep(seen, gep, pick)` aceita a decisão por campo (sem `pick`, o GEP vale em tudo, como antes)                                  |
 | `server.mjs`                       | `seenState = stateHub.seen`; `/api/state` ganhou `gameState` (aditivo); o POST usa `analysisInputs`; `validate` aceita payload sem `level`; `sendStatic` (abaixo). 1.351 linhas (teto 1.394)                                                                                         |
@@ -1926,31 +1937,32 @@ revisão linha a linha. Os testes novos foram traçados à mão; se algum falhar
 - **(a) `GameState` normalizado com `Field<T>`**: `buildGameState`. Exposto em `/api/state` como `gameState` (aditivo; `screen` e o resto do formato não mudaram).
 - **(b) Precedência única, histerese, divergência.** Regras em `core/state/precedence.mjs` (documentadas também em `FONTES-DE-DADOS.md`, "Precedência por campo"):
   GEP fresco e **consistente** > tela/arquivo do jogo > nada (a estimativa continua só em `analysisInputs`, sempre marcada `levelEstimated`/"estimado");
-  estágio: arquivo do jogo (Sentry) > GEP > tela (como antes). **Histerese**: com as duas fontes presentes, a fonte ativa só troca depois de **3 leituras
+  estágio: arquivo do jogo (Sentry) > GEP > tela (como antes). (A tela saiu dessas duas ordens em 2026-10-11.) **Histerese**: com as duas fontes presentes, a fonte ativa só troca depois de **3 leituras
   seguidas** em que outra é a preferida (`HYSTERESIS_READINGS`); se a ativa perde o valor, a outra assume na hora; a 1ª leitura de uma partida escolhe direto.
   **Divergência**: GEP e tela com valor e discordando por 3 leituras seguidas = **uma** divergência (por episódio); o servidor grava `AVISO GEP e tela divergem em <campo>`
   e `/api/state.gameState.divergence = {total, byField, last, current, readings}` conta. Uma "leitura" é uma chamada de `stateHub.seen` (as do `GET /api/state` e as do POST contam).
-  GEP e tela nunca saem discordando: o `screen` entregue tem UM valor e `sources.<campo>` diz de quem é.
+  GEP e tela nunca saem discordando: o `screen` entregue tem UM valor e `sources.<campo>` diz de quem é. (Desde 2026-10-11 a divergência
+  contada é só GEP × arquivo do jogo, no estágio; o log diz "GEP e arquivo do jogo divergem em <campo>".)
 - **(c) Servidor fonte de ouro, nível e inventário.** O POST faz `Object.assign(options, analysisInputs(seen, ...))` depois do `validate`, então `level/gold/levelEstimated/levelSource`
   do payload perdem para o estado do servidor; o inventário do cliente só entra em `replayGameId`. O `validate` aceita payload sem `level` (e continua validando o antigo). D6 (corrida
   entre ouro/nível do cliente e a loja do servidor) deixa de existir: tudo sai de **uma** chamada de `seenState` por POST.
 - **(d) `sources.bench = "manual"` -> `null`**: `game-log.mjs:mergeSources`, `gep-reader.mjs:mergeGep`; testes ajustados (`tests/game-log.test.mjs`, `tests/gep-reader.test.mjs`).
 - **(e) Nível, ouro, XP, estágio, itens e loja na mesma camada.** Regras preservadas: nível lido > piso derivado do XP > estimativa (`reduceLevel` é o corpo do antigo
-  `levelTracker.apply`, só que puro; `tests/level.test.mjs` não mudou); consumíveis fora de `items` (continua em `gep-reader`/`screen-reader`, via `core/catalog/items.mjs` do M2).
+  `levelTracker.apply`, só que puro; `tests/level.test.mjs` não mudou); consumíveis fora de `items` (continua em `gep-reader`/`screen-reader`, via `core/catalog/items.mjs` do M2; o `screen-reader` foi removido em 2026-10-11).
 - **(f) Rota estática.** `sendStatic` lê antes de `writeHead(200)`: arquivo ausente responde `404 {"error":"Arquivo não encontrado."}`, tipo não web `404 "Rota não encontrada."`.
   Corrigi também o bloco `files` (`/economy.mjs`, `/rules.mjs`, `/live-mock.*`) pelo mesmo motivo (lê, depois escreve).
 
 **Golden: antes/depois.** Esperado **idêntico** (nenhuma regravação), **não executado**. Por quê: (1) o harness continua uma transcrição do POST e agora chama a mesma
 `analysisInputs`; os cenários declaram `level`/`gold` em `client` (herança do payload antigo), e o harness os entrega como "o que o servidor leria" (`seen.level`, `seen.gold`, `sources.level`) com
 `estimatedLevel = client.level` quando `levelEstimated` (o cenário `eliminated-recorded`), então `options.level/gold/levelEstimated/levelSource/shop/xp/stage/removers/hasRemover/augmentIds` saem com os mesmos valores
-de antes nos 17 cenários (conferi um a um: `levelSource` é "tela" em todos menos "estimado" no `eliminated-recorded`; `gold` null em `gold-unknown` e `replay-final`); (2) `options.inventory` ao vivo agora é
+de antes nos 17 cenários (conferi um a um: `levelSource` é "tela" em todos menos "estimado" no `eliminated-recorded`, e virou "lido" em 2026-10-11; `gold` null em `gold-unknown` e `replay-final`); (2) `options.inventory` ao vivo agora é
 `recommendInventory([], seen)`, que dá `[]` como antes (nenhum cenário põe `client.inventory`); (3) a ordem das chaves de `options` mudou (as chaves vêm de `Object.assign`), o que só afeta a chave de cache
 `JSON.stringify(options)` do servidor, não a resposta; (4) `parseStage` aceita `\d+` onde havia `\d`: só diferiria com estágio de 2 dígitos, que o jogo não tem; (5) nenhuma regra numérica foi tocada.
 Se o golden mudar, o suspeito é o harness (`tests/golden/harness.mjs`, trecho do `Object.assign`), não a regra.
 
 **Testes novos e ajustados** (nenhum executado):
 
-- `tests/core-state.test.mjs` (20 testes): relógio, a tabela de XP única (`GAME` usa os objetos de `XP`), `Field`, `reduceLevel` = rastreador, `levelConsistent`, precedência (GEP vence; sem GEP vale a tela;
+- `tests/core-state.test.mjs` (20 testes): relógio, a tabela de XP única (`GAME` usa os objetos de `XP`), `Field`, `reduceLevel` = rastreador, `levelConsistent`, precedência (GEP vence; sem GEP vale a tela, o que deixou de valer em 2026-10-11;
   estágio do Sentry; histerese N=3 incluindo o "pisca-pisca" que zera a contagem; a fonte ativa que perde o valor cede na hora), divergência (um evento por episódio, atraso passageiro não conta, segundo episódio, loja e itens comparados por
   conteúdo), nível do GEP inconsistente (abaixo do piso, abaixo do já aceito, partida nova zera), `GameState`, `analysisInputs` (ao vivo, derivado, estimado, ouro não lido, partida revista, o payload defasado perde — D6),
   e o montador `createStateHub` com fontes falsas (GEP e tela nunca discordam, divergência registrada e contada, volta da tela e do GEP com histerese, nível do GEP contradizendo o estágio, `sources.bench = null`).
@@ -1982,8 +1994,8 @@ o recebem do hub; fica para o M8. (5) O `streaks.observe` ainda recebe o estági
    a cada requisição, então o cliente novo chega antes do servidor novo. Sem reinício, a interface deixa de analisar. Não reiniciei nem fiz GET no servidor vivo.
 2. A histerese conta chamadas, não tempo. Com a tela aberta em duas abas as leituras dobram (a troca de fonte demora metade do tempo); com nenhuma tela aberta o estado não avança (ninguém chama). Se isso importar, o passo seguinte é
    contar por `now` (já é injetável: `createStateHub({now})`) com um intervalo mínimo entre leituras.
-3. `levelConsistent` usa o piso do XP passivo e o "nunca cai" do GEP; um GEP legítimo que desse um nível **abaixo** do piso (compra de XP nunca diminui; regra do estágio 1 não verificada) seria descartado e registrado como tela.
-   O estágio 1 não tem piso (como em `level.mjs`).
+3. `levelConsistent` usa o piso do XP passivo e o "nunca cai" do GEP; um GEP legítimo que desse um nível **abaixo** do piso (compra de XP nunca diminui; regra do estágio 1 não verificada) seria descartado e registrado como tela
+   (desde 2026-10-11, sem tela: o nível sai como piso derivado). O estágio 1 não tem piso (como em `level.mjs`).
 4. A reserva (`gepBench`) continua sendo aplicada sempre que o GEP está ativo e a traz (não passa pela histerese: não tem outra fonte).
 5. `gameState.me.*.at` usa `now - ageMs`; o `ageMs` do GEP é o do evento no banco (relógio do TFTAcademy). Em máquina com relógio fora de hora o `at` sai errado; `ageMs` é o campo confiável.
 6. Se o `GET /api/state` ficar mais pesado: `gameState` soma ~2 KB; listas vêm como contagem.
@@ -2190,6 +2202,38 @@ Notas:
 3. **Efeito de M2 que baixa o `fit`** (`items-bank-lvl8`, `viewed-rival`: -5,5 em 20 comps): é o lado "papel deixa de ser `flex`" da decisão 1 (superconjunto): a Morellonomicon equipada, que casava com qualquer portador, agora só casa com portador AP; comps sem portador AP livre perdem o ponto de compatibilidade. A mudança de ordem do ranking se limita a posições baixas (54º-59º), nunca às 3 recomendações exibidas.
 4. `tests/golden/scenarios.mjs`: a `desc` de `shop-cache-d1` passou a descrever o M8b (a asserção D1 do `tests/golden.test.mjs` já estava invertida pelo M8b e passa: `cached[2] != cached[1]` e `cached == fresh`, e o passo 3 esperado difere do passo 2, o que no esperado antigo era igual: `compRanking` com o mesmo `scoreParts.shop`/`score` nos dois).
 5. Tempo: o golden inteiro leva ~14,6 s; a triagem, ~4 s; o `golden-verify`, ~15 s.
+
+### Remoção da leitura de tela (2026-10-11, branch `tft-helper-sem-ocr`)
+
+Decisão do usuário (2026-10-11): o sistema fica **sem OCR** e com o GEP do TFTAcademy (`%APPDATA%\TFTAcademy\tft-events.db`) como fonte
+de ouro, nível, XP, loja, banco de itens, removedores, Wisps e aprimoramentos. Sem o Overwolf/TFTAcademy esses campos ficam
+**desconhecidos explícitos** ("GEP off · sem fonte"), sem reserva por tela e sem valor inventado, inclusive nos 0 a 55 s do início da
+partida, antes do primeiro evento do GEP. A ponte GEP própria (`overwolf-bridge/`) fica fora por enquanto. Isso revoga a versão
+anterior da decisão 7 ("a leitura de tela vira verificação cruzada") e a decisão de `FONTES-DE-DADOS.md` de que a tela seria a fonte
+própria. Plano: `PLANO-REMOVER-OCR.md`; arquivo histórico e como restaurar: `.old/ocr/README.md`.
+
+| Passo             | O que mudou                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 caracterização | `tests/no-screen.test.mjs`: uma partida gravada (`tests/fixtures/gep-events.json`) passa pelo montador de estado sem tela; GEP ausente ou obsoleto; o chip da interface; a chave de análise contra uma cópia congelada da regra                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| P1 GEP primário   | `mergeGep` publica `noSource` (`noSourceOf`): o motivo de cada campo do jogador sem valor (o da fonte GEP, `aguardando-gep`, `loja-escondida`, `identidade-<estado>`, `nivel-maximo`). `levelSource` "tela" vira **"lido"** (núcleo, interface, overlay, validação do POST e harness do golden); o piso derivado deixa de contar como leitura na saúde do overlay. Wisps só do GEP (`wispsInState`): a loja não é relida pelo catálogo. Textos do motor sem "lido da tela"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| P2/P4 leitor fora | `screen-reader.ps1`/`.mjs`, `screen-glyphs.json`, `bench-candidates.mjs`, `reconcileLevel`/`levelFromXp`, ferramentas de medição, testes e fixtures de tela movidos com `git mv` para `.old/ocr/`. `server.mjs` sem leitor, sem `POST /api/screen-capture` e sem `screenReader` em `/api/health`; `stop.ps1` e o laço automático não ligam nem matam leitor. Estado: `gameFilesState` (Sentry) → precedência (só o estágio tem duas fontes: arquivo do jogo > GEP, histerese de 3 leituras, divergência GEP × arquivo do jogo) → `mergeGep` → nível (observado pelo GEP, aceito só se `levelConsistent`, ou piso derivado do último observado) → `noSource`. Origens de campo sem `"screen"` e confiança sem `"read"`. Interface e overlay: chip "GEP off · sem fonte" com a lista do que falta; saúde "data" do overlay ("Sem fonte: ..." / "Dados do jogador pelo GEP"). `tests/architecture.test.mjs` falha se algo fora de `.old/` importar ou citar `.old/`, usar `screen-reader`, `Windows.Media.Ocr`, captura de tela, glifos, templates de ícone ou calibração, ou se o servidor e os scripts iniciarem leitor |
+| P3 estado neutro  | `GET /api/state` publica o estado visto em `seen` (sem o apelido `screen`); POST, laço automático, interface, overlay e `live-mock` leem `seen`. `core/state/analysis-key.mjs` lê `state.seen` e mantém o rótulo interno "screen" da chave para ela continuar idêntica (comparada com a regra congelada). `app/live-snapshot.mjs` lê os arquivos antigos (estado em `screen`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| P5 documentação   | `README.md`, `FONTES-DE-DADOS.md` (tabela-resumo, "Nível", "Banco de itens e loja", precedência; seção do leitor trocada por "Leitura de tela (removida)"), este documento (decisão 7 e notas "(removido em 2026-10-11)" nos registros antigos), `core/README.md`, `overlay/README.md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+
+**Golden.** A diferença registrada é só textual: `analysis.levelSource` passa de "tela" a "lido" e os textos do motor "Ouro/Nível/XP não
+lido da tela" passam a "... sem fonte agora" (ex.: "Ouro sem fonte agora" em `synthetic-strategy`). **Nenhum número nem ranking muda.**
+O golden **já falhava na base** desta remoção, alheio a ela: `catalog.json` e `augments.json` mudaram e o `header.catalogSha256` /
+`augmentsSha256` gravado não bate mais.
+
+**Em aberto** (não mudou): o nível de reserva `FALLBACK_LEVEL = 7` em `core/state/inputs.mjs` (decisão D4 do plano), usado sem nível
+observado, sem piso e sem tabuleiro, sempre marcado `levelEstimated`/"estimado". Os dados ignorados pelo git
+(`tft/data/screen-calibration.png`, `tft/data/item-icon-candidates.json`) vão para `.old/ocr/data/` com `mv` quando a branch for aplicada
+(a worktree não tem `tft/data/`).
+
+**Suíte.** Os 33 testes exclusivos de tela e os trechos de tela dos testes mistos foram para `.old/ocr/tests/`. Contagem
+(`node --test tests/*.test.mjs v2/js/*.test.mjs *.test.mjs` na worktree): antes 1039 testes, 1013 passando e 26 falhando; depois
+1010 testes, 985 passando e 25 falhando. As 25 falhas são todas anteriores à remoção (golden com catálogo novo, catracas T2 e D12,
+score/plano de comps e "estado da comp"); a 26ª da base era a geometria `Hud-Rect` do `.ps1`, que foi para o arquivo histórico.
 
 ## Compra de cópias e itens por campeão (apresentação; sem mudança de plano nem de ranking)
 

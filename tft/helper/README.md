@@ -74,11 +74,25 @@ Reserva manual agora aparece no planejador e entra no preview da meta (posse/est
 
 As builds por campeão usam a ordem de itens publicada pela MetaTFT (`https://api-hc.metatft.com/tft-comps-api/unit_items_processed`, endpoint não oficial). `meta-builds.mjs` guarda uma cópia em `meta-builds.json` com origem, data e patch, e o servidor a renova quando passa de seis horas. Sem rede, segue com a cópia; sem cópia, ou para campeão sem dado (variantes de Lux), volta à heurística local e o inspetor informa a fonte. O lobby observado só desempata itens que já estão na lista de meta. O papel (tanque/AD/AP) usado em posição e encaixe de itens é inferido dos cinco primeiros itens de meta.
 
-## Leitura da tela (ouro, nível, XP e banco de itens)
+## Fontes ao vivo (ouro, nível, XP, loja e banco de itens)
 
-`screen-reader.ps1` lê a janela do TFT sem tocar no processo do jogo: captura recortes pequenos da tela e a posição da janela. Ouro, nível, XP e estágio são lidos por **glifo** (gabaritos em `screen-glyphs.json`, montados a partir de partidas gravadas com o GEP como verdade; só os nomes das cartas da loja usam o OCR nativo do Windows); o banco de itens é reconhecido comparando cada espaço com os ícones do catálogo (não é OCR), com a grade dos espaços medida na própria imagem. Sem o GEP/TFTAcademy a tela assume sozinha e o chip da interface mostra "GEP off · tela". Precisão medida contra o GEP e como refazer: `FONTES-DE-DADOS.md`, "Leitor de tela próprio" (`node scripts/screen-accuracy.mjs`). `screen-reader.mjs` mantém um único processo, só com partida confirmada, e cada leitura só roda quando o seu recorte muda. As regiões são frações da área cliente, medidas numa captura 2044×1149 do HUD padrão em janela 16:9; outro layout de HUD ou proporção exige recalibrar (`Capturar tela p/ calibrar` grava `tft/data/screen-calibration.png`).
+O helper não lê a tela. Os dados da partida vêm de três fontes, nenhuma delas encosta no processo do jogo:
 
-Verificado contra uma captura real (estágio 4-1): ouro 51, nível 6, XP 24/36 e dois Recurve Bow lidos corretamente; dois itens ficaram como não reconhecidos por não terem ícone baixado (107 de 507 itens têm ícone). Não verificado: leitura contínua durante uma partida inteira, ouro de três dígitos, nível 10+, tela cheia exclusiva e outras resoluções. Valor não lido chega como nulo, nunca como zero; campo preenchido à mão tem prioridade sobre a tela.
+- **GEP** (eventos do Overwolf gravados pelo TFTAcademy em `%APPDATA%\TFTAcademy\tft-events.db`, lido somente leitura por
+  `gep-reader.mjs`): ouro, nível, XP, loja, Wisps, banco de itens e removedores, reserva e aprimoramentos do próprio
+  jogador;
+- **arquivos do jogo**: estágio e fase (`__sentry-event`), compras e fusões (`TFT.log`), tabuleiros, itens equipados, vida e
+  colocação (`TFTEoGStats.json`);
+- **cliente (LCU)**: fase da partida e jogador local.
+
+O estado (`app/state.mjs`, regras em `core/state/`) tem um valor por campo. O estágio do arquivo do jogo vale mais que o
+do GEP. O nível é o do GEP ou, sem ele, o piso derivado do XP passivo ("≥N") a partir do último nível observado. **Sem o
+Overwolf com o TFTAcademy gravando**, ouro, XP, loja, itens e aprimoramentos ficam **desconhecidos explícitos**: o chip
+da interface e do overlay diz "GEP off · sem fonte" e lista o que falta, e `/api/state` traz o motivo de cada campo em
+`noSource`. Isso vale também para os primeiros segundos da partida, antes do primeiro evento do GEP. Nada é inventado: o
+motor não calcula compra, rolagem nem juros sem ouro, e o plano de itens só lista desejos sem o banco. A leitura de tela
+que existia até 2026-10-11 está no arquivo histórico `.old/ocr/` (fora do sistema). O que ela fazia e por que saiu estão
+em `.old/ocr/README.md` e em `PLANO-REMOVER-OCR.md`. As fontes, campo a campo, estão em `FONTES-DE-DADOS.md`.
 
 ## Evoluir, ajustar ou trocar
 
@@ -88,13 +102,13 @@ O veredito por leitura (evoluir, ajustar, estabilizar ou trocar; antigo `decisio
 
 `stage.mjs` separa a meta (comp alvo) do que montar no nível atual: mantém em campo o que já é seu (peças da meta e temporárias mais fortes), lista as peças da meta que a loja deste nível oferece com a chance por loja dada a pool visível, sugere pontes que ativam sinergias da meta e deixa para depois o que a loja ainda oferece a menos de 10% por slot, com o nível em que passa a aparecer. O motor também só inclui na meta custos com pelo menos 10% por slot no nível alvo, salvo unidades já suas.
 
-O leitor de tela também lê o nome das cinco cartas da loja (OCR) e `screen-reader.mjs` as converte em campeões usando os nomes em inglês do catálogo e os pt-BR de `names-pt_br.json` (CommunityDragon). Cada carta vira uma ação: comprar (peça da meta, cópia de unidade sua ou ponte), falta ouro, ou ignorar. Verificado contra duas capturas reais (ouro 51 e 33, níveis 6 e 5, XP, loja LeBlanc/Caitlyn/Leona com dois espaços vazios, itens do banco). Não verificado: uma partida inteira com a interface aberta, nomes pt-BR com acento no OCR, carrossel e telas que cobrem o HUD.
+A loja vem do GEP (`store.shop_pieces`, com o id do campeão; o Wisp sai à parte). Cada carta vira uma ação: comprar (peça da meta, cópia de unidade sua ou ponte), falta ouro, ou ignorar. Loja escondida no jogo (`shop_visible` falso) ou sem o GEP fica desconhecida e não gera aviso de compra.
 
 ## Comps de meta, ação de agora e trava de troca
 
 `meta-comps.mjs` baixa as comps da MetaTFT (unidades, estilo de nível, alvos de 3★, build por campeão dentro da comp e distribuição de colocações) e guarda em `meta-comps.json`. O tier (S ≤ 4,25; A ≤ 4,40; B ≤ 4,60; C acima) é uma faixa própria deste helper sobre a colocação média, não o tier da MetaTFT; comps com menos de 5000 partidas ficam de fora. Com essas comps disponíveis, o motor deixa de montar comps próprias: escolhe entre as de meta somando a força da meta ao encaixe na partida (unidades que você já tem, itens, disputa na pool, acesso na loja, lobby). Sem a cópia local, volta à busca heurística antiga.
 
-`strategy.mjs` devolve a ação de agora — comprar, economizar, subir de nível ou rolar, com quanto gastar e o piso de ouro — a partir de estágio, nível, XP e ouro lidos da tela, HP, pool, loja e o estilo da comp (reroll no nível N, Fast 8, Fast 9). Também mede a força da sua board contra a de cada rival vivo com a mesma régua (custo × estrelas + itens). Não simula combate.
+`strategy.mjs` devolve a ação de agora — comprar, economizar, subir de nível ou rolar, com quanto gastar e o piso de ouro — a partir de estágio, nível, XP e ouro do estado do servidor (GEP e arquivos do jogo), HP, pool, loja e o estilo da comp (reroll no nível N, Fast 8, Fast 9). Também mede a força da sua board contra a de cada rival vivo com a mesma régua (custo × estrelas + itens). Não simula combate.
 
 A matemática fica em `economy.mjs` (puro, também carregado pelo mock no navegador) e as regras do jogo em `rules.mjs` (pool, odds, renda, XP, sequência); os limiares desta ferramenta ficam em `POLICY` (`core/economy/policy.mjs`, junto com os juros, a renda e a faixa de vida em `core/economy/`; `economy.mjs` reexporta o mesmo objeto):
 
@@ -124,7 +138,7 @@ Uma troca só aparece como pronta quando a unidade que entra vale pelo menos 90%
 
 O bloco central do Planejador reúne a decisão inteira: ação de agora, quadros de Economia, Nível e Roll, o campo atual, trocas de unidade (trocar agora / segurar), a loja lida e os itens. Para itens: (1) o que já dá para montar com o banco e em qual campeão equipar; (2) mudanças de item entre campeões — item em unidade que sai da comp, ou fora da build de quem o carrega, vai para quem o usa melhor entre as unidades em campo; (3) o próximo item de cada unidade e o que falta; (4) o componente a pegar no carrossel, calculado distribuindo o banco entre as builds (carry primeiro) e priorizando o que fecha um item agora.
 
-O leitor de tela reconhece o Removedor de Itens no banco e lê a quantidade no selo do ícone por glifo (96,9% dos quadros das partidas gravadas; com a tela escurecida por um painel o selo é pequeno demais e a quantidade cai para 1). A estratégia também compara o ganho esperado de força de rolar contra subir de nível, com as chances reais da pool, e usa nível médio e unidades 2★+ dos rivais. Tudo heurístico; não simula combate.
+A quantidade de Removedores de Itens vem do banco de itens do GEP (`bench.item_bench`, só a linha do jogador local). A estratégia também compara o ganho esperado de força de rolar contra subir de nível, com as chances reais da pool, e usa nível médio e unidades 2★+ dos rivais. Tudo heurístico; não simula combate.
 
 Estratégia em painel lateral direito persistente no desktop, compartilhado entre telas: nível/XP, roll, upgrades de campeões e economia acompanham a comp ativa/selecionada. Menu esquerdo inicia compacto. Em telas estreitas a estratégia entra no fluxo para não encobrir tabuleiro/controles. A estratégia saiu do bloco central stageplan; IDs são únicos e cálculo permanece o mesmo.
 
@@ -132,7 +146,7 @@ Estratégia em painel lateral direito persistente no desktop, compartilhado entr
 
 A rota inicial `#live` reúne o campo observado, os itens equipados, trocas e compras sugeridas. A página `#planner` mantém o planejamento e posicionamento separado da leitura do campo. Cards de campeão abrem a inspeção; filtros e grupos recolhíveis preservam foco e preferências durante as atualizações. As alternativas de comps continuam dinâmicas; a meta que você escolheu continua prioritária.
 
-No desktop, economia e estratégia permanecem à direita. Em telas menores, abra **Economia e estratégia**; Escape ou o botão Fechar devolvem o foco ao controle de origem. Mobile tem cinco destinos e acesso a adversários/pool pelo Lobby. **Corrigir dados e calibrar leitura** permite informar nível, ouro e nível alvo quando a captura não reconhece esses valores.
+No desktop, economia e estratégia permanecem à direita. Em telas menores, abra **Economia e estratégia**; Escape ou o botão Fechar devolvem o foco ao controle de origem. Mobile tem cinco destinos e acesso a adversários/pool pelo Lobby.
 
 Dados antigos/eliminado usam modo planejamento e não têm chamadas de gasto ao vivo. Campo observado e peças da reserva não são tratados como a mesma coisa; posições continuam sugestões inferidas. Os controles só alteram o helper, nunca compram/vendem/movem peças no jogo.
 
@@ -146,7 +160,7 @@ A interface v2 passou a ser a principal em `http://127.0.0.1:3218/` (`/v2/` redi
 
 `match.mjs` acompanha a partida a cada 2 s, mesmo sem a interface aberta. Início: o cliente (LCU) entra em `InProgress`/`Reconnect` com um `gameId` novo, ou, sem cliente, o tabuleiro passa a ser de outra partida com o Hero. Fim: Hero com vida ≤ 0 (colocação = `ffaStanding`), Hero único vivo (1º) ou o cliente sai da partida. O primeiro arquivo de cada partida traz vida e colocação -1 em todos e não conta como eliminação. Se o cliente sai antes do tabuleiro final, o registro espera até 3 min pela colocação e, sem ela, grava "colocação não observada".
 
-No início de cada partida o servidor descarta caches de análise, a comp fixada da partida anterior e as leituras do leitor de tela; a interface descarta a última análise e, enquanto o jogo não publica o primeiro tabuleiro da partida nova (1–4 min), mostra "Nova partida em andamento" em vez do tabuleiro antigo. Início, fim e registro chegam às telas pelo SSE (`type: "match"`); `/api/state` traz `match` (`status`, `placement`, `boardReady`, `last`).
+No início de cada partida o servidor descarta caches de análise e a comp fixada da partida anterior; a interface descarta a última análise e, enquanto o jogo não publica o primeiro tabuleiro da partida nova (1–4 min), mostra "Nova partida em andamento" em vez do tabuleiro antigo. Início, fim e registro chegam às telas pelo SSE (`type: "match"`); `/api/state` traz `match` (`status`, `placement`, `boardReady`, `last`).
 
 Histórico: uma linha JSON por partida em `tft/data/match-history.jsonl` (ignorado pelo git), só para registro visual: `gameId`, fila, set, término, duração, colocação e o tabuleiro final do Hero (campeão, estrelas, itens). `GET /api/history` devolve da mais recente para a mais antiga; a visão Histórico mostra partidas, colocação média, top 4, vitórias e, por partida, colocação, fila, duração, sinergias ativas (sem emblemas) e unidades. Partidas sem o Hero (tutorial, desafios PVE) não entram. Ao abrir o servidor depois de uma partida, o tabuleiro final ainda presente é registrado uma única vez.
 
@@ -176,11 +190,11 @@ Verificado: `engine-flex.test.mjs` (peça disputada por dois rivais recebe subst
 
 ## Aprimoramentos: caminho e escolha (v2)
 
-No Ao vivo, a seção **Aprimoramentos** mostra a trilha 2-1 → 3-2 → 4-2 com o que você escolheu (nome e sinergias com ícone) e, quando o leitor de tela reconhece as cartas na tela, as três opções na ordem sugerida para a comp seguida (recomendada, motivos, "troque este card"). "Escolhi este" marca a escolha com o estágio lido; o × desmarca. O jogo não grava no arquivo do tabuleiro qual carta você pegou (`players[].augments` vem vazio), por isso a escolha é marcada na interface; ela fica no navegador só para a partida em andamento.
+No Ao vivo, a seção **Aprimoramentos** mostra a trilha 2-1 → 3-2 → 4-2 com o que você escolheu (nome e sinergias com ícone) e, quando o GEP informa a oferta aberta (`augments.me`), as opções na ordem sugerida para a comp seguida (recomendada, motivos, "troque este card"). "Escolhi este" marca a escolha com o estágio lido; o × desmarca. O jogo não grava no arquivo do tabuleiro qual carta você pegou (`players[].augments` vem vazio), por isso a escolha é marcada na interface; ela fica no navegador só para a partida em andamento.
 
 As escolhas vão para `/api/recommend` em `augments`: as sinergias delas já favoreciam as comps que as usam (`augmentTraits`) e agora também ordenam as próximas ofertas — uma carta que segue a sinergia de um aprimoramento já escolhido ganha pontos ("Segue o seu caminho"). Corrigido em `augment-advice.mjs`: as expressões do nível das rolagens grátis tinham perdido a barra (`/nivel (d+)/`), então a regra "rolagens grátis no nível de roll da comp" nunca valia; o nível de roll agora vem de `strategy.rollAt`.
 
-Verificado: `augment-advice.test.mjs` (rolagens no nível de roll, caminho), `v2/js/augs.test.mjs` (trilha e registro por partida) e o cenário de mock `caminho-aprimoramentos` no Edge (escolher, desmarcar). Não verificado: o reconhecimento das cartas pela tela numa partida real deste set; a ordem continua sem taxa de vitória por aprimoramento, porque a fonte de meta não publica esse dado por comp (`top_augments` vazio).
+Verificado: `augment-advice.test.mjs` (rolagens no nível de roll, caminho), `v2/js/augs.test.mjs` (trilha e registro por partida) e o cenário de mock `caminho-aprimoramentos` no Edge (escolher, desmarcar). Não verificado: a oferta do GEP numa partida real deste set em todos os estágios; a ordem continua sem taxa de vitória por aprimoramento, porque a fonte de meta não publica esse dado por comp (`top_augments` vazio).
 
 ## Itens e força da comp: "esta comp B, com os seus itens, joga como A"
 
@@ -202,12 +216,12 @@ O cartão de decisão ("ECONOMIZAR / Economize até Ng"), com evidência, confia
 
 ## O servidor conduz a análise sozinho (sem a janela aberta)
 
-Antes, a recomendação só se renovava com a interface aberta e visível (era ela que chamava `POST /api/recommend`; o navegador pausa abas ocultas) e o leitor de tela só rodava enquanto alguma tela lia `/api/state`. Isso quebrava o overlay e qualquer uso sem a janela. Agora o próprio servidor conduz a análise durante a partida (`app/auto-refresh.mjs`, ligado em `server.mjs`):
+Antes, a recomendação só se renovava com a interface aberta e visível (era ela que chamava `POST /api/recommend`; o navegador pausa abas ocultas). Isso quebrava o overlay e qualquer uso sem a janela. Agora o próprio servidor conduz a análise durante a partida (`app/auto-refresh.mjs`, ligado em `server.mjs`):
 
-- **Quando roda.** A cada 3 s o laço sonda a fase do cliente (em cache; é o único custo sem partida). Havendo partida em andamento (`InProgress`/`Reconnect`, ou, sem cliente, o rastreador de partidas em `live`), liga o leitor de tela, lê o mesmo estado que `GET /api/state` devolve (tela + arquivos do jogo + GEP, uma fonte por campo) e calcula a **mesma chave de análise** que a interface usa (`core/state/analysis-key.mjs`: tabuleiro, ouro, nível, XP, estágio, loja, banco de itens, aprimoramentos, decisões e a janela de 120 s). Chave igual não reanalisa; chave nova roda o pipeline (`app/recommend.mjs`, o mesmo do POST) com intervalo mínimo de 3 s entre análises (e recuo de 6, 12... até 30 s após falhas). O resultado vai para o cache de análises e para o feed do overlay (`GET /api/overlay`), então o overlay e o chip do HUD ficam vivos mesmo com a janela fechada.
+- **Quando roda.** A cada 3 s o laço sonda a fase do cliente (em cache; é o único custo sem partida). Havendo partida em andamento (`InProgress`/`Reconnect`, ou, sem cliente, o rastreador de partidas em `live`), lê o mesmo estado que `GET /api/state` devolve (arquivos do jogo + GEP, uma fonte por campo) e calcula a **mesma chave de análise** que a interface usa (`core/state/analysis-key.mjs`: tabuleiro, ouro, nível, XP, estágio, loja, banco de itens, aprimoramentos, decisões e a janela de 120 s). Chave igual não reanalisa; chave nova roda o pipeline (`app/recommend.mjs`, o mesmo do POST) com intervalo mínimo de 3 s entre análises (e recuo de 6, 12... até 30 s após falhas). O resultado vai para o cache de análises e para o feed do overlay (`GET /api/overlay`), então o overlay e o chip do HUD ficam vivos mesmo com a janela fechada.
 - **Decisões do usuário.** A comp fixada e suas trocas, as trocas no modo automático e os aprimoramentos marcados (`goalCompId`, `goalSwaps`, `compSwaps`, `augments`, `augmentsKnown`) só existiam no navegador. Cada `POST /api/recommend` ao vivo agora as grava no estado do plano da partida (`data/plan-state.json`, sobrevivem ao reinício do servidor; somem quando a partida é registrada) e o laço as usa. Sem nenhum POST ainda, valem os padrões (nenhuma comp fixada, aprimoramentos lidos do GEP).
 - **Sem trabalho em dobro.** O POST da interface calcula a mesma chave com o estado que acabou de ler: se o laço (ou outro POST) já analisou essa chave, responde do cache; se ainda está calculando, espera o mesmo resultado. A interface continua funcionando como antes (a diferença é que a resposta costuma já estar pronta).
-- **Fim da partida.** Quando o cliente sai de `InProgress`, o laço desliga o leitor de tela e volta a só sondar; nenhuma leitura de estado nem análise sem partida.
+- **Fim da partida.** Quando o cliente sai de `InProgress`, o laço volta a só sondar; nenhuma leitura de estado nem análise sem partida.
 - **Visibilidade.** Linhas `TEMPO` no `server.log`: `AUTO tick` e `AUTO analise` (p50/p95/máx por minuto), `AUTO recomendação <etapas>` por análise nova e, na linha `carga:`, `auto: em partida ticks= analises= iguais= esperas= recusadas= erros=`. `node scripts/timing-report.mjs` as inclui.
 - **Variáveis.** `TFT_AUTO_REFRESH=0` desliga o laço (volta a depender da interface); `TFT_AUTO_REFRESH_MS` muda o tick (padrão 3000). A análise pesada roda numa thread (`analysis-worker.mjs` + `app/analysis-thread.mjs`): `/api/state`, SSE e `/api/health` respondem durante a análise; `TFT_ANALYSIS_WORKER=0` a devolve ao processo principal e `TFT_ANALYSIS_TIMEOUT_MS` muda o prazo de uma análise (60 s). Se a thread cair ou não iniciar, a análise segue no processo principal (aviso no `server.log`). **O servidor não para:** erros de requisição, de laço (partida, meta) e de SSE são registrados e o servidor segue; `supervisor.ps1` (usado por `start-all.ps1`/`start-background.ps1`; `stop.ps1` o encerra) sobe o servidor de novo se o processo morrer, e `GET /api/health` mostra a idade do último ciclo de cada fonte. Iniciar com o Windows é opcional e não é registrado por nós: atalho em `shell:startup` chamando `powershell -NoProfile -WindowStyle Hidden -File <pasta>supervisor.ps1`. Medição sem abrir porta: `node scripts/bench-analysis.mjs`.
 
