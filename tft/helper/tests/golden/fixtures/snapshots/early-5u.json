@@ -1,0 +1,310 @@
+{
+  "note": "captura real anonimizada, 8 min desde o início da partida",
+  "snapshot": {
+    "gameId": 9100002,
+    "queueType": "RANKED_TFT",
+    "statsBlock": {
+      "setCoreName": "TFTSet18",
+      "gameLengthSeconds": null,
+      "players": [
+        {
+          "playerId": "47445859",
+          "riotIdGameName": "Hero",
+          "health": 95,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Yorick",
+              "starLevel": 2,
+              "itemNames": ["DA_SpiritVisage_Radiant"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_MasterYi_AD",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_MasterYi_AD",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Yunara",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Karma18",
+              "starLevel": 2,
+              "itemNames": ["DA_JeweledGauntlet"],
+              "price": 1
+            }
+          ]
+        },
+        {
+          "playerId": "9000001",
+          "riotIdGameName": "Rival 1",
+          "health": 85,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Veigar",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_TearOfTheGoddess"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 2,
+              "itemNames": ["DA_GargoyleStoneplate", "DA_Component_GiantsBelt"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Hecarim",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            }
+          ]
+        },
+        {
+          "playerId": "9000002",
+          "riotIdGameName": "Rival 2",
+          "health": 94,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Diana",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_KhaZix",
+              "starLevel": 1,
+              "itemNames": ["DA_HandOfJustice"],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Alistar",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Hecarim",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            }
+          ]
+        },
+        {
+          "playerId": "9000003",
+          "riotIdGameName": "Rival 3",
+          "health": 91,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Veigar",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Kobuko",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_RekSai",
+              "starLevel": 1,
+              "itemNames": ["DA_Component_ChainVest"],
+              "price": 1
+            },
+            {
+              "championName": "DA_Murkwolf18",
+              "starLevel": 1,
+              "itemNames": ["DA_Artifact_TitanicHydra", "DA_SteraksGage"],
+              "price": 2
+            }
+          ]
+        },
+        {
+          "playerId": "9000004",
+          "riotIdGameName": "Rival 4",
+          "health": 88,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Leona",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_ChainVest"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Xayah",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 1,
+              "itemNames": ["DA_RabadonsDeathcap", "DA_GiantSlayer"],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            }
+          ]
+        },
+        {
+          "playerId": "9000005",
+          "riotIdGameName": "Rival 5",
+          "health": 100,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Yunara",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Karma18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Yorick",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Varus",
+              "starLevel": 3,
+              "itemNames": ["DA_Component_SparringGloves"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_MasterYi_AD",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Akali_AD",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            }
+          ]
+        },
+        {
+          "playerId": "9000006",
+          "riotIdGameName": "Rival 6",
+          "health": 95,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_Cinderling18",
+              "starLevel": 1,
+              "itemNames": [
+                "DA_Component_NeedlesslyLargeRod",
+                "DA_JeweledGauntletRadiant"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_Scuttlecrab18",
+              "starLevel": 1,
+              "itemNames": ["DA_Component_ChainVest"],
+              "price": 2
+            },
+            {
+              "championName": "DA_Murkwolf18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Krug18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_Gromp18_AP",
+              "starLevel": 1,
+              "itemNames": ["DA_Component_BFSword"],
+              "price": 2
+            }
+          ]
+        },
+        {
+          "playerId": "9000007",
+          "riotIdGameName": "Rival 7",
+          "health": 90,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Veigar",
+              "starLevel": 2,
+              "itemNames": ["DA_AdaptiveHelm_Radiant", "DA_JeweledGauntlet"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Alistar",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "hidden": {
+    "DA_18_Sentry": 0.5,
+    "DA_18_Akali_AD": 0.5,
+    "DA_18_Rakan": 1,
+    "DA_18_Ornn": 0.5,
+    "DA_KogMaw18_AD": 0.5,
+    "DA_Karma18": 0.5
+  }
+}

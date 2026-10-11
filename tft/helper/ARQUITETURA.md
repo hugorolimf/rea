@@ -694,3 +694,197 @@ ranking por rolagem, a chance de montar pode usar `shopsAhead` em degraus (ex.: 
 6. **Servidor como fonte de ouro, nível e inventário:** sim, quando fizer sentido (o cliente passa a mandar só decisões do usuário); manter o campo do cliente apenas para partida revista.
 7. **Precedência GEP × leitura de tela:** nunca devem discordar na saída. Um único valor por campo, escolhido por `core/state/precedence`: GEP fresco e consistente > leitura de tela > estimativa. Quando as fontes divergem, usa-se o GEP, registra-se a divergência (log + contador no `/api/state`) e o valor não oscila entre fontes (histerese: só troca após N leituras concordantes). A leitura de tela vira verificação cruzada.
 8. **Commit de checkpoint antes do M0:** autorizado. Antes de commitar: suíte verde, varredura de segredos (PlayerKey, token LCU, chave RSO, PUUID, nomes de jogadores) nos arquivos novos e nas fixtures, e `data/` pessoal fora do commit.
+
+---
+
+## Progresso da migração
+
+Estado: **M0 e M1 concluídos e verificados offline** (2026-10-10, executor `tft-migracao`, base: commit `49a17de4`, 350 testes verdes).
+Nada de regra foi movido nem alterado: os dois passos só fixam o comportamento e medem. Sem commit (cabe ao orquestrador).
+
+| Passo                       | Estado    | Observação                                                        |
+| --------------------------- | --------- | ----------------------------------------------------------------- |
+| M0 caracterização + medição | feito     | golden de 18 arquivos, `server.mjs` com `TEMPO` no log, 4 scripts |
+| M1 rede de arquitetura      | feito     | catraca com 20 regras (T2), T1, T3, D1, D12, D5; `core/README.md` |
+| M2..M10                     | pendentes | M3 e M2 são os próximos (dados puros, menor risco)                |
+
+Suíte: `node --test tests/*.test.mjs v2/js/*.test.mjs *.test.mjs` = **404 testes verdes** (350 anteriores + 24 do golden + 30 de
+arquitetura). Leva 35-52 s com a máquina folgada; com o jogo aberto e processos concorrentes uma execução só do golden passou de 5 min (ver "Achados").
+
+### Como usar o que o M0/M1 criou
+
+| Para quê                              | Comando (em `tft/helper`)                                                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Conferir o golden                     | `node --test tests/golden.test.mjs`                                                                                           |
+| Aceitar uma diferença revisada        | `UPDATE_GOLDEN=1 node --test tests/golden.test.mjs` (imprime os caminhos que mudaram; regrave só depois de registrá-los aqui) |
+| Refazer as entradas congeladas        | `node scripts/golden-freeze.mjs` (lê `../data`; só ao começar uma nova base de comparação)                                    |
+| Tempo por etapa do pipeline, offline  | `node scripts/bench.mjs [--runs 8] [--event shop ou gold] [--scenario id]`                                                    |
+| Custo do `GET /api/state`, offline    | `node scripts/bench-state.mjs [--iterations 40]`                                                                              |
+| Resumir o `TEMPO` do servidor ao vivo | `node scripts/timing-report.mjs [server.log] [--since ISO]`                                                                   |
+| Estado atual da catraca               | `ARCH_REPORT=1 node --test tests/architecture.test.mjs`                                                                       |
+
+### M0 - caracterização e medição
+
+**O que existe**
+
+- `tests/golden/harness.mjs`: o pipeline inteiro de `POST /api/recommend` offline (montagem de `options`, `analyze` com cache da
+  base e convergência da evidência, `tactics`, `playbook`/`stagePlan`/`strategy` por plano, plano em andamento, aprimoramentos,
+  decisão, disputa, tabuleiro visto). Relógio injetado, evidência congelada, semente fixa: determinístico. **É uma transcrição do
+  trecho de `server.mjs`** (o servidor não exporta o pipeline); `tests/golden.test.mjs` falha se a ordem das etapas ou o texto de
+  `augmentEmblem` divergirem do servidor. No M9 o harness passa a chamar `app/recommend.mjs` e a guarda some.
+- `tests/golden/scenarios.mjs`: **17 cenários** (mais 11 estados sintéticos de `strategy()` em `tests/fixtures.mjs`): abertura nível
+  3; 2-5 com loja lida; 4-1 com sequência de derrotas; 5-2 com vida 19 (crítica); 4-2 com 8 componentes no banco; comp fixada com
+  troca; dois aprimoramentos com emblema e oferta de três; troca do usuário no automático; 3 leituras da mesma partida (adoção e
+  manutenção do plano); D1; Hero eliminado (`live-mock-base.json`); ouro e XP não lidos (D14); rival consultado; 120 g nível 10;
+  bancos ocultos; vida 27; partida revista. Cobre níveis 3, 5, 6, 7, 8, 9 e 10 e os estágios 2-1 a 5-6, em 3 partidas capturadas.
+- Entradas congeladas em `tests/golden/fixtures/`: **7 snapshots reais de `data/scouting-captures.jsonl`, anonimizados** (rivais viram
+  `Rival N`, ids `9000001+`, partida com id sintético; o Hero mantém o id do projeto) com o banco oculto estimado no instante; o
+  tabuleiro de `live-mock-base.json`; 4 cópias de meta (as da raiz são regravadas pelo servidor); e só as **1.067 respostas do
+  explorer (de 8.419) e 11 tabelas condicionais (de 50)** que os cenários consultam. Varredura de segredos: nenhum nome de jogador,
+  PUUID, token ou chave nos fixtures, nos esperados nem nos scripts.
+- `tests/golden/expected/*.json.gz`: 18 respostas esperadas (1,7 MB no total; cada resposta tem 0,7-1,2 MB sem compressão). O
+  `catalog.json` e o `augments.json` entram no cabeçalho por SHA-256: mudar o catálogo exige regravar o golden de propósito.
+- Testes: golden por cenário; determinismo (3 cenários rodados 2x); cobertura dos caminhos prometidos; **sensibilidade**
+  (`POLICY.floor.healthy`, `GAME.interestMax` e `POLICY.hp.hurt` perturbados quebram cenários); **D1 caracterizado** (abaixo); guarda
+  contra desvio do harness em relação ao servidor.
+- `server.mjs` (+67/-2 linhas, só mede): linha `TEMPO` por análise calculada com as etapas (`estado entrada base clone tactics planos
+  plano resto json total bytes`) e resumo por minuto (n, p50, p95, máx) das rotas `/api/*` (menos `/api/events`, que é SSE).
+  **Só vale depois de reiniciar o servidor**; o processo 20076 (porta 3218, iniciado às 23:34Z por terceiros) já a carrega.
+
+**Golden: antes/depois e diffs aceitos.** Não há "antes" a comparar: M0 cria a base. Estável em 3 execuções seguidas (processos
+separados) e `UPDATE_GOLDEN=1` não reescreve nenhum arquivo numa 4ª. Nenhuma diferença aceita.
+
+**D1 confirmado e fixado no golden** (`shop-cache-d1`): depois do plano adotado, trocar só a loja devolve o ranking do cache
+(`compRanking` idêntico entre a leitura 2 e a 3); recalculando a base, a loja entra no score (`scoreParts.shop` 0 -> 0,5 e 1;
+`score` 21,9 -> 24,7, 23 -> 28,5, 34 -> 31,3 em comps do ranking). O M8 deve inverter as duas asserções do teste
+"D1 (caracterização)" e registrar o diff.
+
+**Medições offline** (máquina ociosa, jogo fechado, evidência congelada: é piso do custo ao vivo, que tem rede)
+
+| Evento                                  | Por leitura (quente)                               | `analyze` | `tactics` | `json`   | Observação                                |
+| --------------------------------------- | -------------------------------------------------- | --------- | --------- | -------- | ----------------------------------------- |
+| Base invalidada (nível, ouro, itens...) | mediana **143 ms**, máx 215 ms (`items-bank-lvl8`) | 23-157 ms | 5-14 ms   | 12-40 ms | 1ª execução do processo (fria): 91-335 ms |
+| Só a loja muda (acerta o cache da base) | mediana **44 ms**, máx 73 ms                       | 0         | 5-13 ms   | 12-21 ms | clone da base ~10 ms                      |
+| Ouro -2 g (uma rolagem)                 | mediana **100 ms**, máx 167 ms                     | 10-102 ms | 5-21 ms   | 12-47 ms | o ouro está na chave: refaz a base        |
+
+`playbook`, `stagePlan` e `strategy` somam 2-8 ms depois do 1º `rollSim` (o Monte Carlo frio, ~370 ms no levantamento anterior,
+fica no `SIMS`). A resposta tem **0,74-1,2 MB** (o levantamento anterior media 432 KB): `compRanking` ~580 KB (60 comps com
+evidência) e `recommendations` ~210 KB; a v2 desenha só `recommendations[0]` ou `preview`.
+
+`GET /api/state`, offline com os módulos reais do servidor (sem abrir porta, sem o leitor de tela, sem gravar):
+
+| Medida                                                                                | Resultado                                                                                     |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1ª leitura (fria, `TFT.log` de 12 MB lido do início)                                  | 104 ms, dos quais `gameFiles.status` 89 ms                                                    |
+| Quente, 19 leituras a cada 450 ms (jogo fechado)                                      | p50 **3,4 ms**; picos de 58 ms (`gep.status` 47 ms: reabre o SQLite; `gameFiles.status` 9 ms) |
+| HTTP numa instância isolada (porta 3299, home e `data` temporários, depois encerrada) | n=60: p50 **3,7 ms**, p90 8,7 ms, máx 12,7 ms                                                 |
+
+Não medido offline: a espera do LCU na 1ª chamada (até 2 s de timeout), `matches.observe` e `captures.status()` (gravam em `data/`).
+Com o jogo aberto e a máquina saturada, a mesma medição deu p50 54 ms e p95 2,7 s (até `fs.stat` levou 0,4-0,8 s): é a CPU, não o
+código (ver achado 1).
+
+**Medição ao vivo (indicativa, confundida).** O servidor da 3218 foi reiniciado por terceiros às 23:34Z já com o `TEMPO`; as linhas
+de `server.log` (resumo: `node scripts/timing-report.mjs --since 2026-10-10T23:32:00Z`) mostram, durante uma partida e **com
+testes meus e três `server.mjs` órfãos disputando a CPU**: 15 análises, `total` p50 5,9 s e p95 91 s (a 1ª depois do restart);
+`base` típica 1,9-2,2 s e até 73 s (inclui a espera da rede do explorer, até 3 passes); `tactics` 0,1-2,6 s; `planos` 0,06-4,1 s;
+`json` 0,1-1,1 s; `GET /api/state` com p95 de 3,9-5 s em várias janelas de 1 min (n pequeno). O contraste com o offline (143 ms)
+é de 15-40x e **não se explica só pelo código**: rede na base, jogo aberto, event loop bloqueado pela própria análise (síncrona; o
+`/api/state` espera na mesma fila) e CPU saturada. Reler com a máquina quieta antes de usar como linha de base do M10.
+
+**Achados que mudam o plano**
+
+1. **Três processos `server.mjs` órfãos** (PIDs 15540, 23148 e 37388, iniciados em 09/10 22:23-23:00, ~410-450 s de CPU cada, nenhum
+   escutando porta) mantinham a CPU em ~96 % (uma leitura) e distorcem qualquer medição ao vivo. Pelo horário, são segundas
+   instâncias de versões antigas (provavelmente anteriores à correção "porta antes de tudo"; não investiguei a origem). **Não mexi neles** (restrição: não matar servidores); o
+   orquestrador ou o usuário deve encerrá-los antes de medir de novo e de gravar mais capturas (cada um pode duplicar gravações em
+   `data/`).
+2. O cache da base é invalidado quando o **plano adotado** muda `options.sticky`, então D1 só aparece depois da adoção; o teste
+   usa 3 leituras por isso.
+3. O tamanho da resposta (~1 MB) pesa na serialização (12-97 ms offline, até 1 s ao vivo) e na rede local: o M10 deve cortar o que a
+   v2 não lê (planos 2 e 3, `compRanking` completo) além de tirar a análise do event loop.
+4. O mapa 1.2-a estava incompleto: `v2/js/next-item.js` é um décimo consumidor que aloca o estoque de itens sozinho (M6).
+
+**Riscos e pendências do M0**
+
+- O harness é cópia do servidor: se outro agente mexer no POST, o teste de guarda acusa; religar o harness ao novo ponto de entrada.
+- Sem rede, a evidência não respondida vira `null` (como a rede indisponível). O golden não cobre respostas novas do explorer.
+- Só se confirma ao vivo: loja lida de verdade, Dupla/Hiper Rolagem, reconexão e `matches.observe` (não passam pelo pipeline).
+- A instrumentação `TEMPO` foi verificada por `node --check`, por uma instância isolada (rota `/api/state` e resumo por minuto) e agora
+  pelo log ao vivo (linhas de `/api/recommend`). Não fiz `POST` (restrição).
+
+### M1 - rede de arquitetura (catraca)
+
+`tests/architecture.test.mjs` e `tests/architecture/scan.mjs` (leitor estático: tira comentários, textos e regex; acha imports
+estáticos e dinâmicos; com teste próprio) e `core/README.md` (a regra de ouro em uma página; `core/` nasce sem código). Regras da
+catraca: cópia nova ou mais ocorrências **falha**; menos ocorrências também **falha**, pedindo para baixar o número (a melhora não
+volta). Cada exceção traz o motivo e o passo que a remove.
+
+**T1 (imports).** Exceções iniciais, 7 (o texto da seção 3.3 listava 2; o código tem 7):
+
+| Importador -> alvo                                                                             | Dívida | Sai em |
+| ---------------------------------------------------------------------------------------------- | ------ | ------ |
+| `engine.mjs`, `tactics.mjs`, `server.mjs` -> `v2/js/traits.js`                                 | D7     | M3     |
+| `engine.mjs`, `item-holdings.mjs`, `item-plan.mjs`, `item-value.mjs` -> `v2/js/item-source.js` | D8     | M6     |
+
+Também verificados e sem exceção hoje: nenhum ciclo no grafo de imports; ninguém importa `server.mjs`; `v2/` e `live-mock.js` não
+importam `node:*`, nem o servidor, nem arquivos fora de `v2/` (salvo `/rules.mjs` e `/economy.mjs`); `core/` só importa de `core/`.
+
+**T2 (regra reimplementada fora do dono).** 20 regras, todas com baseline igual ao estado de hoje:
+
+| Regra                              | Cobre   | Total hoje | Onde (ocorrências)                                                                                                    |
+| ---------------------------------- | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `radiant-base-id`                  | D10     | 4          | item-tiers 2, comp-items 1, item-source 1                                                                             |
+| `component-id-literal`             | D2      | 14         | live-mock 4, item-tiers 2, items.js 2, carousel, engine, item-holdings, item-plan, tactics, item-source               |
+| `item-class-regex` (linhas)        | D2, D9  | 42         | tactics 18, live-mock 12, engine 6, meta-builds 3, stage 3                                                            |
+| `star-copies` (`3 ** (estrela-1)`) | D10     | 11         | engine 4, economy 2, contest, pool-tracker, tactics, unit-ledger, model.js                                            |
+| `might-formula` (`const STAR`)     | D10     | 2          | roll, tactics                                                                                                         |
+| `odds-index`                       | D3      | 11         | engine 5, economy 2, stage 2, roll, strategy                                                                          |
+| `per-shop-chance`                  | D3      | 3          | engine 2, live-mock                                                                                                   |
+| `buyable-odds-literal`             | D3      | 4          | engine 3, stage 1                                                                                                     |
+| `interest-constants`               | 1.2-b   | 23         | hud.js 9, economy 8, engine 2, rules 2, model.js 2                                                                    |
+| `gold-literal-threshold`           | D4, D14 | 9          | playbook 3, target-level 2, decision, live-mock, server, strategy                                                     |
+| `hp-literal-threshold`             | D4      | 17         | target-level 5, decision 3, augment-advice 3, playbook 2, economy, engine, streak, hud.js                             |
+| `trait-breakpoints`                | D7      | 5          | tactics 3, engine, server                                                                                             |
+| `trait-solo-rule`                  | D7      | 1          | engine                                                                                                                |
+| `stage-round-parse`                | D10     | 8          | game-log, gep-reader, live-mock, plan-progress, rules, server, streak, model.js                                       |
+| `augment-round-track`              | D10     | 3          | augment-advice, plan-progress, augs.js                                                                                |
+| `curve-level-fallback`             | 1.2-c   | 1          | engine                                                                                                                |
+| `gold-default` (`gold ?? 30`)      | D14     | 1          | engine                                                                                                                |
+| `item-stock-consumption`           | D8      | 21         | tactics 6, comp-items 5, carousel 2, engine 2, item-edge 2, next-item 2, item-holdings 1 (dono), item-source 1 (dono) |
+| `server-option-assembly`           | D12     | 39         | server                                                                                                                |
+| `unbounded-memo-maps`              | D11     | 11         | engine 3, item-value 3, server 3, roll, evidence                                                                      |
+
+Os donos atuais das regras (economy, rules, item-tiers, item-holdings, item-source, model.js...) também estão como exceção, com a nota
+"dono atual", para a lista encolher quando a regra for para `core/`. `item-stock-consumption` é uma heurística (`indexOf` ou
+`findIndex` até 2 linhas antes de `splice` em lista de estoque), não prova posse: `stage`, `plan-progress` e `model.js` (cópias 4, 5 e
+8 do mapa) usam outros idiomas e **não** são detectadas por ela.
+
+**T3 (pureza).** `core/` e os 28 módulos que o apêndice A destina ao núcleo: sem `node:*`, `fetch`, `process`, `Date.now`,
+`new Date`, `Math.random` e sem depender de módulo que não seja núcleo. 5 exceções: `engine.mjs` -> `evidence.mjs` e ->
+`augment-stats.mjs` (misturam rede/disco com lógica pura) e `augment-advice.mjs` -> `augment-stats.mjs` (só quer `TIER_PLACE`), saem
+no M9; `pool-tracker.mjs` e `streak.mjs` com `Date.now()` como valor padrão (D13), saem em M4/M5/M7.
+
+**D1/D11 (a chave da base).** Teste dinâmico: um `Proxy` registra as opções que `engine.analyze` lê nos 17 cenários e as compara com
+as que `analysis-keys.baseInputs` usa. Lidas sem chave: `shop` (**D1, a única exceção real**) e 9 justificadas (cópias de meta
+versionadas por data, `evidence` e `conditional` versionadas à parte, derivados de `augments` e `stats`; `augmentStats` depende de o
+servidor apagar os caches). Opção nova lida pelo motor e fora da chave **falha**.
+
+**D12 (servidor).** Teto de linhas de `server.mjs` em 1.409 (só baixa; meta do M9: menos de 400) e a regra `server-option-assembly`
+(39 atribuições a `options.X` no POST).
+
+**D5 (premissa do M5).** A v2 não lê `.playbook` nem `.decision` do servidor (testado). Pendências da busca do M5: `live-mock.js` ainda
+gera `rec.decision` (só o mock), e `p.roll` em `v2/js/ui/panel.js` vem do view-model (`model.js`, a partir de `strategy`), não de
+`recommendations[i].roll`.
+
+**Riscos e pendências do M1**
+
+- Contagens por linha e por janela podem mudar com o formatador (`oxfmt`) em arquivos reescritos; se um commit reformatar um arquivo
+  e a contagem mexer sem mudança de lógica, ajuste o número e registre aqui.
+- Outros agentes editando `engine.mjs` ou `tactics.mjs` vão acionar a catraca (ao copiar regra **ou** ao removê-la): a mensagem do
+  teste diz o que fazer; não é para afrouxar o número.
+- Os fixtures `fixtures/meta` são cópias de 2026-10-10; o golden não acompanha atualizações de meta (de propósito).
+
+### Próximo passo: M3 (traços) ou M2 (catálogo de itens e campeões)
+
+M3 é o de menor risco (remove 3 das 7 exceções de T1 e as de `trait-*`). M2 muda número em 11 itens (D2) e Leona (D9): primeiro o modo
+`legacy` (golden idêntico), depois a tabela única com o diff aprovado; coordenar com `tft-motor-itens` (mesmo `engine.mjs`).

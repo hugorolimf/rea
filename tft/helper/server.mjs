@@ -256,7 +256,7 @@ const traitApiByName = new Map(catalog.traits.map((t) => [t.name, t.apiName]));
 // Item de emblema → sinergia, derivado do catálogo (mesma regra do motor e da interface).
 const emblemTraits = emblemTraitMap(catalog.items, traitApiByName.keys());
 function augmentEmblem(a) {
-  if (!a.id.startsWith('DA_')) return null; // aprimoramentos de sets antigos têm nomes de sinergia que não são os do 18
+  if (!a.id.startsWith("DA_")) return null; // aprimoramentos de sets antigos têm nomes de sinergia que não são os do 18
   const named = /^(.+) (?:Crest|Crown|Circlet|Emblem)$/.exec(
       a.nameEn ?? "",
     )?.[1],
@@ -271,8 +271,8 @@ function augmentEmblem(a) {
       ? catalog.items.find(
           (i) =>
             i.name === `${name} Emblem` &&
-            i.apiName.startsWith('DA_') &&
-            !i.apiName.endsWith('Augment'),
+            i.apiName.startsWith("DA_") &&
+            !i.apiName.endsWith("Augment"),
         )?.apiName
       : null;
   return trait ? { trait, item: item ?? null } : null;
@@ -687,14 +687,66 @@ async function current() {
     },
   };
 }
+// Tempo das rotas /api/* (M0 da migração, ver ARQUITETURA.md): resumo por minuto no server.log (nível TEMPO) e, a cada
+// análise calculada (sem acerto no cache), as etapas dela. Só mede e registra; não muda nenhuma resposta.
+const timings = { since: Date.now(), routes: new Map() };
+function recordTiming(route, ms) {
+  const list = timings.routes.get(route) ?? [];
+  list.push(ms);
+  timings.routes.set(route, list);
+  if (Date.now() - timings.since < 60_000) return;
+  const q = (xs, p) => xs[Math.min(xs.length - 1, Math.floor(xs.length * p))];
+  const parts = [...timings.routes].map(([name, xs]) => {
+    xs.sort((a, b) => a - b);
+    return `${name} n=${xs.length} p50=${q(xs, 0.5).toFixed(0)} p95=${q(xs, 0.95).toFixed(0)} max=${xs.at(-1).toFixed(0)}`;
+  });
+  diag.write(
+    "TEMPO",
+    `últimos ${Math.round((Date.now() - timings.since) / 1000)} s (ms): ${parts.join("; ")}`,
+  );
+  timings.since = Date.now();
+  timings.routes.clear();
+}
+/** Marcas de tempo por etapa de uma requisição: `lap("x")` guarda o que passou desde a marca anterior. */
+function stageTimer() {
+  const marks = [];
+  let last = performance.now();
+  return {
+    cacheHit: false,
+    note: "",
+    lap(label) {
+      const now = performance.now();
+      marks.push(`${label}=${(now - last).toFixed(0)}`);
+      last = now;
+    },
+    text: () => marks.join(" "),
+  };
+}
 handle = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  const startedAt = performance.now();
+  res.once("finish", () => {
+    const ms = performance.now() - startedAt,
+      route = `${req.method} ${(req.url ?? "").split("?")[0]}`;
+    // /api/events é um fluxo SSE: o "fim" dele é o tempo de conexão, não de resposta.
+    if (!route.includes(" /api/") || route.endsWith("/api/events")) return;
+    recordTiming(route, ms);
+    if (res.stages && !res.stages.cacheHit && res.statusCode === 200)
+      diag.write(
+        "TEMPO",
+        `${route} ${res.stages.text()} json=${(res.jsonMs ?? 0).toFixed(0)} total=${ms.toFixed(0)} bytes=${res.jsonBytes ?? 0}${res.stages.note ? " " + res.stages.note : ""} (ms)`,
+      );
+  });
   const json = (status, data) => {
     res.writeHead(status, {
       "Content-Type": "application/json; charset=utf-8",
     });
-    res.end(JSON.stringify(data));
+    const t0 = performance.now(),
+      body = JSON.stringify(data);
+    res.jsonMs = performance.now() - t0;
+    res.jsonBytes = body.length;
+    res.end(body);
   };
   try {
     const url = new URL(req.url, "http://127.0.0.1");
@@ -813,11 +865,13 @@ handle = async (req, res) => {
         if (body.length > 64000)
           return json(413, { error: "Entrada muito grande." });
       }
+      const stages = (res.stages = stageTimer());
       const options = validate(JSON.parse(body)),
         { snapshot, metadata } = options.replayGameId
           ? await replayState(options.replayGameId)
           : await current();
       if (options.replayGameId) options.level = metadata.estimatedLevel;
+      stages.lap("estado");
       // Luva de Ladrão: o jogo grava os dois itens sorteados da rodada junto com ela; só a luva é um item real.
       for (const p of snapshot.statsBlock.players)
         for (const u of p.boardPieces ?? [])
@@ -983,8 +1037,12 @@ handle = async (req, res) => {
         metaComps.fetchedAt +
         "|" +
         JSON.stringify(options);
+      stages.lap("entrada");
       const cached = analysisCache.get(cacheKey);
-      if (cached) return json(200, { metadata, ...cached });
+      if (cached) {
+        stages.cacheHit = true;
+        return json(200, { metadata, ...cached });
+      }
       // Automático com substituições: a comp de meta já entra no ranking com as peças trocadas pelo usuário.
       options.metaComps = metaComps.comps.map((c) => {
         const list = (options.compSwaps[c.id] ?? []).filter(
@@ -1032,6 +1090,7 @@ handle = async (req, res) => {
       });
       const baseKey = () => `${evidenceVersion}|${baseInputs}`;
       let built = baseAnalysisCache.get(baseKey());
+      stages.note = built ? "base=cache" : "base=nova";
       if (!built) {
         let pending = pendingBase.get(baseInputs);
         if (!pending) {
@@ -1078,7 +1137,9 @@ handle = async (req, res) => {
         built = await pending;
       }
       // A base guardada/compartilhada nunca é alterada: cada resposta trabalha numa cópia.
+      stages.lap("base");
       const base = structuredClone(built);
+      stages.lap("clone");
       if (base.previewGrow.length)
         options.previewIds = [
           ...options.previewIds,
@@ -1086,6 +1147,7 @@ handle = async (req, res) => {
         ];
       options.goalComp = goal;
       const analysis = tactics(base, catalog, options);
+      stages.lap("tactics");
       analysis.goalIds = base.previewGrow.length ? options.previewIds : null;
       // A comp fixada vira um plano de meta como as sugestões: mesmo título e dados que a economia usa.
       analysis.goal = options.goalCompId
@@ -1140,6 +1202,7 @@ handle = async (req, res) => {
         );
       }
       analysis.currentLevel = options.level;
+      stages.lap("planos");
       if (
         !options.replayGameId &&
         analysis.self.health > 0 &&
@@ -1192,6 +1255,7 @@ handle = async (req, res) => {
             }) + "\n",
           ).catch(() => {});
       }
+      stages.lap("plano");
       analysis.chosenAugments = chosen.map((a) => ({
         id: a.id,
         name: a.name,
@@ -1218,6 +1282,7 @@ handle = async (req, res) => {
         mine: analysis.self.units.map((u) => u.championName),
         stage: options.stage,
       });
+      stages.lap("resto");
       analysis.buildSource = meta.builds.size
         ? {
             label: meta.label,

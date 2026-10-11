@@ -1,0 +1,395 @@
+{
+  "note": "captura real anonimizada, 17 min desde o início da partida",
+  "snapshot": {
+    "gameId": 9100003,
+    "queueType": "RANKED_TFT",
+    "statsBlock": {
+      "setCoreName": "TFTSet18",
+      "gameLengthSeconds": null,
+      "players": [
+        {
+          "playerId": "47445859",
+          "riotIdGameName": "Hero",
+          "health": 66,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Yorick",
+              "starLevel": 2,
+              "itemNames": [
+                "DA_SpiritVisage_Radiant",
+                "DA_IonicSpark",
+                "DA_Component_NegatronCloak"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_MasterYi_AD",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Yunara",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Karma18",
+              "starLevel": 2,
+              "itemNames": [
+                "DA_JeweledGauntlet",
+                "DA_Component_NeedlesslyLargeRod"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Warwick",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Brambleback18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 4
+            },
+            {
+              "championName": "DA_18_Shen",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            }
+          ]
+        },
+        {
+          "playerId": "9000001",
+          "riotIdGameName": "Rival 1",
+          "health": 80,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Veigar",
+              "starLevel": 3,
+              "itemNames": [
+                "DA_BlueBuff",
+                "DA_HextechGunblade",
+                "DA_Component_NeedlesslyLargeRod"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 3,
+              "itemNames": [
+                "DA_GargoyleStoneplate",
+                "DA_SunfireCape",
+                "DA_DragonsClaw"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_RekSai",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Alistar",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            }
+          ]
+        },
+        {
+          "playerId": "9000002",
+          "riotIdGameName": "Rival 2",
+          "health": 63,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Diana",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_KhaZix",
+              "starLevel": 2,
+              "itemNames": ["DA_HandOfJustice", "DA_EdgeOfNight"],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Alistar",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Hecarim",
+              "starLevel": 2,
+              "itemNames": ["DA_GargoyleStoneplate"],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Diana",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            }
+          ]
+        },
+        {
+          "playerId": "9000003",
+          "riotIdGameName": "Rival 3",
+          "health": 67,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_RekSai",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_Murkwolf18",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_TearOfTheGoddess"],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Warwick",
+              "starLevel": 1,
+              "itemNames": ["DA_Artifact_TitanicHydra", "DA_SteraksGage"],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Azir",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Malphite",
+              "starLevel": 1,
+              "itemNames": ["DA_Component_GiantsBelt", "DA_GargoyleStoneplate"],
+              "price": 4
+            },
+            {
+              "championName": "DA_Krug18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            }
+          ]
+        },
+        {
+          "playerId": "9000004",
+          "riotIdGameName": "Rival 4",
+          "health": 53,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Leona",
+              "starLevel": 3,
+              "itemNames": ["DA_Component_ChainVest"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Xayah",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 2,
+              "itemNames": [
+                "DA_RabadonsDeathcap",
+                "DA_GiantSlayer",
+                "DA_GuinsoosRageblade"
+              ],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_GiantsBelt"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Rakan",
+              "starLevel": 3,
+              "itemNames": [],
+              "price": 1
+            }
+          ]
+        },
+        {
+          "playerId": "9000005",
+          "riotIdGameName": "Rival 5",
+          "health": 83,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Yunara",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_Karma18",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Yorick",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_NegatronCloak"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Varus",
+              "starLevel": 3,
+              "itemNames": ["DA_InfinityEdge"],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_MasterYi_AD",
+              "starLevel": 2,
+              "itemNames": ["DA_HextechGunblade"],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Akali_AD",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Kennen",
+              "starLevel": 1,
+              "itemNames": [
+                "DA_Component_NeedlesslyLargeRod",
+                "DA_Morellonomicon"
+              ],
+              "price": 5
+            }
+          ]
+        },
+        {
+          "playerId": "9000006",
+          "riotIdGameName": "Rival 6",
+          "health": 58,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_Cinderling18",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_SparringGloves"],
+              "price": 1
+            },
+            {
+              "championName": "DA_Murkwolf18",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_KogMaw18_AD",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 3
+            },
+            {
+              "championName": "DA_Krug18",
+              "starLevel": 2,
+              "itemNames": ["DA_Component_ChainVest"],
+              "price": 3
+            },
+            {
+              "championName": "DA_18_Sentry",
+              "starLevel": 2,
+              "itemNames": [
+                "DA_JeweledGauntletRadiant",
+                "DA_RabadonsDeathcap",
+                "DA_BlueBuff"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_Brambleback18",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 4
+            }
+          ]
+        },
+        {
+          "playerId": "9000007",
+          "riotIdGameName": "Rival 7",
+          "health": 63,
+          "ffaStanding": null,
+          "boardPieces": [
+            {
+              "championName": "DA_18_Veigar",
+              "starLevel": 2,
+              "itemNames": [
+                "DA_AdaptiveHelm_Radiant",
+                "DA_JeweledGauntlet",
+                "DA_Component_TearOfTheGoddess"
+              ],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_RekSai",
+              "starLevel": 3,
+              "itemNames": [],
+              "price": 1
+            },
+            {
+              "championName": "DA_18_Alistar",
+              "starLevel": 2,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_LeBlanc",
+              "starLevel": 1,
+              "itemNames": [],
+              "price": 2
+            },
+            {
+              "championName": "DA_18_Ornn",
+              "starLevel": 3,
+              "itemNames": ["DA_GargoyleStoneplate", "DA_Crownguard"],
+              "price": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "hidden": {
+    "DA_Vi18": 0.5,
+    "DA_18_Diana": 0.5,
+    "DA_18_Shen": 0.5,
+    "DA_Scuttlecrab18": 0.5
+  }
+}
