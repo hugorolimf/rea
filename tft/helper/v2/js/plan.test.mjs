@@ -13,12 +13,15 @@ const progress = {
   challenger: {
     id: "m2",
     title: "Comp B",
-    readings: 2,
-    rounds: 1,
-    need: { readings: 3, rounds: 2 },
+    readings: 1,
+    need: { facts: 2 },
     gain: 0.3,
-    noise: 0.05,
     cost: 0.1,
+    hysteresis: 0.1,
+    expectedFrom: 4.2,
+    expectedTo: 3.9,
+    unit: "placement",
+    pending: true,
   },
   summary: { done: 3, total: 8, pct: 38 },
   next: [{ kind: "unit", id: "Carry", text: "Carry: 1→3★ (2/9 cópias)" }],
@@ -125,8 +128,14 @@ test("planView: sem plano não há seção; ouro e nível não lidos viram texto
 
 test("desafiante: mostra a margem exigida e quanto falta de confirmação; comp fixada some o 'desde'", () => {
   const note = challengerNote(progress.challenger);
-  assert.match(note, /Comp B lidera por 0,30º \(precisa passar de 0,15º\)/);
-  assert.match(note, /2\/3 leituras, 1\/2 rodadas/);
+  assert.match(
+    note,
+    /^Mantido: Comp B espera 3,90º contra 4,20º do plano \(0,30 melhor\) · trocar custa 0,10 \+ margem 0,10 · troca no próximo fato novo/,
+  );
+  assert.equal(
+    challengerNote({ ...progress.challenger, pending: false }),
+    "Mantido: Comp B espera 3,90º contra 4,20º do plano (0,30 melhor) · trocar custa 0,10 + margem 0,10.",
+  );
   assert.equal(challengerNote(null), null);
   assert.equal(
     planView({ ...progress, plan: { ...progress.plan, pinned: true } }).pinned,

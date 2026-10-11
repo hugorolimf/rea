@@ -106,16 +106,23 @@ test("posição entre as sugestões, em texto", () => {
 test("estado da comp: escolhida (fixada), a do Ao vivo e sugerida", () => {
   assert.deepEqual(
     choiceState({ id: "c2", goalId: "c2", planId: "c2", ranking }),
-    { chosen: true, live: true, suggested: true },
+    // A do Ao vivo (64) atrás da melhor sugestão (71): "Plano atual (mantido)".
+    { chosen: true, live: true, suggested: true, best: false, kept: true },
   );
   assert.deepEqual(
     choiceState({ id: "c3", goalId: "c2", planId: "c2", ranking }),
-    { chosen: false, live: false, suggested: true },
+    { chosen: false, live: false, suggested: true, best: false, kept: false },
   );
   assert.deepEqual(
     choiceState({ id: "c4", goalId: null, planId: "c1", ranking }),
-    { chosen: false, live: false, suggested: false },
+    { chosen: false, live: false, suggested: false, best: false, kept: false },
   );
+  assert.deepEqual(
+    choiceState({ id: "c1", goalId: null, planId: "c2", ranking }),
+    { chosen: false, live: false, suggested: true, best: true, kept: false },
+  );
+  // A do Ao vivo é a melhor: não está "mantida".
+  assert.equal(choiceState({ id: "c1", planId: "c1", ranking }).kept, false);
   // Sem fixar nada, nenhuma comp está escolhida.
   assert.equal(choiceState({ id: null, goalId: null }).chosen, false);
 });

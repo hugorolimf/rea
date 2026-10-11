@@ -436,6 +436,8 @@ test("plano ao vivo: score e chance vêm do ranking de comps (melhor comp) ou do
     {
       id: "c1",
       score: 71.6,
+      expected: 3.84,
+      top4: 61.2,
       chance: 0.42,
       chancePlan: 0.8,
       best: true,
@@ -445,6 +447,8 @@ test("plano ao vivo: score e chance vêm do ranking de comps (melhor comp) ou do
   const s = buildModel(input).plan.score;
   assert.deepEqual(s, {
     value: 72,
+    expected: 3.84,
+    top4: 61.2,
     chance: 0.42,
     chancePlan: 0.8,
     best: true,
@@ -458,6 +462,8 @@ test("plano ao vivo: score e chance vêm do ranking de comps (melhor comp) ou do
   };
   assert.deepEqual(buildModel(own).plan.score, {
     value: 30,
+    expected: null,
+    top4: null,
     chance: 0.1,
     chancePlan: null,
     best: false,
@@ -576,6 +582,47 @@ test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assum
     "GEP off",
   );
   assert.equal(gepNote({ state: "esquema-desconhecido" }).short, "GEP ?");
+});
+
+test("fonte GEP: sem GEP o chip diz que a tela assumiu e a dica lista os campos que ela lê", () => {
+  const sources = {
+    gold: "screen",
+    level: "screen",
+    xp: "screen",
+    shop: "screen",
+    items: "screen",
+    bench: null,
+  };
+  const off = gepNote({ state: "ausente", reason: "banco-ausente" }, sources);
+  assert.equal(off.short, "GEP off · tela");
+  assert.match(off.label, /Lendo da tela: ouro, nível, XP, loja, itens/);
+  assert.deepEqual(off.screen, ["ouro", "nível", "XP", "loja", "itens"]);
+  // Parte dos campos vindo do arquivo do jogo ou do GEP: só os da tela entram.
+  const part = gepNote(
+    { state: "obsoleto", reason: "sem-eventos-recentes" },
+    { ...sources, gold: "gep", items: "screen", shop: null, xp: null },
+  );
+  assert.equal(part.short, "GEP parado · tela");
+  assert.deepEqual(part.screen, ["nível", "itens"]);
+  // A tela também não leu nada (janela fechada): o aviso é honesto e o chip não promete leitura.
+  const none = gepNote({ state: "ausente", reason: "sem-partida" }, {});
+  assert.equal(none.short, "GEP off");
+  assert.match(none.label, /Nada lido da tela agora/);
+  // GEP ativo: nada muda; sem as origens do servidor, o texto é o de antes.
+  assert.equal(gepNote({ state: "ativo" }, sources).short, "GEP ativo");
+  assert.equal(gepNote({ state: "ativo" }, sources).screen, undefined);
+  assert.equal(
+    gepNote({ state: "ausente", reason: "banco-ausente" }).screen,
+    undefined,
+  );
+  // O modelo repassa as origens da tela ao chip.
+  const s = structuredClone(state);
+  s.screen = { stage: "2-1", gold: 3, level: 2, sources };
+  s.gepStatus = { state: "ausente", reason: "banco-ausente" };
+  assert.equal(
+    buildModel({ state: s, rec: null }).status.gep.short,
+    "GEP off · tela",
+  );
 });
 
 test("fonte GEP: gravação desligada no TFTAcademy diz como ligar, no chip e na dica", () => {

@@ -135,6 +135,50 @@
       color: var(--amber);
     }
   }
+  /* Itens dos campeões: ícone com a marca de situação e a palavra curta embaixo; o próximo a resolver ganha destaque. */
+  .bi-list {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px 10px;
+  }
+  .bi {
+    display: inline-grid;
+    justify-items: center;
+    gap: 3px;
+    min-inline-size: 38px;
+    &[data-next="1"] .nx-part .pt {
+      box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--blue);
+    }
+  }
+  .bi-lbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--muted);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    white-space: nowrap;
+    &[data-tone="go"] {
+      color: var(--go);
+    }
+    &[data-tone="wait"] {
+      color: var(--amber);
+    }
+    .bi[data-next="1"] & {
+      font-weight: 800;
+    }
+  }
+  /* Build de reserva (a comp não publica build para o campeão): marca discreta ao lado dos itens. */
+  .bi-src {
+    align-self: center;
+    padding: 0 4px;
+    border: 1px dashed var(--muted);
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+  }
   .nx-note {
     color: var(--amber);
     font-size: var(--fs-xs);

@@ -1,9 +1,13 @@
 import { clamp, cumulativeCurve, shopsFor } from "./math.js";
-import { ownersOf } from "../../core/items/holdings.mjs";
-import { movesInto } from "../../core/items/moves.mjs";
+import {
+  championItemsView,
+  formationBuilds,
+} from "../../core/items/scenarios.mjs";
+import { copyBuys } from "../../core/pool/buy-copies.mjs";
 import { starCopies } from "../../core/pool/copies.mjs";
 import { SHOP } from "../../core/pool/tables.mjs";
 import { crossShop, refineShopHits, shopView } from "./shop-match.js";
+import { compOwnership, ownership, rosterOf } from "./roster.js";
 
 /**
  * Modelo de visão: função pura que converte o estado lido (/api/state) e a análise
@@ -125,6 +129,9 @@ function scoreOfPlan(plan, rec, level) {
   if (score === null) return null;
   return {
     value: Math.round(score),
+    // Colocação esperada (a medida única do motor: o score é ela numa régua) e o top 4 da mesma conta.
+    expected: num(ranked?.expected) ?? num(own?.expected),
+    top4: num(ranked?.top4) ?? num(own?.top4),
     chance: num(ranked?.chance) ?? num(own?.chance),
     chancePlan: num(ranked?.chancePlan) ?? num(own?.chancePlan),
     best: ranked?.best === true,
@@ -146,8 +153,20 @@ const GEP_REASONS = {
 /** Instrução quando o TFTAcademy não grava os eventos (configuração `record_games` desligada). */
 const GEP_RECORD_HINT =
   'Ligue "gravar partidas" nas configurações do TFTAcademy para o helper receber os eventos do jogo.';
-/** Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. */
-export function gepNote(g) {
+/** Campos que a tela lê sozinha quando o GEP não vale, com o nome mostrado ao usuário. */
+const SCREEN_FIELDS = [
+  ["gold", "ouro"],
+  ["level", "nível"],
+  ["xp", "XP"],
+  ["shop", "loja"],
+  ["items", "itens"],
+];
+/**
+ * Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. `sources` (opcional) é o
+ * `screen.sources` do servidor: com o GEP fora, o chip e a dica dizem que a leitura de tela assumiu e quais campos ela
+ * está lendo (`screen`), em vez de só "GEP off".
+ */
+export function gepNote(g, sources = null) {
   if (!g || typeof g.state !== "string") return null;
   const age = num(g.lastEventAgeMs),
     why = GEP_REASONS[g.reason] ?? g.reason ?? "",
@@ -162,7 +181,20 @@ export function gepNote(g) {
         : g.state === "esquema-desconhecido"
           ? `GEP: esquema do banco desconhecido${g.detail ? ` (${g.detail})` : ""}; usando a leitura de tela`
           : `GEP ausente${why ? `: ${why}` : ""}; usando a leitura de tela`;
-  const label = hint ? `${base}. ${hint}` : base;
+  // Sem GEP, a tela é a fonte: quais campos ela entrega agora (só quando o servidor informa as origens).
+  const reading =
+      sources && g.state !== "ativo"
+        ? SCREEN_FIELDS.filter(([key]) => sources[key] === "screen").map(
+            ([, name]) => name,
+          )
+        : null,
+    screenNote =
+      reading === null
+        ? ""
+        : reading.length
+          ? `. Lendo da tela: ${reading.join(", ")}`
+          : ". Nada lido da tela agora";
+  const label = hint ? `${base}${screenNote}. ${hint}` : `${base}${screenNote}`;
   // Texto curto do chip visível no HUD: ativo mostra a idade do último evento; os demais dizem que caiu para a tela.
   const short =
     g.state === "ativo"
@@ -174,10 +206,23 @@ export function gepNote(g) {
           : g.state === "esquema-desconhecido"
             ? "GEP ?"
             : "GEP off";
-  return { state: g.state, label, short, ...(hint ? { hint } : {}) };
+  // O suffixo " · tela" vale quando a tela está lendo; a instrução de gravação (mais urgente) fica sozinha.
+  const chip = reading?.length && !hint ? `${short} · tela` : short;
+  return {
+    state: g.state,
+    label,
+    short: chip,
+    ...(hint ? { hint } : {}),
+    ...(reading ? { screen: reading } : {}),
+  };
 }
 
-export function buildModel({ state, rec }) {
+/**
+ * `review` (opcional): `{ gameId, at, placement }` quando a tela revê o Ao vivo congelado de uma partida encerrada
+ * (`state` e `rec` são os corpos guardados no último momento em que ela estava em andamento). Revisão é só leitura do que
+ * foi guardado: nada vale como "agora" (sem loja, compra, rolagem nem ação urgente) e `status.review` diz o que se revê.
+ */
+export function buildModel({ state, rec }, { review = null } = {}) {
   // Comp fixada na tela de seleção (preview) tem prioridade sobre a primeira sugestão.
   const plan = rec?.preview ?? rec?.recommendations?.[0] ?? null,
     screen = state?.screen ?? {},
@@ -185,14 +230,22 @@ export function buildModel({ state, rec }) {
     // Partida acompanhada pelo servidor. Em andamento, vida ≤ 0 não encerra: o primeiro tabuleiro de cada
     // partida traz -1 em todos. Sem partida acompanhada, a vida do Hero decide.
     match = state?.match ?? null,
-    waiting = match?.status === "live" && match.boardReady === false,
+    // Partida de treino (sem rivais): não tem vida a perder nem colocação; o servidor a detecta (core/state/practice.mjs).
+    practice = match?.practice === true || state?.practice?.active === true,
+    waiting = !review && match?.status === "live" && match.boardReady === false,
     ended =
-      match?.status === "ended" ||
-      (match?.status !== "live" && hp !== null && hp <= 0),
+      !review &&
+      (match?.status === "ended" ||
+        (match?.status !== "live" && !practice && hp !== null && hp <= 0)),
     live =
-      !waiting && !ended && rec?.metadata?.actionable === true && (hp ?? 0) > 0;
+      !review &&
+      !waiting &&
+      !ended &&
+      rec?.metadata?.actionable === true &&
+      (practice || (hp ?? 0) > 0);
   const hero = {
-    hp,
+    // Treino: a vida do arquivo (-99 ou 1) não é vida; fica desconhecida em vez de uma barra enganosa.
+    hp: practice ? null : hp,
     // Nível: lido do HUD ("tela"), piso derivado do XP passivo ("derivado": o real é este ou maior) ou, só se nada disso
     // existir, o número de peças em campo ("estimado", nunca uma leitura). O servidor já entrega o lido/derivado em screen.level.
     level:
@@ -229,7 +282,12 @@ export function buildModel({ state, rec }) {
       String(match.last.gameId) === String(rec?.metadata?.gameId)
         ? num(match.last.placement)
         : null),
-    awaitingFinal: match?.status === "ended" && match.placement == null,
+    awaitingFinal:
+      match?.status === "ended" && match.placement == null && !practice,
+    // Partida de treino: chip "modo treino" na interface e no overlay; nunca "Partida encerrada" com o jogo rodando.
+    practice,
+    // Revisão do Ao vivo congelado de uma partida encerrada (ver o comentário de `buildModel`).
+    review,
     // Comp fixada pela tela de seleção e aceita pelo servidor (o plano exibido é ela).
     pinned: rec?.goal?.found === true && !!rec?.preview,
     // Substituições aceitas pelo servidor sobre a comp fixada.
@@ -239,13 +297,15 @@ export function buildModel({ state, rec }) {
     sameGame: rec?.metadata?.sameGame ?? null,
     gameId: rec?.metadata?.gameId ?? null,
     // Estado da fonte GEP (ativo, obsoleto, ausente, esquema-desconhecido) para o tooltip do indicador ao vivo.
-    gep: gepNote(state?.gepStatus),
+    // Na revisão a fonte e o leitor são os de quando a partida acabou, não os de agora: sem chip nem aviso deles.
+    gep: review ? null : gepNote(state?.gepStatus, screen.sources ?? null),
     // Erro aparece mesmo com o leitor parado (spawn falhou ou processo morreu).
-    reader:
-      screen.error ??
-      (screen.running && screen.window === false
-        ? "janela do jogo oculta"
-        : null),
+    reader: review
+      ? null
+      : (screen.error ??
+        (screen.running && screen.window === false
+          ? "janela do jogo oculta"
+          : null)),
   };
   if (!plan) return { hero, status, plan: null };
 
@@ -254,10 +314,14 @@ export function buildModel({ state, rec }) {
     carryUnit = plan.board.find((u) => u.name === plan.carry) ?? null,
     current = rec.currentPlan?.board ?? [],
     owned = new Set(current.map((u) => u.id)),
-    transitions = plan.transitions ?? [];
+    transitions = plan.transitions ?? [],
+    // Suas peças em campo (rec.self.units) e na reserva (GEP, state.screen.gepBench): regra única de roster.js, a mesma
+    // dos cartões da aba Comps e do modal. Sem GEP a reserva é desconhecida (não vazia).
+    roster = rosterOf({ units: rec.self?.units, screen });
 
   const cells = (plan.positions ?? []).map((p) => {
-    const u = byId.get(p.championId);
+    const u = byId.get(p.championId),
+      own = ownership(roster, p.championId);
     return {
       id: p.championId,
       name: p.name,
@@ -270,7 +334,22 @@ export function buildModel({ state, rec }) {
       carry: p.championId === carryUnit?.id,
       role: p.role,
       reason: p.reason,
-      status: u?.owned ? "owned" : u?.inReserve ? "reserve" : "incoming",
+      // A leitura de agora (roster) decide; sem ela (fora de campo e reserva não lida), vale a análise. O `owned` do
+      // servidor inclui a reserva, então `inReserve` é olhado antes dele.
+      status:
+        own.state === "field" || own.state === "both"
+          ? "owned"
+          : own.state === "reserve"
+            ? "reserve"
+            : own.state === "absent"
+              ? "incoming"
+              : u?.inReserve
+                ? "reserve"
+                : u?.owned
+                  ? "owned"
+                  : "incoming",
+      // Onde está a peça e quantas cópias (dica e rótulo da Formação: "2 cópias: 1 em campo, 1 na reserva").
+      own: own.mine ? own.label : "",
     };
   });
 
@@ -292,33 +371,17 @@ export function buildModel({ state, rec }) {
   });
 
   for (const c of cells) c.swap = dock.find((d) => d.enter.id === c.id) ?? null;
-  // Build recomendada de cada peça (clique na Formação): equipados e os itens ideais com receita.
-  const builds = new Map((plan.itemPlans ?? []).map((b) => [b.championId, b]));
-  // Itens que o jogador já tem em qualquer peça (campo e reserva): "falta" só o que não existe em lugar nenhum.
-  const owners = ownersOf(
-    [
-      ...(rec.self?.units ?? []).map((u) => ({ ...u, zone: "board" })),
-      ...(rec.self?.reserve ?? []).map((u) => ({ ...u, zone: "reserve" })),
-    ],
+  // Build recomendada de cada peça (clique na Formação): o motor único de itens (core/items/scenarios.mjs) dá a build
+  // (a da aba Comps quando a comp a publica; senão a reserva, marcada), os equipados, onde está cada item seu (campo e
+  // reserva: "falta" só o que não existe em lugar nenhum) e de quem sai o item que "Passar itens" traz.
+  const builds = formationBuilds({
+    itemPlans: plan.itemPlans,
+    units: rec.self?.units,
+    reserve: rec.self?.reserve,
     goalIds,
-    (id) => (builds.get(id)?.ideal ?? []).slice(0, 3).map((i) => i.id),
-  );
-  for (const c of cells) {
-    const b = builds.get(c.id);
-    c.build = b
-      ? {
-          equipped: b.equipped ?? [],
-          ideal: b.ideal ?? [],
-          slotsFree: b.slotsFree ?? 0,
-          owners,
-          // "Passar itens" do servidor que terminam nesta peça: de quem sai o item escolhido.
-          moves: movesInto(plan.itemMoves, c.id).map(({ itemId, fromId }) => ({
-            itemId,
-            fromId,
-          })),
-        }
-      : null;
-  }
+    itemMoves: plan.itemMoves,
+  });
+  for (const c of cells) c.build = builds.get(c.id) ?? null;
 
   const stage = plan.stage ?? null,
     stageBoard = stage?.board ?? [];
@@ -334,6 +397,7 @@ export function buildModel({ state, rec }) {
     equip: "items",
     moves: "items",
     next: "items",
+    builds: "items",
     carousel: "items",
   };
   const add = (id, title, tone, rows, note = null) =>
@@ -376,19 +440,51 @@ export function buildModel({ state, rec }) {
     })),
   ]);
   // Cópias que o plano quer de cada peça: o servidor lista uma linha por peça que falta (1 cópia); `want`/`copies`, se vierem, valem.
-  const buying = crossShop(
-    (stage?.buyNow ?? []).map((u) => ({
-      key: `buy:${u.id}`,
-      kind: "buy",
-      unit: u,
-      how: u.replaces ? "replace" : u.slot === "banco" ? "bank" : "slot",
-      replaces: u.replaces,
-      chance: u.chancePerShop ?? 0,
-      broke: u.affordable === false,
-      want: u.want ?? u.copies ?? 1,
-    })),
+  const missing = (stage?.buyNow ?? []).map((u) => ({
+    key: `buy:${u.id}`,
+    kind: "buy",
+    unit: u,
+    how: u.replaces ? "replace" : u.slot === "banco" ? "bank" : "slot",
+    replaces: u.replaces,
+    chance: u.chancePerShop ?? 0,
+    broke: u.affordable === false,
+    want: u.want ?? u.copies ?? 1,
+    priority: u.isCarry ? 3 : 2,
+    // Onde você já tem a peça agora (roster.js): a análise pode ser de antes da compra que a pôs na reserva.
+    own: ownership(roster, u.id),
+  }));
+  // Peça do plano que você já tem (campo ou reserva): cada cópia aproxima a próxima estrela, então vale comprar quando
+  // a loja a mostra (core/pool/buy-copies.mjs). Fora da loja a linha não aparece: não há o que buscar, e a lista
+  // não vira um inventário das peças que você já tem.
+  const copies = copyBuys({
+    board: plan.board,
+    pool: rec.pool,
+    carry: plan.carry,
+    gold: hero.gold,
+    skip: new Set(missing.map((r) => r.unit.id)),
+  }).map((c) => ({
+    key: `buy:${c.id}`,
+    kind: "buy",
+    unit: { id: c.id, name: c.name, cost: c.cost, stars: c.stars },
+    how: "copy",
+    replaces: null,
+    chance: c.chancePerShop,
+    broke: c.broke,
+    want: Math.min(c.need, SHOP.slots),
+    priority: c.priority,
+    reason: c.text,
+    copy: { next: c.next, need: c.need, closes: c.closes, text: c.text },
+    own: ownership(roster, c.id),
+  }));
+  const crossed = crossShop(
+    // Ordem estável: a cópia que fecha estrela vem antes, depois o carry, e o resto segue a ordem do servidor.
+    [...missing, ...copies].sort((a, b) => b.priority - a.priority),
     shopNow,
   );
+  const buying = {
+    ...crossed,
+    rows: crossed.rows.filter((r) => r.how !== "copy" || r.shop),
+  };
   add("buy", "Comprar", "amber", buying.rows, buying.status);
   add(
     "slot",
@@ -432,6 +528,39 @@ export function buildModel({ state, rec }) {
         bank: Array.isArray(screen.items) ? screen.items : null,
       })),
   );
+  // Todos os itens recomendados de cada campeão em campo (até 3), com a situação de cada um segundo o banco lido
+  // (core/items/champion-items.mjs): o "Próximo item" acima é só o destaque. Só entra quem ainda tem item pendente; o
+  // carry primeiro. Sem banco lido não há o que dizer de "pronto"/"falta": a lista não aparece em vez de afirmar errado.
+  const bankNow = Array.isArray(screen.items) ? screen.items : null;
+  add(
+    "builds",
+    "Itens dos campeões",
+    "blue",
+    (bankNow ? cells : [])
+      // Em campo e com slot livre: peça com os 3 slots cheios guarda os itens (a build ideal é só referência para ela).
+      .filter(
+        (c) =>
+          c.build?.slotsFree > 0 &&
+          c.status === "owned" &&
+          !byId.get(c.id)?.inReserve,
+      )
+      .map((c) => ({ c, view: championItemsView(c, bankNow) }))
+      .filter(({ view }) => view.items.some((i) => i.kind !== "on"))
+      .sort((a, b) => Number(b.c.carry) - Number(a.c.carry))
+      .map(({ c, view }) => ({
+        key: `builds:${c.id}`,
+        kind: "builds",
+        unit: { id: c.id, name: c.name, cost: c.cost, stars: c.stars },
+        carry: c.carry,
+        items: view.items,
+        // De onde veio a build: a publicada na comp (variação e partidas, como na aba Comps) ou a reserva.
+        origin: view.origin,
+        reserve: view.reserve,
+        delta: view.delta,
+        n: view.n,
+        note: view.note,
+      })),
+  );
   add(
     "shop",
     "Loja",
@@ -444,23 +573,60 @@ export function buildModel({ state, rec }) {
       reason: u.reason,
     })),
   );
+  // Carrossel aberto (o servidor o detectou: fase do jogo, GEP ou calendário): as peças lidas do carrossel em ordem de
+  // valor, ou, sem leitura, a lista de prioridade de agora (state.carousel, app/carousel-view.mjs). Fora dele, o que o
+  // plano já sugeria pegar (plan.carousel), como sempre.
+  const car = state?.carousel?.active === true ? state.carousel : null,
+    carPicks = Array.isArray(car?.picks)
+      ? car.picks.filter((c) => c?.itemId)
+      : [],
+    carNow = carPicks.length ? car : null;
   add(
     "carousel",
-    "Carrossel",
-    "gold",
-    (plan.carousel ?? []).map((c) => ({
-      key: `car:${c.id}`,
-      kind: "carousel",
-      item: c,
-      rank: c.rank,
-      champion: c.uses?.[0]?.champion ?? "",
-      championId: c.uses?.[0]?.championId ?? null,
-      target: c.uses?.[0]?.itemId
-        ? { id: c.uses[0].itemId, name: c.uses[0].item }
-        : null,
-      completes: c.uses?.[0]?.completesNow === true,
-      reason: c.uses?.[0]?.reason ?? "",
-    })),
+    carNow ? "Carrossel agora" : "Carrossel",
+    carNow ? "go" : "gold",
+    carNow
+      ? carPicks.map((c) => ({
+          key: `car:${c.slot ?? "p"}:${c.itemId}`,
+          kind: "carousel",
+          item: { id: c.itemId, name: c.itemName ?? undefined },
+          rank: num(c.rank),
+          // A peça lida do carrossel (campeão que vem com o item); só existe quando o carrossel foi lido.
+          slotChampion: c.championId
+            ? { id: c.championId, name: c.championName ?? null }
+            : null,
+          champion: c.forChampion ?? "",
+          championId: c.forChampionId ?? null,
+          target: c.target?.id
+            ? { id: c.target.id, name: c.target.name }
+            : null,
+          completes: c.completesNow === true,
+          reason: c.reason ?? "",
+        }))
+      : (plan.carousel ?? []).map((c) => ({
+          key: `car:${c.id}`,
+          kind: "carousel",
+          item: c,
+          rank: c.rank,
+          champion: c.uses?.[0]?.champion ?? "",
+          championId: c.uses?.[0]?.championId ?? null,
+          target: c.uses?.[0]?.itemId
+            ? { id: c.uses[0].itemId, name: c.uses[0].item }
+            : null,
+          completes: c.uses?.[0]?.completesNow === true,
+          reason: c.uses?.[0]?.reason ?? "",
+        })),
+    carNow
+      ? {
+          state: car.from === "reading" ? "now" : "priority",
+          text:
+            car.from === "reading" ? "lido do jogo" : "prioridade: não lido",
+          title:
+            car.from === "reading"
+              ? "Peças do carrossel lidas do jogo (GEP), em ordem de valor para o plano."
+              : (car.note ?? "O carrossel não foi lido."),
+        }
+      : null,
   );
 
   /* ----- Painel de decisão ----- */
@@ -553,10 +719,14 @@ export function buildModel({ state, rec }) {
     };
   }
 
-  const progress = stage?.goalProgress ?? { onBoard: 0, goal: goalIds.size };
+  // "N/M" do anel do HUD: peças da comp em campo e, à parte, as que estão só na reserva (roster.js). O
+  // `stage.goalProgress.onBoard` do servidor soma campo e reserva da análise; aqui fica separado e com a reserva de agora.
+  const progress = compOwnership(roster, [...goalIds]);
   return {
     hero,
     status,
+    // Para quem desenha fora do modelo (seção Plano): a mesma leitura de campo e reserva.
+    roster,
     plan: {
       title: plan.title,
       // Código do planejador do jogo (importar equipe); null quando algum campeão não tem ID de importação.
@@ -577,14 +747,28 @@ export function buildModel({ state, rec }) {
         next: t.next ?? null,
         active: !!t.active,
       })),
-      progress: { have: progress.onBoard, total: progress.goal },
+      // "N/M" em campo (o overlay também lê este par). A reserva fica em `reserve`: "+K na reserva" e o texto da dica.
+      progress: { have: progress.field, total: progress.size },
+      reserve: {
+        count: progress.reserve,
+        known: progress.benchKnown,
+        text: progress.text,
+      },
       // Peças da comp que valem trocar (ou que estão sob pressão sem substituto bom), com a sugestão escolhida.
       subs: (plan.flex ?? [])
         .filter((f) => f.suggest || f.contested || f.unreachable)
-        .map((f) => ({
-          ...f,
-          pick: f.options.find((o) => o.id === f.suggest) ?? null,
-        })),
+        .map((f) => {
+          // `where`: onde está a alternativa que já é sua ("em campo", "na reserva"...), pela leitura de agora (roster.js).
+          const options = (f.options ?? []).map((o) => {
+            const own = ownership(roster, o.id);
+            return { ...o, where: own.mine ? own.label : "" };
+          });
+          return {
+            ...f,
+            options,
+            pick: options.find((o) => o.id === f.suggest) ?? null,
+          };
+        }),
       steps,
       counts: {
         ready: dock.filter((d) => d.kind === "ready").length,

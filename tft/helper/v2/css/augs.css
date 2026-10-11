@@ -184,4 +184,20 @@
     color: var(--muted);
     font-size: var(--fs-xs);
   }
+  /* Carta já trocada no jogo (cada uma troca uma vez) e carta fora do catálogo (não avaliada). */
+  .aug-rerolled {
+    color: var(--faint);
+    font-size: var(--fs-xs);
+  }
+  .aug-card[data-unknown] {
+    border-style: dotted;
+    opacity: 0.8;
+  }
+  /* De onde vêm os aprimoramentos: aparece só quando não é o normal (sem fonte, aguardando ou nome desconhecido). */
+  .aug-source {
+    font-size: var(--fs-2xs);
+    &[data-state="sem-fonte"] {
+      color: var(--amber);
+    }
+  }
 }

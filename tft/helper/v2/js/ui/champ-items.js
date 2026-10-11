@@ -2,6 +2,7 @@ import { esc } from "../dom.js";
 import { glyph, itemPortrait, portrait, stars } from "./glyphs.js";
 import { richText } from "./rich-text.js";
 import { buildStates } from "../../../core/items/holdings.mjs";
+import { buildSourceNote } from "../../../core/items/scenarios.mjs";
 
 /**
  * Itens do campeão clicado na Formação: o que está equipado e os itens recomendados com a receita.
@@ -38,7 +39,7 @@ export function mountChampItems(root, { onClose }) {
         <div class="ci-head">${portrait(cell.id, cell.name, { size: 30 })}<b>${esc(cell.name)}</b>${cell.stars > 0 ? `<i title="${cell.stars} ${cell.stars === 1 ? "estrela" : "estrelas"}"><span aria-hidden="true">${stars(cell.stars)}</span><span class="sr">${cell.stars} ${cell.stars === 1 ? "estrela" : "estrelas"}</span></i>` : ""}
           ${equipped.length ? `<span class="ci-equipped" role="group" aria-label="Itens equipados" title="equipados">${equipped.map((e) => itemPortrait(e, { size: 20 })).join("")}</span>` : ""}
           <button type="button" class="btn btn-quiet btn-icon ci-close" data-close aria-label="Fechar itens do campeão" title="Fechar (Esc)">${glyph("x")}</button></div>
-        ${rec.length ? `<ul class="ci-list" aria-label="Itens recomendados">${rec.join("")}</ul>` : '<p class="ci-empty">Sem build recomendada para este campeão.</p>'}`;
+        ${rec.length ? `<ul class="ci-list" aria-label="Itens recomendados">${rec.join("")}</ul>${buildSourceNote(b) ? `<p class="ci-src"${b?.reserve ? ' data-reserve="1"' : ""}>${esc(buildSourceNote(b))}</p>` : ""}` : '<p class="ci-empty">Sem build recomendada para este campeão.</p>'}`;
     },
   };
 }

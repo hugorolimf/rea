@@ -18,7 +18,8 @@ function pressure(f) {
 /** O que a alternativa traz: posse, disputa e efeito nas sinergias da comp. */
 function gains(o) {
   const out = [];
-  if (o.owned) out.push(`já é sua ${stars(o.stars)}`);
+  if (o.owned)
+    out.push(`já é sua ${stars(o.stars)}${o.where ? ` (${o.where})` : ""}`);
   out.push(
     o.enemyCopies ? `${o.enemyCopies}/${o.total} com rivais` : "sem disputa",
   );
@@ -33,7 +34,9 @@ function gains(o) {
 /** Resumo visível de uma alternativa (o detalhe completo fica na dica): posse e disputa. */
 const altNote = (o) =>
   o.owned
-    ? "já é sua"
+    ? o.where === "na reserva"
+      ? "sua, na reserva"
+      : "já é sua"
     : o.enemyCopies
       ? `${o.enemyCopies}/${o.total} rivais`
       : "sem disputa";

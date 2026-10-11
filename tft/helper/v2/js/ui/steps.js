@@ -1,5 +1,6 @@
 import { el, reconcile, esc } from "../dom.js";
 import {
+  champName,
   getCatalog,
   glyph,
   itemPortrait,
@@ -18,6 +19,7 @@ const ICON = {
   hold: "pause",
   moves: "swap",
   next: "up",
+  builds: "bank",
   shop: "coin",
   carousel: "flag",
 };
@@ -84,6 +86,28 @@ export function nextRow(r) {
   return `${mini(r.unit.id, r.unit.name, r.unit.stars)}<span class="nx-item" data-complete="${rec.complete ? 1 : 0}">${main}</span>${op("=")}${base}<span class="nx-recipe" role="group" aria-label="Receita de ${esc(rec.item.name)}">${recipe}</span>${note ? `<small class="nx-note" data-tone="${rec.complete ? "go" : "amber"}">${note}</small>` : ""}`;
 }
 
+/** Tom de `.nx-part` (rich.css) de cada situação de um item recomendado: feito, ao alcance ou faltando. */
+const BUILD_PART = { done: "equipped", go: "bank", wait: "missing" };
+
+/**
+ * "Itens dos campeões": o campeão e TODOS os itens recomendados dele (até 3), na ordem da build, cada um com a situação
+ * segundo o seu banco (equipado / no banco / monta agora / mover / falta N). O destaque (`next`) é o próximo a resolver.
+ * Ícone + marca + palavra curta: o estado nunca depende só da cor; o nome do item fica no rótulo de leitor de tela.
+ */
+export function buildsRow(r) {
+  const cells = r.items
+    .map((i) => {
+      const label = `${i.item.name}: ${i.text || i.label}`,
+        from = i.from?.id
+          ? `<span class="bi-from" aria-hidden="true">${portrait(i.from.id, i.from.name, { size: 14, hidden: true })}</span>`
+          : "";
+      return `<span class="bi" data-kind="${esc(i.kind)}" data-next="${i.next ? 1 : 0}" role="img" aria-label="${esc(label)}" title="${esc(label)}"><span class="nx-part" data-state="${BUILD_PART[i.tone] ?? "missing"}">${itemPortrait(i.item, { size: 26, hidden: true })}<i class="nx-mark">${glyph(i.mark)}</i></span><small class="bi-lbl" data-tone="${esc(i.tone)}">${from}${esc(i.label)}</small></span>`;
+    })
+    .join("");
+  // A origem da build (comp com variação e partidas, ou reserva) vem pronta do motor único de itens (`note`).
+  return `${mini(r.unit.id, r.unit.name, r.unit.stars)}<span class="bi-list" role="group" aria-label="Itens recomendados de ${esc(r.unit.name)}"${r.note ? ` title="${esc(r.note)}"` : ""}>${cells}</span>${r.reserve ? `<small class="bi-src" title="${esc(r.note ?? "")}">reserva</small>` : ""}`;
+}
+
 /**
  * Peça da lista Comprar. Se ela está na loja agora (`r.shop`, de shop-match.js): contorno de ação, selo "NA LOJA" sobre
  * a borda do retrato (sobreposto: não ocupa espaço, a linha não muda de altura) e, no lugar da chance, o que fazer
@@ -91,14 +115,26 @@ export function nextRow(r) {
  */
 function buyTile(r) {
   const s = r.shop,
-    where =
-      r.how === "replace"
+    copy = r.how === "copy" ? r.copy : null,
+    where = copy
+      ? esc(copy.text)
+      : r.how === "replace"
         ? "entra por " + esc(r.replaces)
         : r.how === "bank"
           ? "guardar no banco"
           : "vaga livre",
     flag = s
       ? `<b class="shop-flag" data-conf="${s.probable ? "provavel" : "confiavel"}" aria-hidden="true">${esc(s.badge)}</b>`
+      : "",
+    // Cópia sua na reserva agora (roster.js, `r.own` do modelo): selo azul do banco com o número de cópias lá.
+    own = r.own?.state === "reserve" || r.own?.state === "both" ? r.own : null,
+    ownTag = own
+      ? `<small class="own-tag" title="${esc(own.text)}">${glyph("bank")}<span aria-hidden="true">${esc(own.reserve.pieces)}</span><span class="sr">${esc(own.text)}</span></small>`
+      : "",
+    // Peça nova x cópia de peça que você já tem: a cópia diz a estrela que fecha ("→2★"); a nova não leva marca.
+    kindNote = `${copy ? copy.text : "peça nova"}${own ? `; ${own.text}` : ""}`,
+    tag = copy
+      ? `<small class="copy-tag" title="${esc(copy.text)}"><span aria-hidden="true">→${esc(copy.next)}★</span><span class="sr">${esc(copy.text)}</span></small>`
       : "";
   return tile(r.unit, {
     tone: [r.broke ? "is-broke" : "", s ? "is-shop" : ""]
@@ -106,12 +142,16 @@ function buyTile(r) {
       .join(" "),
     // Na loja: a dica traz o aviso (e a diferença confiável x provável); a chance por loja continua nela.
     title: s
-      ? `${r.unit.name}\n${s.title}\nChance por loja: ${pct(r.chance)}`
-      : r.unit.name,
-    attrs: s ? ` data-shop="${s.probable ? "provavel" : "confiavel"}"` : "",
+      ? `${r.unit.name} (${kindNote})
+${s.title}
+Chance por loja: ${pct(r.chance)}`
+      : `${r.unit.name} (${kindNote})`,
+    attrs:
+      (s ? ` data-shop="${s.probable ? "provavel" : "confiavel"}"` : "") +
+      (copy ? ` data-copy="${copy.closes ? "fecha" : "sobe"}"` : ""),
     // O ícone do canto diz como a peça entra; o texto equivalente fica para leitor de tela (e na dica).
-    badge: `<em class="act" title="${where}">${glyph(r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}<span class="sr">${where}</span></em>${flag}`,
-    foot: `<span class="meter" style="--p:${Math.min(1, r.chance / 0.2)}"><i></i></span><small${s ? ` class="shop-do" data-conf="${s.probable ? "provavel" : "confiavel"}"` : ""}>${s ? `<span class="sr">na loja: </span>${esc(s.mark)}` : pct(r.chance)}</small>`,
+    badge: `<em class="act" title="${where}">${glyph(copy ? "up" : r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}<span class="sr">${where}</span></em>${flag}`,
+    foot: `<span class="meter" style="--p:${Math.min(1, r.chance / 0.2)}"><i></i></span><small${s ? ` class="shop-do" data-conf="${s.probable ? "provavel" : "confiavel"}"` : ""}>${s ? `<span class="sr">na loja: </span>${esc(s.mark)}` : pct(r.chance)}</small>${tag}${ownTag}`,
   });
 }
 
@@ -133,6 +173,7 @@ const BUILD = {
   moves: (r) =>
     `${mini(r.from.id, r.from.name, r.from.stars)}${flow(r.now ? "go" : "")}${r.moves.map((m) => `<span class="mv">${itemPortrait(m.item, { size: 24 })}${flow()}${mini(m.to.id, m.to.name)}</span>`).join("")}${r.now ? '<i class="now-tag" title="agora"><span class="now-dot" aria-hidden="true"></span>agora</i>' : `<i class="wait" title="planejar">${glyph("clock")}planejar</i>`}`,
   next: (r) => nextRow(r),
+  builds: (r) => buildsRow(r),
   shop: (r) => {
     const [tone, g] = SHOP_GLYPH[r.action] ?? ["", "x"];
     return tile(r.unit, {
@@ -142,7 +183,7 @@ const BUILD = {
   },
   // Componente → item que ele fecha (destaque) ou começa → quem vai usar.
   carousel: (r) =>
-    `<span class="car" title="${esc(r.reason)}"><b class="rank">${esc(r.rank)}</b>${itemPortrait(r.item)}${r.target ? `${flow(r.completes ? "go" : "hold")}<span class="car-target${r.completes ? " is-close" : ""}">${itemPortrait(r.target, { size: 30 })}</span>${r.championId ? portrait(r.championId, r.champion, { size: 24 }) : ""}` : ""}</span>`,
+    `<span class="car" title="${esc(r.reason)}">${r.rank != null ? `<b class="rank">${esc(r.rank)}</b>` : ""}${r.slotChampion ? portrait(r.slotChampion.id, r.slotChampion.name ?? champName(r.slotChampion.id), { size: 30 }) : ""}${itemPortrait(r.item)}${r.target ? `${flow(r.completes ? "go" : "hold")}<span class="car-target${r.completes ? " is-close" : ""}">${itemPortrait(r.target, { size: 30 })}</span>${r.championId ? portrait(r.championId, r.champion, { size: 24 }) : ""}` : ""}</span>`,
 };
 const CLASS = { buy: "row-tile", shop: "row-tile" };
 

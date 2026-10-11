@@ -5,6 +5,7 @@ import {
   OFFLINE_AFTER,
   POLL_MAX_MS,
   POLL_MS,
+  RESUME_NOTE_AFTER_MS,
   STALE_AFTER_S,
   connectionView,
   dataAge,
@@ -124,6 +125,42 @@ test("navegador offline vence tudo", () => {
   });
   assert.equal(v.state, "offline");
   assert.equal(v.label, "Sem rede");
+});
+
+test("volta da aba com leitura velha: diz de quando é a tela até a nova chegar", () => {
+  const back = connectionView({
+    now: NOW,
+    okAt: NOW - 3 * 60_000,
+    ageSeconds: 2,
+    live: true,
+    resumed: true,
+  });
+  assert.match(back.detail, /atualizando · última leitura há 3 min/);
+  assert.equal(back.pulse, true);
+  assert.match(back.title, /segundo plano/);
+  // Leitura recente (o SSE manteve a aba em dia): nada a avisar.
+  const fresh = connectionView({
+    now: NOW,
+    okAt: NOW - (RESUME_NOTE_AFTER_MS - 1000),
+    ageSeconds: 2,
+    resumed: true,
+  });
+  assert.doesNotMatch(fresh.detail, /atualizando/);
+  // Leitura nova chegou (`resumed` volta a false): o normal.
+  assert.doesNotMatch(
+    connectionView({ now: NOW, okAt: NOW - 3 * 60_000, ageSeconds: 2 }).detail,
+    /atualizando/,
+  );
+  // Falha vence a nota de volta.
+  assert.equal(
+    connectionView({
+      now: NOW,
+      okAt: NOW - 3 * 60_000,
+      failures: 1,
+      resumed: true,
+    }).state,
+    "reconnecting",
+  );
 });
 
 test("SSE fora do ar vira nota na dica, sem mudar o tom", () => {

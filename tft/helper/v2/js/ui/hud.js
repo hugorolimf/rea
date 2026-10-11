@@ -317,23 +317,34 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
           .join(" · ") || "Ouro",
       );
       /* Meta */
-      const g = plan?.progress;
+      const g = plan?.progress,
+        bench = plan?.reserve;
       setVars(goalRing, { "--p": g?.total ? clamp(g.have / g.total) : 0 });
       setText(goalText, g ? `${g.have}/${g.total}` : "—");
+      // "N/M" = peças da comp em campo; as que estão só na reserva viram "+K na reserva" ao lado (roster.js).
+      setTitle(
+        goalWrap,
+        bench?.text ? `Peças da comp: ${bench.text}` : "Peças da comp",
+      );
       const sc = plan?.score;
       // O carry é a imagem dele (nome só para leitor de tela); o resto são textos fixos, o score e números.
       const state = status.pinned ? "fixada" : plan ? "sugerida" : "",
         html = [
           state ? `<span class="hud-tag">${esc(state)}</span>` : "",
+          bench?.count
+            ? `<span class="chip" data-tone="blue" title="${esc(bench.text)}">${glyph("bank")}+${esc(bench.count)} na reserva</span>`
+            : "",
           sc
             ? `<span class="score" data-band="${bandOf(sc.value)}"><span class="sr">score </span>${esc(sc.value)}</span>`
             : "",
           sc?.best
             ? `<span class="chip" data-tone="gold">${glyph("crown")}melhor comp</span>`
             : "",
-          sc?.chance != null
-            ? `<span class="hud-tag">chance ${Math.round(sc.chance * 100)}%</span>`
-            : "",
+          sc?.expected != null
+            ? `<span class="hud-tag">${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º esperado${sc.top4 != null ? ` · ${Math.round(sc.top4)}% top 4` : ""}</span>`
+            : sc?.chance != null
+              ? `<span class="hud-tag">chance ${Math.round(sc.chance * 100)}%</span>`
+              : "",
           plan?.carry
             ? `<span class="hud-tag">carry ${nameChip("champion", plan.carryId, plan.carry, { size: 18 })}</span>`
             : "",
@@ -358,7 +369,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
       setTitle(
         goalWrap,
         plan
-          ? `${g ? `${g.have}/${g.total} peças da comp já em campo · ` : ""}${plan.title}${sc ? ` · score ${sc.value}/100 (itens, o que você tem, força, chance de montar no nível ${sc.level ?? "?"}, loja e disputa)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
+          ? `${g ? `${g.have}/${g.total} peças da comp já em campo · ` : ""}${plan.title}${sc ? ` · score ${sc.value}/100 (colocação esperada${sc.expected != null ? ` ${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º` : ""}, já com o alcance, os seus itens e aprimoramentos)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
           : "",
       );
     },

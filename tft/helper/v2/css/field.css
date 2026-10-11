@@ -510,6 +510,23 @@
         color: var(--danger);
       }
     }
+    /* Cópia de peça que você já tem: a estrela que ela fecha, em dourado (a peça nova não leva marca). */
+    & small.copy-tag {
+      color: var(--gold);
+      font-weight: 800;
+    }
+    /* Cópia sua na reserva agora: banco azul (o mesmo azul de "na reserva" da Formação) e o número de cópias. */
+    & small.own-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: var(--blue);
+      font-weight: 800;
+      & .i {
+        inline-size: 12px;
+        block-size: 12px;
+      }
+    }
   }
   /* Selo "NA LOJA": cheio quando a loja foi lida com confiança; tracejado e com "?" quando é só provável. */
   .shop-flag {
@@ -885,6 +902,14 @@
   .ci-empty {
     color: var(--faint);
     font-size: var(--fs-sm);
+  }
+  /* De onde vem a build: a da comp (variação e partidas, como na aba Comps) ou a reserva (em âmbar). */
+  .ci-src {
+    color: var(--muted);
+    font-size: var(--fs-2xs);
+    &[data-reserve="1"] {
+      color: var(--amber);
+    }
   }
 
   /* Janela estreita (ao lado do jogo, celular): passos mais justos. */

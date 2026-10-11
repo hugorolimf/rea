@@ -159,3 +159,43 @@ test("partida revista: os campos antigos do cliente continuam indo (a leitura de
   assert.equal(body.levelEstimated, true);
   assert.equal(body.levelSource, "estimado");
 });
+
+// "Analisando" x "fora do ar": passado o prazo da análise, a sondagem de saúde decide (sem abrir porta: fetch simulado).
+test("prazo da análise estourado: servidor respondendo à saúde = analisando; sem resposta = fora do ar", async () => {
+  const { loadRecommendation, RECOMMEND_TIMEOUT_MS } = await import("./api.js");
+  assert.equal(RECOMMEND_TIMEOUT_MS, 60000);
+  const real = globalThis.fetch;
+  const timeout = () =>
+    Object.assign(new Error("tempo"), { name: "TimeoutError" });
+  try {
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/api/recommend")) throw timeout();
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+    await assert.rejects(
+      loadRecommendation({}),
+      (e) =>
+        e.analyzing === true &&
+        !e.network &&
+        /continua calculando/.test(e.message),
+    );
+    globalThis.fetch = async () => {
+      throw timeout();
+    };
+    await assert.rejects(
+      loadRecommendation({}),
+      (e) => e.network === true && e.timeout === true && !e.analyzing,
+    );
+    // Erro HTTP do servidor (400 de entrada inválida) segue como erro de resposta, sem sondagem.
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ error: "Ouro inválido." }), {
+        status: 400,
+      });
+    await assert.rejects(
+      loadRecommendation({}),
+      (e) => e.status === 400 && !e.analyzing && !e.network,
+    );
+  } finally {
+    globalThis.fetch = real;
+  }
+});

@@ -59,6 +59,7 @@ export function mountPlan(root) {
       main.innerHTML = `
         <div class="plan-head"><h3>${richText(view.title)}</h3><small>${esc(view.pinned ? "comp fixada" : view.since)}</small><span class="plan-meter" style="--p:${view.pct / 100}" role="progressbar" aria-label="Progresso do plano" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.pct}" aria-valuetext="${view.pct}% do plano"><i></i></span></div>
         ${view.challenger ? `<p class="plan-challenger">${glyph("pause")}<span>${richText(view.challenger)}</span></p>` : ""}
+        ${view.reach ? `<p class="plan-reach"><span>${richText(`Alcance: ${view.reach}`)}</span></p>` : ""}
         ${view.next.length ? `<div class="plan-next"><h4 class="plan-sub">Próximo passo</h4><ol>${view.next.map((s) => `<li data-kind="${esc(s.kind)}">${richText(s.text)}</li>`).join("")}</ol></div>` : ""}
         <h4 class="plan-sub">Peças</h4><ul class="plan-list">${view.units.map(unitRow).join("")}</ul>
         ${view.items.length ? `<h4 class="plan-sub">Itens</h4><ul class="plan-list">${view.items.map(itemRow).join("")}</ul>` : ""}

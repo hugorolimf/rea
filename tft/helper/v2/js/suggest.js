@@ -3,7 +3,8 @@
  * /api/recommend) e a comp que o Ao vivo mostra. Não decide nada de jogo: só ordena, escolhe onde abrir e navega.
  *
  * O "N/M" do anel do HUD NÃO é a posição entre as sugestões: é `plan.progress`, as peças da comp que já estão em campo
- * (stage.goalProgress do servidor). A posição entre as sugestões é a de `positionLabel`.
+ * (roster.js no cliente; as que estão só na reserva vêm à parte, "+K na reserva"). A posição entre as sugestões é a de
+ * `positionLabel`.
  */
 
 /** Quantas comps o motor marca como sugeridas (`suggested` no ranking). */
@@ -57,6 +58,8 @@ export const positionLabel = (index, length) =>
  * Estado de uma comp no modal: `chosen` = é a fixada (mostra "Escolhida" e "Desfazer"); `live` = é a que o Ao vivo
  * mostra agora; `suggested` = está entre as sugeridas do motor. A fixada vira o plano do Ao vivo, então `live` e
  * `chosen` coincidem depois que o servidor aceita a escolha.
+ * `best` = a melhor sugestão pela medida do motor (o score; `best` do ranking); `kept` = é a do Ao vivo, mas mantida
+ * atrás de outra de score maior (histerese da troca de plano: a nota do plano diz por quê).
  */
 export function choiceState({
   id,
@@ -64,12 +67,23 @@ export function choiceState({
   planId = null,
   ranking = [],
 }) {
+  const rows = Array.isArray(ranking) ? ranking : [],
+    row = rows.find((r) => r?.id === id) ?? null,
+    top = rows.find((r) => r?.best === true) ?? null,
+    live = id != null && id === planId;
   return {
     chosen: id != null && id === goalId,
-    live: id != null && id === planId,
-    suggested: (ranking ?? []).some(
-      (r) => r?.id === id && r.suggested === true,
-    ),
+    live,
+    suggested: row?.suggested === true,
+    best: row?.best === true,
+    kept:
+      live &&
+      !!top &&
+      top.id !== id &&
+      (row?.kept === true ||
+        (Number.isFinite(row?.score) &&
+          Number.isFinite(top.score) &&
+          row.score < top.score)),
   };
 }
 

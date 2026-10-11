@@ -20,6 +20,20 @@ export function focusView(model) {
     panel = plan.panel ?? null,
     items = [];
 
+  // Carrossel aberto (a trilha "Carrossel agora" do modelo): é o que se decide agora, antes de qualquer outra coisa.
+  const car = steps.get("carousel");
+  if (car?.note?.state === "now" || car?.note?.state === "priority")
+    items.push({
+      id: "carousel",
+      tone: "go",
+      icon: "flag",
+      label: "Carrossel",
+      detail:
+        car.note.state === "now"
+          ? plural(car.rows.length, "peça lida", "peças lidas")
+          : `prioridade · ${plural(car.rows.length, "componente", "componentes")}`,
+    });
+
   const buyRows = steps.get("buy")?.rows ?? [],
     inShop = buyRows.filter((r) => r.shop && !r.broke),
     broke = buyRows.filter((r) => r.shop && r.broke);
@@ -74,7 +88,7 @@ export function focusView(model) {
       tone: "danger",
       icon: "warn",
       label: "Estabilizar",
-      detail: "vida baixa: role para segurar",
+      detail: "vida em perigo: upgrades do plano",
     });
   else if (kind === "hold")
     items.push({

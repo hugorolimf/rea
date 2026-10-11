@@ -1,4 +1,5 @@
 import { esc, isReducedMotion } from "../dom.js";
+import { metaNote } from "../meta-freshness.js";
 import {
   ATTRS,
   TIER_KINDS,
@@ -458,12 +459,15 @@ export function mountItems(root) {
             minute: "2-digit",
           })
         : null;
+      const note = metaNote(next.freshness, next.fetchedAt);
       setHtml(
         ref("source"),
         [
           next.source &&
             `<span class="chip">${esc(next.source)}${next.games ? ` · ${esc(thousands(next.games))} partidas` : ""}</span>`,
           date && `<span class="chip">atualizada ${esc(date)}</span>`,
+          note &&
+            `<span class="chip"${note.tone ? ` data-tone="${note.tone}"` : ""}>${esc(note.text)}</span>`,
         ]
           .filter(Boolean)
           .join(""),

@@ -78,3 +78,25 @@ test("trocas e equipar entram no fim, com contagem no singular e no plural", () 
   assert.equal(v.items[0].detail, "1 peça");
   assert.equal(v.items[1].detail, "2 itens");
 });
+
+test("carrossel aberto vem primeiro: peças lidas ou, sem leitura, a lista de prioridade", () => {
+  const withNote = (state, rows) => ({
+    status: { live: true },
+    plan: {
+      steps: [{ id: "carousel", group: "items", rows, note: { state } }],
+      panel: {},
+    },
+  });
+  const a = focusView(withNote("now", [{}, {}, {}]));
+  assert.deepEqual(ids(a), ["carousel"]);
+  assert.equal(a.items[0].detail, "3 peças lidas");
+  assert.equal(a.items[0].tone, "go");
+  const b = focusView(withNote("priority", [{}]));
+  assert.equal(b.items[0].detail, "prioridade · 1 componente");
+  // A sugestão do plano fora do carrossel (sem selo) não entra na faixa.
+  const c = focusView({
+    status: { live: true },
+    plan: { steps: [{ id: "carousel", rows: [{}] }], panel: {} },
+  });
+  assert.deepEqual(ids(c), []);
+});

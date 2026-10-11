@@ -2,6 +2,8 @@
  * Visão do checklist do plano em andamento (`planProgress` de /api/recommend): converte o estado do servidor em
  * textos e estados que a seção "Plano" desenha. Pura: não decide nada de jogo, só apresenta o que o servidor guardou.
  */
+import { ownership } from "./roster.js";
+
 const STATUS_TEXT = {
   done: "feito",
   partial: "em andamento",
@@ -13,25 +15,46 @@ const STATUS_TEXT = {
 const n1 = (x) =>
   typeof x === "number" ? x.toFixed(2).replace(".", ",") : "?";
 
-/** Texto da peça: "Cinderling 1→2★ · 2/3 cópias", ou "2★ · feito". */
-export function unitLine(u) {
-  if (u.status === "done") return `${u.stars}★ feito`;
+/**
+ * Texto da peça: "Cinderling 1→2★ · 2/3 cópias", ou "2★ · feito". `own` (opcional) é `ownership` de roster.js (campo e
+ * reserva lidos agora): com cópia na reserva, a linha diz onde ("na reserva", "2 cópias: 1 em campo, 1 na reserva").
+ */
+export function unitLine(u, own = null) {
+  const where =
+    own?.state === "reserve" || own?.state === "both" ? own.label : "";
+  if (u.status === "done")
+    return `${u.stars}★ feito${where ? ` · ${where}` : ""}`;
   const goal = `${u.stars > 0 ? u.stars : 0}→${u.targetStars}★`;
   if (u.status === "missing")
-    return u.boughtUpTo
-      ? `${goal} · comprada ${u.boughtUpTo}× (pode estar na reserva)`
-      : `${goal} · falta`;
-  return `${goal} · ${u.copies}/${u.need} cópias`;
+    return where
+      ? `${goal} · ${where}`
+      : u.boughtUpTo
+        ? `${goal} · comprada ${u.boughtUpTo}×${own?.state === "absent" ? " (não está em campo nem na reserva)" : " (pode estar na reserva)"}`
+        : `${goal} · falta`;
+  return `${goal} · ${u.copies}/${u.need} cópias${where ? ` · ${where}` : ""}`;
 }
 
-/** Nota do desafiante que ainda não passou da confirmação, ou null. */
+/**
+ * Por que o plano segue no Ao vivo mesmo com outra comp à frente, em uma linha, ou null (plan-state.mjs):
+ * - `pending: false`: a outra lidera em colocação esperada (E), mas não passa do custo de trocar + a margem fixa;
+ * - `pending` (true): passou, e espera um fato novo (loja, compra, rodada, nível...) para confirmar; reler não conta.
+ * Os números são colocações esperadas (a medida que ordena a lista). Nota antiga (sem `unit: "placement"`) mostra só a
+ * vantagem.
+ */
 export function challengerNote(c) {
   if (!c) return null;
-  const margin =
-    typeof c.noise === "number" && typeof c.cost === "number"
-      ? c.noise + c.cost
-      : null;
-  return `${c.title} lidera por ${n1(c.gain)}º${margin !== null ? ` (precisa passar de ${n1(margin)}º)` : ""} · confirmando ${c.readings}/${c.need.readings} leituras, ${c.rounds}/${c.need.rounds} rodadas. O plano atual segue até confirmar.`;
+  const pos = (x) => (typeof x === "number" ? n1(x) : "?"),
+    exp = c.unit === "placement" && typeof c.expectedTo === "number",
+    margin = typeof c.cost === "number" ? c.cost + (c.hysteresis ?? 0) : null,
+    lead = exp
+      ? `${c.title} espera ${pos(c.expectedTo)}º contra ${pos(c.expectedFrom)}º do plano (${pos(c.gain)} melhor)`
+      : `${c.title} lidera por ${pos(c.gain)}`,
+    need =
+      margin === null
+        ? ""
+        : ` · trocar custa ${pos(c.cost)}${c.hysteresis ? ` + margem ${pos(c.hysteresis)}` : ""}`;
+  if (c.pending === false) return `Mantido: ${lead}${need}.`;
+  return `Mantido: ${lead}${need} · troca no próximo fato novo (loja, compra, rodada ou nível) se continuar à frente.`;
 }
 
 /** Quando o plano foi adotado: "desde 2-3 (nível 4)" ou "nesta partida" sem estágio lido. */
@@ -43,8 +66,9 @@ export function sinceText(since) {
 
 /**
  * Modelo da seção. `null` quando não há plano; `live` esmaece as ações quando a leitura não é de partida em andamento.
+ * `roster` (opcional, `rosterOf` de roster.js): onde estão as suas peças agora, para a linha de cada peça.
  */
-export function planView(progress, live = true) {
+export function planView(progress, live = true, roster = null) {
   if (!progress?.plan) return null;
   const { plan, summary, level, gold } = progress;
   return {
@@ -56,19 +80,25 @@ export function planView(progress, live = true) {
     total: summary?.total ?? 0,
     live,
     challenger: challengerNote(progress.challenger),
+    // Alcance do plano em uma linha (servidor: core/comps/reach.mjs), ou null.
+    reach: typeof progress.reach === "string" ? progress.reach : null,
     next: (progress.next ?? []).map((s) => ({ kind: s.kind, text: s.text })),
-    units: (progress.units ?? []).map((u) => ({
-      id: u.id,
-      name: u.name,
-      cost: u.cost,
-      carry: u.carry,
-      status: u.status,
-      statusText: STATUS_TEXT[u.status] ?? u.status,
-      line: unitLine(u),
-      fraction: u.need ? Math.min(1, u.copies / u.need) : 0,
-      lost: !!u.lost,
-      where: u.where,
-    })),
+    units: (progress.units ?? []).map((u) => {
+      const own = roster ? ownership(roster, u.id) : null;
+      return {
+        id: u.id,
+        name: u.name,
+        cost: u.cost,
+        carry: u.carry,
+        status: u.status,
+        statusText: STATUS_TEXT[u.status] ?? u.status,
+        line: unitLine(u, own),
+        fraction: u.need ? Math.min(1, u.copies / u.need) : 0,
+        lost: !!u.lost,
+        where: u.where,
+        own: own?.state ?? null,
+      };
+    }),
     items: (progress.items ?? []).map((i) => ({
       key: i.key,
       unitId: i.unitId,

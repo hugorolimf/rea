@@ -18,7 +18,7 @@ const getJSON = async (url, init = {}, ms = 20000) => {
           ? "O servidor demorou demais para responder."
           : "Sem resposta do servidor do helper.",
       ),
-      { network: true, cause },
+      { network: true, timeout: cause?.name === "TimeoutError", cause },
     );
   }
   let body = null;
@@ -113,18 +113,46 @@ export function recommendPayload(
     levelSource: screen.level == null ? "estimado" : "tela",
   };
 }
-// Análise nova busca evidência na MetaTFT em até 3 passes: espera mais que as leituras simples para não abortar
-// (e repetir) um POST que o servidor ainda está montando.
-export const loadRecommendation = (payload) =>
-  getJSON(
-    "/api/recommend",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-    120000,
-  );
+/** Estado de saúde do servidor (barato; responde mesmo durante uma análise): ver GET /api/health. */
+export const loadHealth = () => getJSON("/api/health", {}, 4000);
+
+/** Prazo de uma análise (ms): a MetaTFT pode ser consultada em até 3 passes, e a máquina pode estar ocupada com o jogo. */
+export const RECOMMEND_TIMEOUT_MS = 60000;
+
+/**
+ * Análise do servidor (POST /api/recommend). Passado o prazo, pergunta se o servidor está no ar: se estiver, o erro é
+ * `analyzing` ("analisando": o servidor segue calculando e a próxima leitura divide o mesmo cálculo); se não
+ * responder, continua sendo `network` ("fora do ar").
+ */
+export async function loadRecommendation(
+  payload,
+  { timeoutMs = RECOMMEND_TIMEOUT_MS } = {},
+) {
+  try {
+    return await getJSON(
+      "/api/recommend",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      timeoutMs,
+    );
+  } catch (error) {
+    if (!error.timeout) throw error;
+    const alive = await loadHealth().then(
+      () => true,
+      () => false,
+    );
+    if (!alive) throw error;
+    throw Object.assign(
+      new Error(
+        "A análise está demorando mais que o normal. O servidor está no ar e continua calculando; a tela atualiza sozinha.",
+      ),
+      { analyzing: true, cause: error },
+    );
+  }
+}
 
 export { REFRESH_WINDOW_MS };
 /**

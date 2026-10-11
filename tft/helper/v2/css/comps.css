@@ -115,15 +115,36 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
     gap: var(--sp-4);
     align-items: start;
+    min-inline-size: 0;
   }
   .comps-state {
     grid-column: 1 / -1;
   }
 
   /* ============================================================ Cartão de comp (.card de components.css) */
+  /*
+   * Coluna única encolhível: sem ela a coluna implícita do grid é `auto` e cresce até o min-content do maior filho (as
+   * grades de 280 px do plano de itens somavam ~570 px), e o recorte do `content-visibility` cortava o excesso na borda
+   * do cartão. Vale para o cartão e para os blocos em grade dentro dele.
+   */
+  .comp,
+  .comp-bank,
+  .comp-actions,
+  .cp-champ,
+  .cp-wish-champ {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .comp > *,
+  .comp-bank > *,
+  .comp-actions > *,
+  .cp-champ > *,
+  .cp-wish-champ > * {
+    min-inline-size: 0;
+  }
   .comp {
     align-content: start;
     min-inline-size: 0;
+    overflow-wrap: anywhere;
     /* Cartões fora da tela não custam layout; o tamanho lembrado evita o salto da barra de rolagem. */
     content-visibility: auto;
     contain-intrinsic-size: auto 420px;
@@ -186,13 +207,22 @@
     & li.is-mine .comp-unit-name {
       color: var(--go);
     }
+    /* Só na reserva: contorno azul tracejado (o azul de "na reserva" da Formação), distinto do brilho verde de "em campo". */
+    & li.is-bench .pt {
+      outline: 2px dashed var(--blue);
+      outline-offset: 2px;
+    }
+    & li.is-bench .comp-unit-name {
+      color: var(--blue);
+    }
     & li.is-carry .comp-unit-name {
       color: var(--gold);
       font-weight: 700;
     }
   }
   .badge-carry,
-  .badge-mine {
+  .badge-mine,
+  .badge-bench {
     position: absolute;
     inset-block-start: -4px;
     inset-inline-end: 1px;
@@ -214,6 +244,35 @@
   }
   .badge-mine {
     color: var(--go);
+  }
+  .badge-bench {
+    color: var(--blue);
+  }
+  /* Selo de onde está a peça: embaixo, à direita do retrato (a coroa do carry fica em cima). Com cópia em campo e na
+     reserva, o selo do banco leva o número de cópias na reserva. */
+  .badge-own {
+    inset-block: auto -4px;
+    inset-inline-end: -4px;
+    gap: 1px;
+    inline-size: auto;
+    min-inline-size: 18px;
+    padding-inline: 3px;
+    border-radius: var(--r-pill);
+    grid-auto-flow: column;
+    & b {
+      font-size: var(--fs-2xs);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+  }
+  .own-count {
+    & .own-bench {
+      color: var(--blue);
+    }
+    & .own-unread {
+      color: var(--faint);
+      font-size: var(--fs-xs);
+    }
   }
   .comp-traits {
     display: flex;
@@ -354,6 +413,7 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
     gap: var(--sp-2);
     align-items: start;
+    min-inline-size: 0;
   }
   .cp-champ,
   .cp-wish-champ {
@@ -369,6 +429,7 @@
   }
   .cp-who {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
     & .rt {
@@ -447,6 +508,8 @@
     gap: var(--sp-2);
     /* "Seguir esta comp" (ou "Liberar") ocupa a largura do cartão: é a ação do cartão. */
     & > .btn {
+      inline-size: 100%;
+      min-inline-size: 0;
       min-block-size: 38px;
       font-size: var(--fs-md);
     }

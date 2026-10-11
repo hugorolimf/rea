@@ -11,15 +11,18 @@ import {
   subscribe,
 } from "./api.js";
 import { connectionView, retryDelay } from "./connection.js";
+import { createLiveLoop } from "./live-loop.js";
 import { flip, publishMotion, reducedMotion } from "./dom.js";
 import { focusView } from "./focus.js";
 import { goalStore, matchKeyOf, swapStore } from "./comps.js";
 import { buildModel } from "./model.js";
+import { rosterOf } from "./roster.js";
 import { createPrefs, safeStorage } from "./prefs.js";
 import { canRegister, registerServiceWorker } from "./pwa.js";
 import { documentTitle, hashFor, parseHash } from "./router.js";
 import { wispsView } from "./wisps.js";
 import { bankReading } from "./items.js";
+import { metaNote } from "./meta-freshness.js";
 import { equippedBy } from "./comp-items.js";
 import { getCatalog, setCatalog } from "./ui/glyphs.js";
 import { mountBoard } from "./ui/board.js";
@@ -41,7 +44,7 @@ import { mountAugs } from "./ui/augs.js";
 import { mountPlan } from "./ui/plan.js";
 import { mountTooltips } from "./ui/tooltip.js";
 import { planView } from "./plan.js";
-import { augStore } from "./augs.js";
+import { augLabel, augStore } from "./augs.js";
 
 const $ = (id) => document.getElementById(id);
 const app = $("app"),
@@ -99,23 +102,8 @@ const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
       drawChampItems();
     },
   }),
-  // Aprimoramentos marcados por partida: entram na análise (sinergias favorecidas) e na ordem das ofertas.
+  // Aprimoramentos: oferta e escolhidos vêm do jogo (GEP, lido pelo servidor). Desmarcar só corrige uma leitura errada.
   augs = mountAugs($("augs-sec"), {
-    onChoose(id) {
-      if (replayOf()) return; // partida revista: só leitura
-      seedManualPicks(); // a marcação à mão soma ao que o GEP já leu e passa a valer sobre ele
-      const name = last?.rec?.augmentAdvice?.choices?.find(
-        (c) => c.id === id,
-      )?.name;
-      augPicks.add(
-        matchKeyOf(latestState),
-        id,
-        latestState?.screen?.stage ?? null,
-        name,
-      );
-      lastKey = "";
-      void refresh();
-    },
     onRemove(id) {
       if (replayOf()) return;
       seedManualPicks(); // corrigir uma escolha do GEP mantém as demais
@@ -181,9 +169,23 @@ const goals = goalStore(storage),
 // Aprimoramentos escolhidos: o servidor lê os do GEP (chosenAugments com source "gep"); o registro manual da partida,
 // se existe (mesmo vazio), prevalece e é o único que o servidor recebe como decisão do usuário.
 function gepPicks() {
-  return (last?.rec?.chosenAugments ?? [])
-    .filter((a) => a.source === "gep")
-    .map((a) => ({ id: a.id, stage: a.stage ?? null, name: a.name ?? null }));
+  const analysed = (last?.rec?.chosenAugments ?? []).filter(
+      (a) => a.source === "gep",
+    ),
+    names = new Map(analysed.map((a) => [a.id, a.name])),
+    // Os do estado lido agora (GEP) aparecem já, sem esperar a análise; o nome vem dela ou do id do GEP.
+    read = latestState?.screen?.pickedAugments ?? [];
+  return read.length
+    ? read.map((p) => ({
+        id: p.id,
+        stage: p.stage ?? null,
+        name: names.get(p.id) ?? augLabel(p.id),
+      }))
+    : analysed.map((a) => ({
+        id: a.id,
+        stage: a.stage ?? null,
+        name: a.name ?? null,
+      }));
 }
 function augRecords() {
   const key = matchKeyOf(latestState);
@@ -217,6 +219,8 @@ const net = {
   ageSeconds: null,
   live: false,
   nextAt: null,
+  // A aba acabou de voltar de segundo plano e a leitura de agora ainda não chegou (a barra mostra de quando é a tela).
+  resumed: false,
 };
 function drawConnection() {
   shell.setConnection(
@@ -230,9 +234,11 @@ function drawConnection() {
       ageSeconds: net.ageSeconds,
       live: net.live,
       retryInMs: net.nextAt ? Math.max(0, net.nextAt - Date.now()) : null,
+      resumed: net.resumed,
     }),
   );
 }
+// Só o relógio da barra (idade do dado); a leitura em si não depende deste intervalo.
 setInterval(() => !document.hidden && drawConnection(), 2000);
 addEventListener("online", () => {
   drawConnection();
@@ -310,7 +316,7 @@ function render(model) {
     planSec.update(
       status.waiting || status.replay || status.ended
         ? null
-        : planView(last?.rec?.planProgress, status.live),
+        : planView(last?.rec?.planProgress, status.live, model.roster ?? null),
     );
     // Partida revista: só leitura; nada lê nem grava os dados da partida ao vivo.
     const replay = !!status.replay,
@@ -320,6 +326,8 @@ function render(model) {
       replay ? [] : status.swaps,
     );
     augs.update({
+      // Oferta aberta e fonte dos aprimoramentos: do estado lido agora (GEP), não da análise.
+      screen: replay || status.waiting ? null : (latestState?.screen ?? null),
       advice: status.waiting ? null : last?.rec?.augmentAdvice,
       chosen,
       records: replay
@@ -457,7 +465,11 @@ function compCardsData() {
   return {
     comps: compsData.comps,
     ranking: rec?.compRanking ?? [],
-    ownedIds: (rec?.self?.units ?? []).map((u) => u.championName),
+    // Suas peças em campo e na reserva (GEP), pela regra única de roster.js; partida revista: só o campo dela.
+    roster: rosterOf({
+      units: rec?.self?.units,
+      screen: replayOf() ? null : latestState?.screen,
+    }),
     // Banco lido da tela (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
     bank: replayOf() ? null : (bankReading(latestState?.screen)?.items ?? null),
     equipped: replayOf() ? {} : equippedBy(rec?.self?.units),
@@ -476,6 +488,7 @@ function drawComps() {
       compsData.source?.trim(),
       compsData.fetchedAt &&
         `atualizada ${new Date(compsData.fetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+      metaNote(compsData.freshness, compsData.fetchedAt)?.text,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -581,9 +594,24 @@ addEventListener("hashchange", () => {
 });
 
 /* ---------- Ciclo de atualização ---------- */
-let busy = false,
-  pending = false,
-  lastKey = "",
+// Buscar e desenhar são separados (live-loop.js): a busca roda sempre, também com a aba oculta ou a janela minimizada,
+// e o desenho pesado espera a aba voltar. Os eventos do servidor (SSE) são o gatilho principal; o temporizador de
+// 5 s (com recuo em falha) é a reserva e é empurrado por qualquer busca, então SSE e temporizador não se somam.
+const loop = createLiveLoop({
+  pull,
+  hidden: () => document.hidden,
+  delay: () => retryDelay(net.failures),
+  onSettled() {
+    net.nextAt = loop.nextAt;
+    net.resumed = false;
+    drawConnection();
+  },
+});
+/** Pede uma leitura agora (ação do usuário, troca de tela, evento); junta-se à que estiver em andamento. */
+function refresh() {
+  return loop.request();
+}
+let lastKey = "",
   last = null,
   latestState = null,
   catalogReady = false,
@@ -597,12 +625,9 @@ async function ensureCatalog() {
   lastKey = ""; // refaz o desenho com os retratos
 }
 
-async function refresh() {
-  if (busy) {
-    pending = true;
-    return;
-  }
-  busy = true;
+// Uma leitura: GET /api/state e, se a chave de análise mudou, a análise. Atualiza o modelo sempre; o desenho vai por
+// `loop.paint` (na hora com a aba visível; adiado até ela voltar com a aba oculta).
+async function pull() {
   document.body.classList.add("is-loading");
   try {
     await ensureCatalog();
@@ -632,12 +657,15 @@ async function refresh() {
         });
       lastKey = "";
       last = { state: { ...rec.metadata, screen: {} }, rec, replay };
-      const model = buildModel(last);
-      model.status.replay = {
-        gameId: replay,
-        placement: rec.metadata.match?.placement ?? null,
-      };
-      render(model);
+      const shown = last;
+      loop.paint(() => {
+        const model = buildModel(shown);
+        model.status.replay = {
+          gameId: replay,
+          placement: rec.metadata.match?.placement ?? null,
+        };
+        render(model);
+      });
       return;
     }
     if (last?.replay) last = null;
@@ -652,10 +680,12 @@ async function refresh() {
     }
     // Partida nova sem tabuleiro próprio ainda: o arquivo é da anterior e não serve para decidir nada.
     if (state.match?.status === "live" && state.match.boardReady === false) {
-      render(
-        buildModel({ state: { ...state, estimatedLevel: null }, rec: null }),
-      );
-      drawComps();
+      loop.paint(() => {
+        render(
+          buildModel({ state: { ...state, estimatedLevel: null }, rec: null }),
+        );
+        drawComps();
+      });
       return;
     }
     if (!state.players?.some((p) => p.id === state.localPlayerId))
@@ -687,12 +717,14 @@ async function refresh() {
       );
     let rec = last?.rec;
     if (key !== lastKey || !rec) {
-      // A análise pode levar segundos: o banco lido da tela já aparece, sem esperá-la.
-      inventory.update(
-        rec?.ownedItemAdvice,
-        emblemsOf(rec),
-        bankReading(state.screen),
-      );
+      // A análise pode levar segundos: o banco lido da tela já aparece, sem esperá-la (só com a aba visível: oculta,
+      // o desenho completo logo abaixo é que fica guardado para a volta).
+      if (!document.hidden)
+        inventory.update(
+          rec?.ownedItemAdvice,
+          emblemsOf(rec),
+          bankReading(state.screen),
+        );
       rec = await loadRecommendation(payload);
       lastKey = key;
     } else {
@@ -703,18 +735,26 @@ async function refresh() {
       };
     }
     last = { state, rec };
-    render(buildModel(last));
     if (notice.dataset.kind === "error") showNotice("", "");
     if (goal && rec.goal?.found === false) {
       // A lista de meta foi atualizada e a comp fixada saiu dela: volta às sugestões e avisa.
       goals.clear();
       goalLostAt = Date.now();
       lastKey = "";
-      pending = true;
+      void refresh(); // com esta leitura em andamento, vira uma leitura de seguimento
     }
-    drawComps();
+    const shown = last;
+    loop.paint(() => {
+      render(buildModel(shown));
+      drawComps();
+    });
   } catch (e) {
-    if (e.network) {
+    if (e.analyzing) {
+      // O servidor respondeu à sondagem de saúde: está no ar, só a análise passou do prazo. Não conta como falha de conexão.
+      net.okAt ??= Date.now();
+      net.failures = 0;
+      net.error = null;
+    } else if (e.network) {
       // Sem resposta do servidor: a tela guarda a última leitura e o recuo espaça as tentativas.
       net.failures += 1;
       net.error = e.message;
@@ -726,21 +766,18 @@ async function refresh() {
       // Sem nenhuma leitura ainda: o bloco de erro da tela conta o que houve (a faixa de aviso repetiria o mesmo texto).
       app.dataset.state = "error";
       showNotice("", "");
-      $("state-error-title").textContent = e.network
-        ? "Sem resposta do servidor"
-        : "Sem leitura do jogo";
+      $("state-error-title").textContent = e.analyzing
+        ? "Analisando a partida"
+        : e.network
+          ? "Sem resposta do servidor"
+          : "Sem leitura do jogo";
       $("state-error-text").textContent = e.network
         ? `${e.message} Se o servidor está rodando, a análise continua nele; a tela volta sozinha quando ele responder.`
         : e.message;
-    } else showNotice("error", e.message);
+    } else showNotice(e.analyzing ? "info" : "error", e.message);
   } finally {
-    busy = false;
+    // A barra de conexão é redesenhada por `onSettled`, já com o horário da próxima tentativa.
     document.body.classList.remove("is-loading");
-    drawConnection();
-    if (pending) {
-      pending = false;
-      setTimeout(refresh, 80);
-    }
   }
 }
 $("btn-retry").addEventListener("click", () => {
@@ -748,16 +785,18 @@ $("btn-retry").addEventListener("click", () => {
   void refresh();
 });
 
-// Laço de leitura: a cada 5 s com o servidor respondendo; com falhas, recua (5, 10, 20, 30 s) e volta ao normal no primeiro sucesso.
-let pollTimer = 0;
-function schedulePoll() {
-  clearTimeout(pollTimer);
-  const delay = retryDelay(net.failures);
-  net.nextAt = Date.now() + delay;
-  pollTimer = setTimeout(async () => {
-    if (!document.hidden) await refresh();
-    schedulePoll();
-  }, delay);
+// Laço de leitura (reserva do SSE): 5 s depois da última leitura com o servidor respondendo; com falhas, recua
+// (5, 10, 20, 30 s) e volta ao normal no primeiro sucesso. Segue com a aba oculta; quem o agenda é `loop`.
+
+// A aba voltou (visível de novo, descongelada ou restaurada do cache de navegação): desenha já o último dado que chegou
+// em segundo plano e busca o atual. Se a última leitura é de alguns segundos atrás, a barra de conexão diz de quando é.
+function resume() {
+  if (document.hidden) return;
+  net.resumed = true;
+  loop.show();
+  drawConnection();
+  // `soft`: se uma leitura já está a caminho, a resposta dela serve (sem leitura repetida).
+  void loop.request({ soft: true });
 }
 
 try {
@@ -767,13 +806,11 @@ try {
   if (e.network) net.failures = 1;
 }
 route(); // depois do catálogo: o histórico usa retratos e sinergias
-await refresh();
-schedulePoll();
-document.addEventListener(
-  "visibilitychange",
-  () => !document.hidden && refresh(),
-);
-let tick = 0;
+await refresh(); // ao terminar, agenda a leitura de reserva
+document.addEventListener("visibilitychange", resume);
+// Page Lifecycle: a aba congelada (economia de energia/memória do navegador) volta a rodar.
+document.addEventListener("resume", resume);
+addEventListener("pageshow", (e) => e.persisted && resume());
 subscribe(
   (event) => {
     if (event?.type === "meta") {
@@ -788,8 +825,8 @@ subscribe(
       historyStale = true;
       if (view() === "history") void showHistory();
     }
-    clearTimeout(tick);
-    tick = setTimeout(() => !document.hidden && refresh(), 200);
+    // Todo evento do servidor pede uma leitura, com a aba visível ou oculta (caminho principal; o laço é reserva).
+    loop.kick();
   },
   (status) => {
     net.sse = status;

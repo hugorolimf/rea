@@ -1,5 +1,6 @@
 import { esc } from "../dom.js";
 import { compItems, planView } from "../comp-items.js";
+import { compBuildRows } from "../../../core/items/builds.mjs";
 import {
   SORTS,
   STYLES,
@@ -11,6 +12,7 @@ import {
   scoreOf,
   sortComps,
 } from "../comps.js";
+import { compOwnership, ownership } from "../roster.js";
 import {
   champName,
   getCatalog,
@@ -46,9 +48,23 @@ function savePrefs({ style, sort }) {
   } catch {}
 }
 
+// Selo de onde está a peça (roster.js): visto verde = em campo; banco azul = na reserva (também quando há cópia em campo
+// e outra na reserva). O texto ("na reserva", "2 cópias: 1 em campo, 1 na reserva") vai na dica e no leitor de tela.
+const OWN_BADGE = {
+  field: ["badge-mine", "check"],
+  reserve: ["badge-bench", "bank"],
+  both: ["badge-bench", "bank"],
+};
+const ownBadge = (o) =>
+  OWN_BADGE[o.state]
+    ? `<i class="badge-own ${OWN_BADGE[o.state][0]}" title="${esc(o.text)}">${glyph(OWN_BADGE[o.state][1])}${o.state === "both" ? `<b aria-hidden="true">${o.reserve.pieces}</b>` : ""}</i>`
+    : "";
+/** "4/9 em campo · +1 na reserva" do cartão (compOwnership de roster.js); sem GEP, avisa que a reserva não foi lida. */
+export const ownCount = (o) =>
+  `<span class="own-count" title="${esc(o.text)}"><b>${o.field}/${o.size}</b> em campo${o.reserve ? ` <b class="own-bench">+${o.reserve}</b> na reserva` : ""}${o.benchKnown ? "" : ' <small class="own-unread">· reserva não lida</small>'}</span>`;
+
 function units(c) {
-  const { champions } = getCatalog(),
-    owned = new Set(c.ownedIds ?? []);
+  const { champions } = getCatalog();
   return [...c.units]
     .sort(
       (a, b) =>
@@ -58,8 +74,15 @@ function units(c) {
     .map((id) => {
       const ch = champions.get(id),
         carry = id === c.carry,
-        mine = owned.has(id);
-      return `<li class="${mine ? "is-mine" : ""}${carry ? " is-carry" : ""}" style="--ring-c:var(--cost-${ch?.cost ?? 1})">${portrait(id, ch?.name ?? id, { size: 38, badge: carry ? `<i class="badge-carry" title="Carry">${glyph("crown")}</i>` : mine ? `<i class="badge-mine" title="Já em campo">${glyph("check")}</i>` : "" })}<span class="comp-unit-name">${esc(ch?.name ?? id)}</span>${carry ? '<span class="sr"> (carry)</span>' : ""}${mine ? '<span class="sr"> (já em campo)</span>' : ""}</li>`;
+        o = ownership(c.roster ?? null, id),
+        cls = [
+          o.state === "field" || o.state === "both" ? "is-mine" : "",
+          o.state === "reserve" ? "is-bench" : "",
+          carry ? "is-carry" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      return `<li class="${cls}" data-own="${o.state}" style="--ring-c:var(--cost-${ch?.cost ?? 1})">${portrait(id, ch?.name ?? id, { size: 38, badge: `${carry ? `<i class="badge-carry" title="Carry">${glyph("crown")}</i>` : ""}${ownBadge(o)}` })}<span class="comp-unit-name">${esc(ch?.name ?? id)}</span>${carry ? '<span class="sr"> (carry)</span>' : ""}${o.label ? `<span class="sr"> (${esc(o.text)})</span>` : ""}</li>`;
     })
     .join("");
 }
@@ -73,14 +96,13 @@ const heldItems = (c) =>
 function details(c) {
   const held = heldItems(c),
     { champions } = getCatalog(),
-    builds = Object.entries(c.builds ?? {})
-      .filter(([id]) => c.units.includes(id))
-      .sort(([a], [b]) => (b === c.carry) - (a === c.carry));
+    // Builds publicadas das peças da comp, carry primeiro: o motor único de itens (core/items/builds.mjs) é a fonte que
+    // Ao vivo, Formação, overlay, carrossel e loja também usam.
+    builds = compBuildRows(c);
   const rows = builds
-    .map(([id, items]) => {
-      const ch = champions.get(id),
-        st = c.buildStats?.[id];
-      return `<li>${portrait(id, ch?.name ?? id, { size: 28 })}<b>${esc(ch?.name ?? id)}</b><span class="comp-items">${items.map((i) => `<span class="comp-item${held.has(i) ? " is-held" : ""}" title="${esc(itemName(i))}${held.has(i) ? " · você tem ou monta" : ""}">${itemPortrait({ id: i }, { size: 26 })}</span>`).join("")}</span>${st && Number.isFinite(st.delta) ? `<small class="comp-build-stat" title="Variação publicada da colocação com esta build, contra outras builds de 3 itens neste campeão na comp">${signed(st.delta)} · ${thousands(st.n)} partidas</small>` : ""}</li>`;
+    .map(({ championId: id, items, delta, n }) => {
+      const ch = champions.get(id);
+      return `<li>${portrait(id, ch?.name ?? id, { size: 28 })}<b>${esc(ch?.name ?? id)}</b><span class="comp-items">${items.map((i) => `<span class="comp-item${held.has(i) ? " is-held" : ""}" title="${esc(itemName(i))}${held.has(i) ? " · você tem ou monta" : ""}">${itemPortrait({ id: i }, { size: 26 })}</span>`).join("")}</span>${delta !== null ? `<small class="comp-build-stat" title="Variação publicada da colocação com esta build, contra outras builds de 3 itens neste campeão na comp">${signed(delta)} · ${thousands(n ?? 0)} partidas</small>` : ""}</li>`;
     })
     .join("");
   const stars3 = (c.stars3 ?? [])
@@ -178,9 +200,16 @@ const planItem = (a) => {
     ].filter(Boolean);
   return `<li data-state="${esc(a.kind)}"${weak ? ' data-weak=""' : ""} title="${esc(`${name}: ${text}${a.item.radiant ? " (radiante)" : ""}. Melhora ${num(a.value)} na colocação (medido ${num(a.measured)}${basis.length ? "; " + basis.join(", ") : ""})`)}">${itemPortrait({ id: a.item.id, name }, { size: 30 })}${recipeImages(a.componentsNeeded)}<small><b>${placing(a.value)}</b> · ${richText(text, { size: 16 })}${a.item.radiant ? " · radiante" : ""}</small></li>`;
 };
+// Item da lista de desejos: da build publicada da comp (`source: "build-comp"`, como em "Builds e 3★") ou, sem ela, da
+// reserva medida. Sem valor medido do par campeão × item, só o item.
 const wishItem = (w) => {
-  const name = w.item.name ?? itemName(w.item.id);
-  return `<li title="${esc(`${name}: melhora ${num(w.value)} na colocação (medido${Number.isFinite(w.samples) ? `, ${thousands(w.samples)} partidas` : ""})`)}">${itemPortrait({ id: w.item.id, name }, { size: 26 })}${recipeImages(w.componentsNeeded)}<small>${placing(w.value)}</small></li>`;
+  const name = w.item.name ?? itemName(w.item.id),
+    fromComp = w.source === "build-comp",
+    measured = Number.isFinite(w.value)
+      ? `melhora ${num(w.value)} na colocação (medido${Number.isFinite(w.samples) ? `, ${thousands(w.samples)} partidas` : ""})`
+      : "sem medição do par",
+    title = `${name}: ${fromComp ? "da build publicada da comp" : "reserva"}; ${measured}`;
+  return `<li${fromComp ? "" : ' data-reserve="1"'} title="${esc(title)}">${itemPortrait({ id: w.item.id, name }, { size: 26 })}${recipeImages(w.componentsNeeded)}<small>${placing(w.value)}</small></li>`;
 };
 
 /**
@@ -208,7 +237,7 @@ export function itemPlanBlock(
           `<li class="cp-wish-champ">${nameChip("champion", w.champion.id, w.champion.name ?? champName(w.champion.id), { size: 26, legend: true })}<ul class="cp-items cp-wish-items">${w.items.map(wishItem).join("")}</ul></li>`,
       )
       .join(""),
-    wishTitle = `Lista de desejos: o que o meta mais valoriza e você ainda não tem (${v.wishlist.length} campeã${v.wishlist.length === 1 ? "o" : "os"})`,
+    wishTitle = `Lista de desejos: o que falta da build de cada campeão (a da comp; sem ela, a reserva medida) (${v.wishlist.length} campeã${v.wishlist.length === 1 ? "o" : "os"})`,
     wishBlock = !wish
       ? ""
       : v.read
@@ -288,7 +317,9 @@ function card(
         sc?.chance != null
           ? `<span class="chance" title="Chance de achar as peças principais que faltam com o seu nível${sc.level ? " " + sc.level : ""} e as lojas ao alcance${sc.chancePlan != null ? "; no nível alvo: " + sc.chancePlan + "%" : ""}">chance de montar <b>${sc.chance}%</b></span>`
           : "",
-        `<span><b>${f.owned}/${f.size}</b> já em campo</span>`,
+        c.roster
+          ? ownCount(compOwnership(c.roster, c.units))
+          : `<span><b>${f.owned}/${f.size}</b> já em campo</span>`,
         f.carryWanted
           ? `<span>itens do carry <b>${Math.floor(f.carryItems)}/${f.carryWanted}</b></span>`
           : "",
@@ -334,7 +365,8 @@ export function compsContext(data) {
   return {
     all: mergeComps(data.comps ?? [], data.ranking ?? []).map((c) => ({
       ...c,
-      ownedIds: data.ownedIds,
+      // Onde está cada peça sua (campo e reserva do GEP): roster.js, a mesma regra do modal, do HUD e do Ao vivo.
+      roster: data.roster ?? null,
     })),
     items: {
       bank: data.bank ?? null,
@@ -350,7 +382,8 @@ export function compsContext(data) {
 
 /**
  * Tela de seleção de comp. `onPick(id)` fixa uma comp; `onRelease()` volta às sugestões automáticas.
- * `update({comps, ranking, autoTitle, ownedIds, bank, equipped, goalId, source})` redesenha só quando algo visível mudou;
+ * `update({comps, ranking, autoTitle, roster, bank, equipped, goalId, source})` redesenha só quando algo visível mudou;
+ * `roster` é o de `rosterOf` (roster.js): suas peças em campo e na reserva;
  * `bank` é o banco de itens lido da tela (null sem leitura) e `equipped`, {campeão: itens} do seu tabuleiro.
  */
 export function mountComps(root, { onPick, onRelease }) {
@@ -457,7 +490,7 @@ export function mountComps(root, { onPick, onRelease }) {
       data.goalId,
       auto,
       data.swapCount,
-      data.ownedIds,
+      data.roster,
       data.bank,
       data.equipped,
       data.source,

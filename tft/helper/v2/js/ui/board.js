@@ -176,12 +176,14 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       g.querySelector(".swap-frac").textContent =
         s.kind === "hold" && s.need ? `${s.have}/${s.need}` : "";
     }
+    // Leitura de agora (roster.js): "na reserva", "2 cópias: 1 em campo, 1 na reserva"; sem ela, o estado da casa.
     const status =
-      c.status === "owned"
+      c.own ||
+      (c.status === "owned"
         ? "em campo"
         : c.status === "reserve"
           ? "na reserva"
-          : "a comprar";
+          : "a comprar");
     const swapText = s
       ? ` · ${KIND_LABEL[s.kind]}${s.exit ? `: ${s.exit.name} sai` : ""}${s.kind === "hold" ? ` (${s.have}/${s.need})` : ""}${s.held ? ` · preserve ${s.held} item(ns)` : ""}`
       : "";

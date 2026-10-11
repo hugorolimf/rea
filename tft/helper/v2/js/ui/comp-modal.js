@@ -8,6 +8,7 @@ import {
   stepIndex,
   suggestionIds,
 } from "../suggest.js";
+import { compOwnership } from "../roster.js";
 import { compCard, compsContext, stateItem } from "./comps.js";
 import { glyph, portrait } from "./glyphs.js";
 import { richText } from "./rich-text.js";
@@ -101,7 +102,7 @@ export function mountCompModal({ onPick, onRelease }) {
       data.goalId,
       data.planId,
       data.swapCount,
-      data.ownedIds,
+      data.roster,
       data.bank,
       data.equipped,
       data.lobby,
@@ -116,9 +117,13 @@ export function mountCompModal({ onPick, onRelease }) {
       ? "Sem comp sugerida"
       : st.chosen
         ? "Comp escolhida"
-        : st.live
-          ? "Comp sugerida agora"
-          : "Outra sugestão";
+        : st.kept
+          ? "Plano atual (mantido)"
+          : st.live
+            ? "Comp sugerida agora"
+            : st.best
+              ? "Melhor sugestão"
+              : "Outra sugestão";
     $("cm-pos").textContent = positionLabel(index, ids.length);
     for (const b of dlg.querySelectorAll(".cm-step"))
       b.disabled = ids.length < 2;
@@ -133,8 +138,13 @@ export function mountCompModal({ onPick, onRelease }) {
             ranking: data.ranking,
           }),
           score = plainScore(x),
-          label = `${x.title}${score != null ? `, score ${score}` : ""}${s.chosen ? ", escolhida" : s.live ? ", sugerida agora" : ""}`;
-        return `<li><button type="button" class="cm-tab" data-id="${esc(id)}" data-i="${i}"${id === currentId ? ' aria-current="true"' : ""}${s.chosen ? ' data-chosen=""' : ""} aria-label="${esc(label)}" title="${esc(label)}">${portrait(x.carry, x.title, { size: 26, hidden: true })}<span class="cm-tab-score">${score ?? "—"}</span>${s.chosen ? glyph("flag") : ""}</button></li>`;
+          exp = Number.isFinite(x.fit?.expected)
+            ? `${String(Math.round(x.fit.expected * 10) / 10).replace(".", ",")}º esperado${Number.isFinite(x.fit?.top4) ? ` · ${Math.round(x.fit.top4)}% top 4` : ""}`
+            : null,
+          // Suas peças desta comp em campo e na reserva: a mesma regra do cartão (roster.js).
+          own = compOwnership(data.roster ?? null, x.units).text,
+          label = `${x.title}${exp ? `, ${exp}` : ""}${score != null ? `, score ${score}` : ""}, ${own}${s.chosen ? ", escolhida" : s.kept ? ", plano atual (mantido)" : s.live ? ", sugerida agora" : ""}${s.best && !s.live ? ", melhor sugestão" : ""}`;
+        return `<li><button type="button" class="cm-tab" data-id="${esc(id)}" data-i="${i}"${id === currentId ? ' aria-current="true"' : ""}${s.chosen ? ' data-chosen=""' : ""}${s.best ? ' data-best=""' : ""} aria-label="${esc(label)}" title="${esc(label)}">${portrait(x.carry, x.title, { size: 26, hidden: true })}<span class="cm-tab-score">${score ?? "—"}</span>${s.chosen ? glyph("flag") : s.best && !s.live ? glyph("crown") : ""}</button></li>`;
       })
       .join("");
 

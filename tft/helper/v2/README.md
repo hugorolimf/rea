@@ -35,4 +35,45 @@ dependências. Consome `/api/state`, `/api/recommend`, `/api/catalog`, `/api/com
 - Contadores e anéis animam com `@property` (sem `requestAnimationFrame`); posições com `translate` e mola.
 - A curva "ouro × chance de fechar o upgrade" é P(X ≥ k), X ~ Binomial(n lojas, chance por loja), aproximação independente.
 - O servidor conduz a análise sozinho (M10b): a janela só mostra. A barra do app diz se esta janela está falando com o servidor e quão velho é o dado; sem servidor a interface abre do cache e mostra a última leitura.
+- A interface continua puxando com a aba oculta ou a janela minimizada (`js/live-loop.js`): buscar (`/api/state` e, quando a chave muda, a análise) roda sempre; só o desenho do DOM espera a aba voltar, e ao voltar aparece na hora com o último dado, seguido de uma leitura nova. Ver "Segundo plano" abaixo.
 - O modo de compatibilidade `legacyServer` (servidor anterior ao M7) foi removido de `recommendPayload`/`main.js`.
+
+## Segundo plano (aba oculta, janela minimizada)
+
+O que a página faz:
+
+- **Gatilho principal: eventos do servidor (SSE, `/api/events`).** Cada evento pede uma leitura (rajadas de 200 ms viram uma
+  só). O navegador não segura eventos de rede em segundo plano. O `EventSource` é um só por origem, mantido pela aba
+  que detém o Web Lock `tft-helper-events` e repassado às outras abas por `BroadcastChannel` (`js/sse-share.js`).
+- **Reserva: temporizador** de 5 s depois da última leitura (de qualquer origem), com o mesmo recuo em falha (5, 10, 20,
+  30 s). Qualquer leitura empurra o temporizador, então evento e temporizador não se somam; com uma leitura em
+  andamento o temporizador não abre outra. É reagendado a partir da resposta de rede, não de dentro do próprio
+  temporizador, o que quebra a "cadeia de temporizadores" que o Chrome/Edge espaça para cerca de 1 por minuto depois de
+  5 min de aba oculta (throttling intensivo). Continua valendo a regra básica: em segundo plano os temporizadores rodam no
+  máximo uma vez por segundo, o que não afeta um ciclo de 5 s.
+- **Desenho adiado.** Com a aba oculta só o último desenho fica guardado; quando ela volta (`visibilitychange`, `resume`
+  do Page Lifecycle ou `pageshow` do cache de navegação), ele aparece na hora e uma leitura nova é pedida (sem repetir
+  uma que já esteja a caminho).
+- **Idade na volta.** Se a última leitura tem mais de 8 s quando a aba volta, a barra de conexão mostra
+  "atualizando · última leitura há N" até a leitura nova chegar.
+
+O que o servidor avisa por SSE hoje: tabuleiros novos (`boards`, quando o arquivo de tabuleiros do jogo muda, em geral
+na troca de rodada), início/fim de partida (`match`) e nova cópia de meta (`meta`). **Não avisa** mudanças só do GEP
+(ouro, loja, nível/XP, banco, aprimoramentos) nem o fim de uma análise automática; para essas, a página depende do
+temporizador de reserva. Pedido registrado em `../planos/a-fazer/otimizar-fluxos-de-analise.md` ("Pendências de servidor").
+
+Limites reais do navegador (não contornáveis pela página, e sem truques como áudio silencioso):
+
+- **Congelamento** (Energy Saver/"economia de energia" do Chrome/Edge e "Abas em suspensão" do Edge): uma aba congelada
+  não roda nada, nem o SSE. Ao descongelar, o `EventSource` reconecta, a página desenha o último dado e busca o atual.
+  A aba que detém o Web Lock tende a ser poupada, mas isso não é garantia documentada.
+- **Descarte** (Memory Saver/"economia de memória"): a aba é descarregada e, ao voltar, recarrega do zero (casca do
+  cache do service worker, dados do servidor).
+- Para evitar os dois: adicione `127.0.0.1:3218` em Configurações → Desempenho → "Sempre manter estes sites ativos"
+  (Chrome) ou "Nunca colocar estes sites em suspensão" (Edge). Instalar o app (PWA) abre uma janela própria, que não
+  disputa espaço com outras abas; minimizada ou coberta, ela também conta como oculta para o navegador.
+- O servidor conduz a análise sozinho (M10b): mesmo com a página congelada ou fechada, nada da partida se perde; a
+  página só fica sem mostrar até voltar.
+- Atualização: os arquivos de `v2/` são lidos do disco a cada pedido (`no-cache`, `static-files.mjs`) e o service worker
+  busca a casca na rede primeiro; recarregar a página basta. Só quando `sw.js` muda aparece "Nova versão do app
+  disponível".

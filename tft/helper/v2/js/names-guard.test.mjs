@@ -163,14 +163,7 @@ const EXCEPTIONS = [
     snippet: "r.curve.name",
     why: "dica (tooltip) do gráfico",
   },
-  {
-    file: "main.js",
-    snippet: "?.name;",
-    why: "nome de aprimoramento oferecido",
-  },
-  { file: "main.js", snippet: "name,", why: "nome de aprimoramento guardado" },
   { file: "main.js", snippet: "a.name", why: "nome de aprimoramento" },
-  { file: "main.js", snippet: "const name =", why: "nome de aprimoramento" },
   {
     file: "main.js",
     snippet: "augPicks.add(key, p.id, p.stage, p.name)",
@@ -193,13 +186,13 @@ const EXCEPTIONS = [
   },
   {
     file: "ui/steps.js",
-    snippet: "${r.unit.name}\\n${s.title}",
-    why: "texto da dica (title) da peça na loja; o campeão é o retrato do tile",
+    snippet: "${r.unit.name} (${kindNote})",
+    why: "texto da dica (title) da peça da lista Comprar, com peça nova x cópia; o campeão é o retrato do tile (o formatador separou o ternário em linhas)",
   },
   {
     file: "ui/steps.js",
-    snippet: ": r.unit.name,",
-    why: "ramo sem aviso da dica (title) da peça: o campeão é o retrato do tile (o formatador separou o ternário em linhas)",
+    snippet: "const label = `${i.item.name}: ${i.text",
+    why: "rótulo de acessibilidade e dica do item recomendado: o item é o ícone (itemPortrait) na mesma função",
   },
 ];
 
@@ -278,8 +271,8 @@ test("o texto vindo do servidor passa pelo texto rico em cada tela que o escreve
     ],
     "ui/augs.js": [
       "richText(r)",
-      "richText(advice.note",
-      "richText(advice.comp)",
+      "richText(view.note)",
+      "richText(view.comp)",
       "richText(plain(c.desc))",
     ],
     "ui/comps.js": [

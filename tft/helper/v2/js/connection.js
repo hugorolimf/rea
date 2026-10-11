@@ -13,6 +13,11 @@ export const POLL_MAX_MS = 30000;
 export const OFFLINE_AFTER = 3;
 /** Idade do dado (s) a partir da qual, em partida, a barra avisa. */
 export const STALE_AFTER_S = 120;
+/**
+ * Ao voltar para a aba: se a última leitura que deu certo tem mais que isto (ms), a barra diz "atualizando · última
+ * leitura há N" até a leitura nova chegar (em segundo plano o navegador pode ter espaçado as leituras).
+ */
+export const RESUME_NOTE_AFTER_MS = 8000;
 
 /** Próximo intervalo de leitura dado o número de falhas seguidas: 5, 5, 10, 20, 30, 30... s. */
 export function retryDelay(failures, base = POLL_MS, max = POLL_MAX_MS) {
@@ -54,6 +59,7 @@ export function dataAge({ ageSeconds, okAt, now }) {
  * @param {number | null} [i.ageSeconds] idade do dado na última resposta
  * @param {boolean} [i.live] partida em andamento (só aí a idade velha é um aviso)
  * @param {number | null} [i.retryInMs] tempo até a próxima tentativa
+ * @param {boolean} [i.resumed] a aba acabou de voltar e a leitura de agora ainda não chegou
  * @returns {{ state: "connecting" | "online" | "stale" | "reconnecting" | "offline", tone: "ok" | "warn" | "bad" | "idle", label: string, detail: string, title: string, pulse: boolean }}
  */
 export function connectionView({
@@ -66,6 +72,7 @@ export function connectionView({
   ageSeconds = null,
   live = false,
   retryInMs = null,
+  resumed = false,
 }) {
   if (!networkOnline)
     return {
@@ -104,6 +111,19 @@ export function connectionView({
     old = live && age != null && age > STALE_AFTER_S,
     ageText = formatAge(age),
     noPush = sse === "closed";
+  // A aba voltou de segundo plano com uma leitura velha: diz de quando é a tela até a leitura nova chegar.
+  const behindMs = now - okAt;
+  if (resumed && behindMs > RESUME_NOTE_AFTER_MS) {
+    const since = formatAge(behindMs / 1000);
+    return {
+      state: old ? "stale" : "online",
+      tone: old ? "warn" : "ok",
+      label: old ? "Dado antigo" : "Conectado",
+      detail: `atualizando · última leitura ${since}`,
+      title: `A aba ficou em segundo plano e o navegador espaçou as leituras: a última chegou ${since}. Buscando a atual.`,
+      pulse: true,
+    };
+  }
   const detail = age == null ? "" : `dado ${ageText}`;
   return {
     state: old ? "stale" : "online",
