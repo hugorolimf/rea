@@ -245,11 +245,11 @@ export function createRecommender(deps) {
       targetLevel,
       goalCarryId,
       levelEstimated: input.levelEstimated === true,
-      levelSource: ["tela", "derivado", "estimado"].includes(input.levelSource)
+      levelSource: ["lido", "derivado", "estimado"].includes(input.levelSource)
         ? input.levelSource
         : input.levelEstimated === true
           ? "estimado"
-          : "tela",
+          : "lido",
       playerId: typeof input.playerId === "string" ? input.playerId : "",
       viewedPlayerId:
         typeof input.viewedPlayerId === "string" ? input.viewedPlayerId : "",

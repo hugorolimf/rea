@@ -245,7 +245,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
               : String(hero.level),
       );
       lvlWrap.dataset.stale =
-        hero.levelStale || hero.levelSource !== "tela" ? "1" : "0";
+        hero.levelStale || hero.levelSource !== "lido" ? "1" : "0";
       const xp = hero.xp,
         cost = plan?.panel?.level?.cost,
         next = plan?.panel?.level?.go;
@@ -261,9 +261,9 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
         lvlWrap,
         `Nível ${hero.level ?? "?"} (${
           hero.levelFrom === "gep"
-            ? "lido do GEP (TFTAcademy), sem leitura de tela"
+            ? "observado pelo GEP (TFTAcademy)"
             : ({
-                tela: "lido da tela",
+                lido: "observado pelo jogo",
                 derivado: "mínimo derivado do XP passivo: não foi lido",
                 estimado: "estimado pelo tabuleiro: não foi lido",
               }[hero.levelSource] ?? hero.levelSource)
@@ -306,7 +306,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
         goldWrap,
         [
           hero.goldFrom === "gep"
-            ? "Ouro do GEP (TFTAcademy), sem leitura de tela"
+            ? "Ouro observado pelo GEP (TFTAcademy)"
             : null,
           hero.goldStale
             ? "Última leitura do ouro; a tela está coberta agora"

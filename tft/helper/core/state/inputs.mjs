@@ -12,7 +12,7 @@ const FALLBACK_LEVEL = 7;
  *  - `augments`: aprimoramentos que o usuário já marcou (a oferta lida some quando uma carta já foi marcada);
  *  - `estimatedLevel`: peças em campo, estimativa de último recurso (`metadata.estimatedLevel`);
  *  - `live`: false numa partida revista, em que a leitura de agora não vale e `level`/`gold` seguem o cliente.
- * Ao vivo devolve também `level`, `levelEstimated`, `levelSource` ("tela", "derivado" ou "estimado") e `gold`
+ * Ao vivo devolve também `level`, `levelEstimated`, `levelSource` ("lido", "derivado" ou "estimado") e `gold`
  * (null = não lido; nunca um padrão).
  */
 export function analysisInputs(
@@ -26,7 +26,7 @@ export function analysisInputs(
       shop: (seen.shop ?? []).map((card) =>
         card?.wisp ? null : (card?.id ?? null),
       ),
-      // Oferta aberta lida do jogo (GEP, sem OCR); some quando uma das cartas já consta como escolhida.
+      // Oferta aberta observada pelo GEP; some quando uma das cartas já foi marcada como escolhida.
       augmentIds: offer.some((id) => augments.includes(id)) ? [] : offer,
       xp: seen.xp,
       removers: seen.removers === 0 ? 0 : null,
@@ -45,7 +45,7 @@ export function analysisInputs(
         ? "estimado"
         : seen.sources?.level === "derived"
           ? "derivado"
-          : "tela",
+          : "lido",
     gold:
       Number.isInteger(seen.gold) && seen.gold >= 0 && seen.gold <= 999
         ? seen.gold

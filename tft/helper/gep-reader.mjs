@@ -1193,11 +1193,18 @@ export function gepSummary(gep) {
  * ageMs}`) e `augmentSource` (`{state: "ativo"|"aguardando"|"sem-fonte", source, reason, held, picked, unresolved}`).
  * `pick(campo)` diz se o GEP vale para o campo agora (gold, level, xp, stage, shop, items, bench): a precedência com
  * histerese e divergência mora em core/state/precedence.mjs e o servidor passa a decisão; sem `pick` o GEP vale em tudo.
+ * `noSource` (com ou sem GEP) dá o motivo de cada campo do jogador que ficou sem valor (`noSourceOf`).
  */
 export function mergeGep(seen, gep, pick = () => true) {
   const gepStatus = gepSummary(gep);
-  if (!gep?.available)
-    return { ...seen, ...augmentsWithoutSource(seen, gepStatus), gepStatus };
+  if (!gep?.available) {
+    const without = {
+      ...seen,
+      ...augmentsWithoutSource(seen, gepStatus),
+      gepStatus,
+    };
+    return { ...without, noSource: noSourceOf(without, gep, gepStatus) };
+  }
   const f = gep.fields,
     out = { ...seen, gepStatus },
     sources = { ...seen.sources },
@@ -1329,12 +1336,51 @@ export function mergeGep(seen, gep, pick = () => true) {
     picked: f.augmentPicked?.value?.length ?? 0,
     unresolved: gep.coverage?.augmentUnresolved ?? [],
   };
-  return {
+  const merged = {
     ...out,
     stale,
     sources,
     sourcesDetail: { ...seen.sourcesDetail, ...detail },
   };
+  return { ...merged, noSource: noSourceOf(merged, gep, gepStatus) };
+}
+
+/** Campos do jogador que só o GEP observa, com a chave do valor no estado mesclado. */
+const GEP_FIELDS = {
+  gold: "gold",
+  level: "level",
+  xp: "xp",
+  shop: "shop",
+  items: "items",
+  bench: "gepBench",
+  wisps: "wisps",
+  augments: "augments",
+};
+
+/**
+ * Desconhecido explícito: para cada campo do jogador que ficou sem valor, o motivo (puro). Sem GEP fresco é o motivo da
+ * fonte (`gepStatus.reason`, por exemplo "banco-ausente" ou "sem-eventos-recentes"); com ele, "aguardando-gep" (nenhum
+ * evento daquele campo ainda, como no começo da partida), "loja-escondida" (`shop_visible` falso), "identidade-<estado>"
+ * (o banco de itens só vale com o jogador local confirmado) ou "nivel-maximo" (o GEP não manda a barra de XP no nível
+ * máximo). Campo com valor (inclusive o piso derivado do nível) não aparece. Nunca se inventa o valor que falta.
+ */
+export function noSourceOf(seen, gep, gepStatus = gepSummary(gep)) {
+  const f = gep?.available ? (gep.fields ?? {}) : null,
+    off = gepStatus.reason ?? gepStatus.state ?? "sem-gep",
+    out = {};
+  for (const [name, key] of Object.entries(GEP_FIELDS)) {
+    if (seen[key] !== null && seen[key] !== undefined) continue;
+    out[name] = !f
+      ? off
+      : name === "shop" && f.shop?.visible === false
+        ? "loja-escondida"
+        : name === "items" && !f.items && gep.identity !== "confirmada"
+          ? `identidade-${gep.identity ?? "desconhecida"}`
+          : name === "xp" && f.level && !f.xp
+            ? "nivel-maximo"
+            : "aguardando-gep";
+  }
+  return out;
 }
 
 /**

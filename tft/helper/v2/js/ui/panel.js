@@ -323,7 +323,7 @@ export function mountPanel(root) {
             ? "Não compre XP: o XP passivo da próxima rodada completa o nível."
             : xp
               ? ""
-              : "XP não lido da tela",
+              : "XP sem fonte agora",
         );
       }
 

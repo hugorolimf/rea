@@ -379,7 +379,7 @@ test("entradas da análise: ouro, nível, XP, estágio e loja saem do estado do 
   const live = analysisInputs(seen, { augments: [], estimatedLevel: 5 });
   assert.equal(live.level, 8);
   assert.equal(live.levelEstimated, false);
-  assert.equal(live.levelSource, "tela");
+  assert.equal(live.levelSource, "lido");
   assert.equal(live.gold, 54);
   assert.deepEqual(live.stage, { stage: 4, round: 2 });
   assert.deepEqual(live.shop, ["DA_18_Elise", null]);
@@ -420,7 +420,7 @@ test("entradas da análise: o payload do cliente não decide (D6) e a partida re
   assert.equal(merged.level, 7);
   assert.equal(merged.gold, 12);
   assert.equal(merged.levelEstimated, false);
-  assert.equal(merged.levelSource, "tela");
+  assert.equal(merged.levelSource, "lido");
   // Partida revista: nenhum dos quatro campos é tocado (ficam os do cliente).
   const replay = analysisInputs({}, { live: false });
   for (const k of ["level", "gold", "levelEstimated", "levelSource"])
@@ -494,8 +494,8 @@ test("montador: GEP e tela nunca saem discordando; a divergência é registrada 
   assert.equal(gs.me.level.source, "gep");
   assert.deepEqual(
     gs.me.bench,
-    unknownField(),
-    "sem reserva do GEP, a reserva não tem fonte",
+    { ...unknownField(), reason: "aguardando-gep" },
+    "sem reserva do GEP, a reserva não tem fonte (e diz o motivo)",
   );
 });
 

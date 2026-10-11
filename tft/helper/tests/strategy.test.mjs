@@ -678,6 +678,6 @@ test("nível só estimado pelo tabuleiro não vira leitura: sem rolagem, odds ne
   const r = strategy(s.plan, s.analysis, s.options);
   assert.notEqual(r.action, "ROLAR");
   assert.equal(r.panels.rolling.call.kind, "unknown");
-  assert.match(r.panels.rolling.call.reason, /Nível não lido/);
-  assert.ok(r.reasons.some((t) => /Nível não lido/.test(t)));
+  assert.match(r.panels.rolling.call.reason, /Nível sem fonte/);
+  assert.ok(r.reasons.some((t) => /Nível sem fonte/.test(t)));
 });

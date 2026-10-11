@@ -1,5 +1,5 @@
 // Rodar com: node --test tft/helper/v2/js/
-// Wisps (fogos-fátuos) da loja no painel: o modelo (sem DOM) lê screen.wisps (GEP) ou a loja lida, usa o catálogo real
+// Wisps (fogos-fátuos) da loja no painel: o modelo (sem DOM) lê os Wisps do GEP (state.wisps), usa o catálogo real
 // de /api/catalog (aqui, wisps.json com a imagem do manifesto) e devolve marca, nome e recomendação por Wisp.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +53,7 @@ test("rolldown em andamento (o plano manda rolar) vira pular; sem painel de Roll
   assert.ok(none[0].incertezas.some((t) => /rolldown/.test(t)));
 });
 
-test("sem screen.wisps, o Wisp sai da loja lida pelo catálogo (campeão e vazio ficam de fora)", () => {
+test("sem os Wisps do GEP, a loja não é relida pelo catálogo: nenhum Wisp (nada de palpite)", () => {
   const screen = {
     shop: [
       { text: "DA_18_Xayah", id: "DA_18_Xayah" },
@@ -62,10 +62,7 @@ test("sem screen.wisps, o Wisp sai da loja lida pelo catálogo (campeão e vazio
     ],
   };
   const out = wispsView(screen, { catalog, hero, roll: { go: false } });
-  assert.deepEqual(
-    out.map((w) => [w.slot, w.id]),
-    [[3, "DA_Cutpurse18"]],
-  );
+  assert.deepEqual(out, []);
 });
 
 test("a faixa de vida da análise vale sobre a vida lida", () => {

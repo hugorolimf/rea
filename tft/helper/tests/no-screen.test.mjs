@@ -1,5 +1,5 @@
 // Rodar com: node --test tft/helper/tests/no-screen.test.mjs
-// Caracterização do estado só com o GEP (plano PLANO-REMOVER-OCR.md, P0): uma partida gravada passa pelo montador de
+// Caracterização do estado só com o GEP (plano PLANO-REMOVER-OCR.md, P0 e P1): uma partida gravada passa pelo montador de
 // estado (app/state.mjs) sem nenhuma leitura de tela, e o GEP ausente ou obsoleto deixa cada campo desconhecido. Fixa
 // também a chave de análise (core/state/analysis-key.mjs) desses estados contra uma cópia congelada da regra.
 import test from "node:test";
@@ -129,10 +129,7 @@ const brief = (hub, s) => ({
   },
   gep: s.gepStatus?.state ?? null,
   state: Object.fromEntries(
-    Object.entries(hub.gameState(s, GAME_ID).me).map(([k, f]) => [
-      k,
-      f.source,
-    ]),
+    Object.entries(hub.gameState(s, GAME_ID).me).map(([k, f]) => [k, f.source]),
   ),
 });
 
@@ -145,8 +142,7 @@ const none = {
     items: null,
     bench: null,
   },
-  fromGep = (...names) =>
-    Object.fromEntries(names.map((n) => [n, "gep"])),
+  fromGep = (...names) => Object.fromEntries(names.map((n) => [n, "gep"])),
   meNone = {
     gold: null,
     level: null,
@@ -173,6 +169,15 @@ const TIMELINE = [
     items: null,
     removers: null,
     wisps: null,
+    noSource: {
+      gold: "aguardando-gep",
+      level: "aguardando-gep",
+      xp: "aguardando-gep",
+      shop: "aguardando-gep",
+      items: "identidade-desconhecida",
+      wisps: "aguardando-gep",
+      augments: "aguardando-gep",
+    },
     sources: { ...none, ...fromGep("bench") },
     state: { ...meNone, bench: "gep" },
   },
@@ -186,6 +191,14 @@ const TIMELINE = [
     items: [],
     removers: 0,
     wisps: null,
+    noSource: {
+      gold: "aguardando-gep",
+      level: "aguardando-gep",
+      xp: "aguardando-gep",
+      shop: "aguardando-gep",
+      wisps: "aguardando-gep",
+      augments: "aguardando-gep",
+    },
     sources: { ...none, ...fromGep("stage", "items", "bench") },
     state: {
       ...meNone,
@@ -202,6 +215,14 @@ const TIMELINE = [
     items: [],
     removers: 0,
     wisps: null,
+    noSource: {
+      gold: "aguardando-gep",
+      level: "aguardando-gep",
+      xp: "aguardando-gep",
+      shop: "aguardando-gep",
+      wisps: "aguardando-gep",
+      augments: "aguardando-gep",
+    },
     sources: { ...none, ...fromGep("stage", "items", "bench") },
     state: {
       ...meNone,
@@ -218,6 +239,14 @@ const TIMELINE = [
     items: [],
     removers: 2,
     wisps: null,
+    noSource: {
+      gold: "aguardando-gep",
+      level: "aguardando-gep",
+      xp: "aguardando-gep",
+      shop: "aguardando-gep",
+      wisps: "aguardando-gep",
+      augments: "aguardando-gep",
+    },
     sources: { ...none, ...fromGep("stage", "items", "bench") },
     state: {
       ...meNone,
@@ -240,6 +269,7 @@ const TIMELINE = [
     items: [],
     removers: 2,
     wisps: [],
+    noSource: { augments: "aguardando-gep" },
     sources: fromGep("gold", "level", "xp", "stage", "shop", "items", "bench"),
     state: {
       ...meNone,
@@ -265,6 +295,7 @@ const TIMELINE = [
     items: [],
     removers: 2,
     wisps: [],
+    noSource: { augments: "aguardando-gep" },
     sources: fromGep("gold", "level", "xp", "stage", "shop", "items", "bench"),
     state: {
       ...meNone,
@@ -326,6 +357,8 @@ test("partida gravada sem tela: cada campo vem do GEP ou fica desconhecido, nunc
       assert.deepEqual(b[key], want[key], `${dt}s: ${key}`);
     assert.equal(b.augments, null, `${dt}s: sem evento de aprimoramento`);
     assert.deepEqual(b.sources, want.sources, `${dt}s: sources`);
+    // Desconhecido explícito: cada campo sem valor diz por quê (L1: nenhum evento ainda; banco sem identidade local).
+    assert.deepEqual(seen.noSource, want.noSource, `${dt}s: noSource`);
     assert.deepEqual(b.state, want.state, `${dt}s: GameState`);
     assert.doesNotMatch(
       JSON.stringify(seen.sources),
@@ -382,6 +415,57 @@ test("GEP ausente ou obsoleto, sem tela: ouro, XP, loja e itens desconhecidos; n
   }).seen(GAME_ID, ctx);
   assert.equal(early.level, null);
   assert.equal(early.sources.level, null);
+});
+
+test("lacunas do GEP sem tela: loja escondida, banco sem identidade local e GEP fora ficam desconhecidos com o motivo", () => {
+  const match = recordedMatch();
+  match.push(58);
+  match.close();
+  const read = (local) =>
+      gepReader({
+        file: match.file,
+        now: () => (BASE + 59) * 1000,
+        champions: new Set(catalog.champions.map((c) => c.apiName)),
+        items: new Set(catalog.items.map((i) => i.apiName)),
+        minIntervalMs: 0,
+      }).status({ ...ctx, local }),
+    seenWith = (gepNow) =>
+      hubWith({ gep: { status: () => gepNow } }).seen(GAME_ID, ctx);
+  // L2: loja escondida (shop_visible falso) não vira a loja de antes nem a da tela: desconhecida.
+  const hidden = structuredClone(read(fixture.local));
+  hidden.fields.shop.visible = false;
+  const shopHidden = seenWith(hidden);
+  assert.equal(shopHidden.shop ?? null, null);
+  assert.equal(shopHidden.sources.shop ?? null, null);
+  assert.equal(shopHidden.noSource.shop, "loja-escondida");
+  assert.equal(shopHidden.gold, 0, "o resto continua vindo do GEP");
+  // L4: banco de itens de outro jogador (identidade divergente): desconhecido, nunca o banco vazio.
+  const other = seenWith(read({ name: "Outra", tag: "Z" })),
+    hub = hubWith({ gep: { status: () => null } });
+  assert.equal(other.items ?? null, null);
+  assert.equal(other.removers ?? null, null);
+  assert.equal(other.noSource.items, "identidade-divergente");
+  assert.equal(
+    hub.gameState(other, GAME_ID).me.itemBank.reason,
+    "identidade-divergente",
+  );
+  // GEP fora: o motivo é o da fonte, em cada campo do jogador.
+  const off = seenWith({
+    available: false,
+    state: "ausente",
+    reason: "banco-ausente",
+  });
+  assert.deepEqual(off.noSource, {
+    gold: "banco-ausente",
+    level: "banco-ausente",
+    xp: "banco-ausente",
+    shop: "banco-ausente",
+    items: "banco-ausente",
+    bench: "banco-ausente",
+    wisps: "banco-ausente",
+    augments: "banco-ausente",
+  });
+  assert.equal(hub.gameState(off, GAME_ID).me.gold.reason, "banco-ausente");
 });
 
 test("GEP ausente, sem tela: o chip da interface diz 'GEP off' e que nada foi lido da tela (comportamento atual)", () => {

@@ -20,7 +20,7 @@ import {
   resolveWisp,
   withoutWisps,
   wispsInShop,
-  wispsOfScreen,
+  wispsInState,
 } from "../core/catalog/wisps.mjs";
 import { analysisInputs } from "../core/state/inputs.mjs";
 import { parseShop } from "../gep-reader.mjs";
@@ -192,7 +192,7 @@ test("nenhum id nem nome de Wisp é de campeão: o catálogo de campeões nunca 
   }
 });
 
-test("loja: wispsInShop e wispsOfScreen acham o Wisp no slot certo (screen.wisps do GEP ou a loja lida)", () => {
+test("loja: wispsInShop acha o Wisp no slot certo; wispsInState só usa os Wisps do GEP (state.wisps)", () => {
   const shop = [
     { text: "DA_18_Xayah", id: "DA_18_Xayah", source: "gep" },
     null,
@@ -213,8 +213,8 @@ test("loja: wispsInShop e wispsOfScreen acham o Wisp no slot certo (screen.wisps
       [5, "DA_AbandonShip18"],
     ],
   );
-  // screen.wisps (leitor GEP) vence a loja; o desconhecido vira Wisp sem catálogo, nunca é descartado nem adivinhado.
-  const fromReader = wispsOfScreen(
+  // state.wisps (leitor GEP) é a fonte; o desconhecido vira Wisp sem catálogo, nunca é descartado nem adivinhado.
+  const fromReader = wispsInState(
     {
       shop,
       wisps: [
@@ -236,10 +236,10 @@ test("loja: wispsInShop e wispsOfScreen acham o Wisp no slot certo (screen.wisps
       [4, "DA_Novo18", true],
     ],
   );
-  // Sem screen.wisps, cai para a loja lida identificada pelo catálogo.
-  assert.equal(wispsOfScreen({ shop }, book).length, 2);
-  assert.deepEqual(wispsOfScreen({}, book), []);
-  assert.deepEqual(wispsOfScreen(null, book), []);
+  // Sem state.wisps não há Wisp conhecido: a loja não é relida pelo catálogo (era a reserva da leitura de tela).
+  assert.deepEqual(wispsInState({ shop }, book), []);
+  assert.deepEqual(wispsInState({}, book), []);
+  assert.deepEqual(wispsInState(null, book), []);
 });
 
 /* ---------- Wisp não é campeão: nada disso chega à rolagem ---------- */
@@ -419,7 +419,7 @@ test("decideWisp: casos de incerteza (vida abaixo do piso, consolo, Wisp fora do
   assert.equal(sumiu.veredito, "incerto");
   assert.equal(sumiu.regra, "some-por-vida");
   assert.equal(decide("DA_BeggarsWisp18", calm).veredito, "incerto");
-  const [novo] = wispsOfScreen(
+  const [novo] = wispsInState(
     { wisps: [{ slot: 5, id: "DA_Novo18", name: "Novo", known: false }] },
     book,
   );

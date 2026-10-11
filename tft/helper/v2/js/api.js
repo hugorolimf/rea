@@ -110,7 +110,7 @@ export function recommendPayload(
     bench: [],
     inventory: Array.isArray(screen.items) ? screen.items : [],
     levelEstimated: screen.level == null,
-    levelSource: screen.level == null ? "estimado" : "tela",
+    levelSource: screen.level == null ? "estimado" : "lido",
   };
 }
 /** Estado de saúde do servidor (barato; responde mesmo durante uma análise): ver GET /api/health. */

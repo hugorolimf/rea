@@ -334,30 +334,28 @@ export function wispsInShop(shop, book) {
 }
 
 /**
- * Os Wisps de uma leitura de estado (`screen`): usa `screen.wisps` quando o leitor GEP já os expõe (lista de ids/textos
- * ou de `{ slot, id, name, known }`) e, sem ele, identifica pelo catálogo na loja lida (`screen.shop`). Mesma forma de
- * `wispsInShop`. Do leitor, tudo o que ele lista é Wisp (os desconhecidos viram `wisp.desconhecido`); do texto cru sem
- * marca, só o que o catálogo reconhece.
+ * Os Wisps do estado da partida: só `state.wisps`, que o leitor GEP expõe junto com a loja dele (lista de ids/textos ou
+ * de `{ slot, id, name, known }`). Mesma forma de `wispsInShop`. Tudo o que o GEP lista é Wisp (os desconhecidos viram
+ * `wisp.desconhecido`); texto cru sem marca vale só se o catálogo o reconhece. Sem `state.wisps` (sem GEP, loja ainda
+ * não vista) não há Wisp conhecido: `[]`, nunca um palpite pela loja.
  */
-export function wispsOfScreen(screen, book) {
-  if (Array.isArray(screen?.wisps)) {
-    const out = [];
-    screen.wisps.forEach((w, i) => {
-      const card = typeof w === "string" ? { text: w } : w;
-      if (!card) return;
-      const wisp =
-        resolveWisp(card, book) ??
-        (typeof w === "string" ? null : unknownWisp(card));
-      if (wisp)
-        out.push({
-          slot: Number.isInteger(card.slot) ? card.slot : i + 1,
-          wisp,
-          card,
-        });
-    });
-    return out;
-  }
-  return wispsInShop(screen?.shop, book);
+export function wispsInState(state, book) {
+  if (!Array.isArray(state?.wisps)) return [];
+  const out = [];
+  state.wisps.forEach((w, i) => {
+    const card = typeof w === "string" ? { text: w } : w;
+    if (!card) return;
+    const wisp =
+      resolveWisp(card, book) ??
+      (typeof w === "string" ? null : unknownWisp(card));
+    if (wisp)
+      out.push({
+        slot: Number.isInteger(card.slot) ? card.slot : i + 1,
+        wisp,
+        card,
+      });
+  });
+  return out;
 }
 
 /** Troca por `null` os Wisps de uma loja, para que o motor nunca os leia como campeões. */

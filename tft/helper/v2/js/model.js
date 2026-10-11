@@ -246,8 +246,8 @@ export function buildModel({ state, rec }, { review = null } = {}) {
   const hero = {
     // Treino: a vida do arquivo (-99 ou 1) não é vida; fica desconhecida em vez de uma barra enganosa.
     hp: practice ? null : hp,
-    // Nível: lido do HUD ("tela"), piso derivado do XP passivo ("derivado": o real é este ou maior) ou, só se nada disso
-    // existir, o número de peças em campo ("estimado", nunca uma leitura). O servidor já entrega o lido/derivado em screen.level.
+    // Nível: observado pelo jogo ("lido", hoje pelo GEP), piso derivado do XP passivo ("derivado": o real é este ou maior) ou,
+    // só se nada disso existir, o número de peças em campo ("estimado", nunca uma leitura). O servidor já entrega o lido/derivado.
     level:
       num(screen.level) ?? num(state?.estimatedLevel) ?? num(rec?.currentLevel),
     levelSource:
@@ -255,7 +255,7 @@ export function buildModel({ state, rec }, { review = null } = {}) {
         ? "estimado"
         : screen.sources?.level === "derived"
           ? "derivado"
-          : "tela",
+          : "lido",
     // Leitura velha (HUD coberto há mais de 15 s) ou número e XP em conflito: vale, mas a interface avisa.
     levelStale:
       screen.stale?.level === true || screen.levelInfo?.conflict === true,

@@ -111,7 +111,7 @@ export function clientInput(input = {}) {
     targetLevel: input.targetLevel ?? "auto",
     goalCarryId: input.goalCarryId ?? "",
     levelEstimated: input.levelEstimated === true,
-    levelSource: input.levelSource ?? "tela",
+    levelSource: input.levelSource ?? "lido",
     playerId: input.playerId ?? "",
     viewedPlayerId: input.viewedPlayerId ?? "",
   };
@@ -148,7 +148,7 @@ export function assembleStep(ctx, run, step) {
         level: options.levelEstimated ? null : options.level,
         gold: options.gold,
         sources: {
-          level: options.levelSource === "derivado" ? "derived" : "screen",
+          level: options.levelSource === "derivado" ? "derived" : "gep",
         },
       };
   // Luva de Ladrão: só a luva é um item real (server.mjs, antes de tudo).

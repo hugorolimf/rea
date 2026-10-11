@@ -19,7 +19,7 @@ const brief = (x) => ({ id: x?.id ?? null, name: x?.name ?? "" });
 const placeText = (p) => (p >= 1 ? `${p}º lugar` : "colocação não observada");
 
 const LEVEL_SOURCE = {
-  tela: "lido da tela",
+  lido: "observado pelo jogo",
   derivado: "mínimo derivado do XP passivo: não foi lido",
   estimado: "estimado pelo tabuleiro: não foi lido",
 };
@@ -106,10 +106,10 @@ function barOf(model, stateStale) {
             text: `${prefix}${lv}`,
             source: hero.levelSource,
             // "≥" e "~" não são leituras; leitura velha ou em conflito com o XP também esmaece.
-            uncertain: hero.levelStale || hero.levelSource !== "tela",
+            uncertain: hero.levelStale || hero.levelSource !== "lido",
             title: `Nível ${lv} (${
               hero.levelFrom === "gep"
-                ? "lido do GEP (TFTAcademy), sem leitura de tela"
+                ? "observado pelo GEP (TFTAcademy)"
                 : (LEVEL_SOURCE[hero.levelSource] ?? hero.levelSource)
             }${hero.levelStale ? "; leitura velha ou em conflito com o XP" : ""}${
               hero.levelUsed != null && hero.levelUsed !== lv
@@ -128,7 +128,7 @@ function barOf(model, stateStale) {
             title:
               [
                 hero.goldFrom === "gep"
-                  ? "Ouro do GEP (TFTAcademy), sem leitura de tela"
+                  ? "Ouro observado pelo GEP (TFTAcademy)"
                   : null,
                 hero.goldStale
                   ? "Última leitura do ouro; a tela está coberta agora"

@@ -41,7 +41,7 @@ test("modelo ao vivo: números do HUD vêm da tela e a fase é interpretada", ()
   assert.deepEqual(m.hero.xp, { have: 23, total: 68 });
   assert.equal(m.hero.gold, 54);
   assert.equal(m.hero.level, 8);
-  assert.equal(m.hero.levelSource, "tela");
+  assert.equal(m.hero.levelSource, "lido");
 });
 
 test("partida encerrada nunca é considerada ao vivo", () => {
@@ -403,7 +403,7 @@ test("roll: nota de juros só aparece quando rolar derruba o patamar", () => {
 
 test("nível: lido, derivado (piso) e estimado pelo tabuleiro são distinguidos", () => {
   const read = buildModel(live());
-  assert.equal(read.hero.levelSource, "tela");
+  assert.equal(read.hero.levelSource, "lido");
   const derived = live();
   derived.state.screen = {
     ...derived.state.screen,
@@ -539,7 +539,7 @@ test("fonte GEP: o modelo traz a origem de ouro/nível e o estado da fonte para 
   const { hero, status } = buildModel({ state: s, rec: null });
   assert.equal(hero.goldFrom, "gep");
   assert.equal(hero.levelFrom, "gep");
-  assert.equal(hero.levelSource, "tela");
+  assert.equal(hero.levelSource, "lido");
   assert.equal(status.gep.label, "GEP ativo · último evento há 4s");
   s.screen.sources = { gold: "screen", level: "screen" };
   assert.equal(buildModel({ state: s, rec: null }).hero.goldFrom, null);

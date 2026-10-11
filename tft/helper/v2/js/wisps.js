@@ -2,13 +2,13 @@ import {
   createWispBook,
   decideWisp,
   wispLabel,
-  wispsOfScreen,
+  wispsInState,
 } from "../../core/catalog/wisps.mjs";
 
 /**
- * Wisps (fogos-fátuos) da loja para o painel: função pura (sem DOM) que lê `state.screen` (`screen.wisps` do leitor GEP
- * quando existe; senão a loja lida, identificada pelo catálogo `catalog.wisps` de /api/catalog) e devolve, por Wisp, o
- * que o painel desenha: marca (imagem), nome, tipo e a recomendação de compra de `core/catalog/wisps.mjs`.
+ * Wisps (fogos-fátuos) da loja para o painel: função pura (sem DOM) que lê os Wisps do GEP no estado do servidor
+ * (`wisps`; sem eles, nenhum), resolvidos pelo catálogo `catalog.wisps` de /api/catalog, e devolve, por Wisp, o que o
+ * painel desenha: marca (imagem), nome, tipo e a recomendação de compra de `core/catalog/wisps.mjs`.
  * O Wisp nunca é campeão: as cartas dele têm `id` nulo na loja, então o motor e a rolagem nem o veem.
  */
 
@@ -96,7 +96,7 @@ export function wispsView(
     rolldown: roll == null ? null : roll.go === true,
     boardFit,
   };
-  return wispsOfScreen(screen, book).map(({ slot, wisp }) => {
+  return wispsInState(screen, book).map(({ slot, wisp }) => {
     const verdict = decideWisp(wisp, ctx);
     return {
       slot,

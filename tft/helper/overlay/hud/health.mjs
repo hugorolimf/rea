@@ -6,8 +6,8 @@
  * ou sem dado ainda). `id`: "server" | "gep" | "screen" | "game".
  */
 
-/** Origens que contam como leitura de tela (o servidor usa "screen"; o modelo da interface, "tela"/"derivado"). */
-const SCREEN_SOURCES = new Set(["screen", "tela", "derived", "derivado"]);
+/** Origem que conta como leitura de tela (a do servidor). O piso derivado do nível ("derived") é regra, não leitura. */
+const SCREEN_SOURCES = new Set(["screen"]);
 
 const sourcesOf = (view) =>
   view?.sources && typeof view.sources === "object" ? view.sources : null;

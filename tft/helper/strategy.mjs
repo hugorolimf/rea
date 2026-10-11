@@ -1,6 +1,7 @@
 // Ação de agora: comprar, economizar, subir de nível ou rolar a loja, com quanto gastar e por quê.
-// Entradas: estágio, nível, XP e ouro (lidos da tela), HP e pool (arquivo do jogo), a loja lida, a sequência
-// inferida pelo servidor e o estilo da comp alvo vindo da meta ("lvl N" = reroll naquele nível, "Fast 8", ...).
+// Entradas: estágio, nível, XP e ouro (estado do servidor: GEP e arquivos do jogo), HP e pool (arquivo do jogo), a loja
+// do GEP, a sequência inferida pelo servidor e o estilo da comp alvo vindo da meta ("lvl N" = reroll naquele nível, "Fast 8",
+// ...).
 // Aqui fica a árvore de decisão (nível, reroll, economia); a matemática (chance de fechar, ganho por ouro, juros,
 // renda) está em economy.mjs e a regra de "vale rolar para o time inteiro" em roll.mjs. Não simula combate.
 import { GAME } from "./rules.mjs";
@@ -136,8 +137,8 @@ function decide(plan, analysis, options, team, sim) {
   if (gold === null || levelUnread) {
     reasons.push(
       gold === null
-        ? "Ouro não lido da tela: sem ele não dá para calcular rolagem nem juros."
-        : "Nível não lido da tela (só estimado pelo tabuleiro): sem ele não dá para calcular odds, rolagem nem XP.",
+        ? "Ouro sem fonte agora: sem ele não dá para calcular rolagem nem juros."
+        : "Nível sem fonte agora (só estimado pelo tabuleiro): sem ele não dá para calcular odds, rolagem nem XP.",
     );
     return out(
       shopBuys.length ? "COMPRAR" : "AGUARDAR",
@@ -193,7 +194,7 @@ function decide(plan, analysis, options, team, sim) {
     reasons.push(
       `Rivais: nível médio ${lobbyInfo.foeLevel} (você ${level}) e ${lobbyInfo.foeStars} unidades 2★+ em média (você ${lob.myStars}).`,
     );
-  // Estágio não lido da tela: estimado pelo nível médio dos rivais (a vida em perigo tarde depende dele). A mesma faixa
+  // Estágio sem fonte: estimado pelo nível médio dos rivais (a vida em perigo tarde depende dele). A mesma faixa
   // que stage.mjs usa na loja (mesmas entradas).
   const stageSeen = stageForPressure(stage, lob.foeLevel);
   pressure = pressureOf({
@@ -733,7 +734,7 @@ export function strategy(plan, analysis, options) {
           : "",
     text:
       gold === null
-        ? "Ouro não lido da tela."
+        ? "Ouro sem fonte agora."
         : `Juros atuais: +${interestOf(gold)}g por rodada.` +
           (nextTier(gold)
             ? ` Próximo patamar em ${nextTier(gold)}g (faltam ${nextTier(gold) - gold}g).`
@@ -762,7 +763,7 @@ export function strategy(plan, analysis, options) {
       (xp?.max
         ? "Nível máximo."
         : d.levelCost == null
-          ? "XP não lido da tela."
+          ? "XP sem fonte agora."
           : `Faltam ${d.xpNeed} XP (${d.levelCost}g) para o nível ${level + 1}.` +
             (d.passiveLevel
               ? " O XP passivo da próxima rodada completa de graça."
@@ -788,9 +789,9 @@ export function strategy(plan, analysis, options) {
       go: false,
       reason:
         gold === null
-          ? "Ouro não lido da tela: sem ele não dá para calcular o orçamento da rolagem."
+          ? "Ouro sem fonte agora: sem ele não dá para calcular o orçamento da rolagem."
           : options.levelEstimated === true
-            ? "Nível não lido da tela (só estimado pelo tabuleiro): sem ele não dá para calcular as odds da loja nem a rolagem."
+            ? "Nível sem fonte agora (só estimado pelo tabuleiro): sem ele não dá para calcular as odds da loja nem a rolagem."
             : "",
     });
   const rows = rollRows(team, { budget: call.budget ?? 0 }),

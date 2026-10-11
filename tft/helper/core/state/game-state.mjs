@@ -18,7 +18,11 @@ export function buildGameState(seen, { now = null, gameId = null } = {}) {
   const make = (name, value, from = name) => {
     const raw = seen?.sources?.[from] ?? null,
       source = SOURCE[raw] ?? null;
-    if (value === undefined || value === null) return unknownField();
+    if (value === undefined || value === null) {
+      // Desconhecido explícito: o motivo que o servidor deu (`noSource`, de gep-reader.mjs), quando há um.
+      const reason = seen?.noSource?.[from] ?? null;
+      return reason ? { ...unknownField(), reason } : unknownField();
+    }
     return field(value, source, confidenceOf(source), {
       ageMs: seen?.sourcesDetail?.[name]?.ageMs ?? null,
       now,
