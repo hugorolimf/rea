@@ -75,6 +75,29 @@
     border-radius: 50%;
     background: var(--faint);
   }
+  /* Fonte GEP (Overwolf/TFTAcademy): verde = alimentando o helper; âmbar = parada/ausente (usa a leitura de tela). */
+  .gep-chip {
+    padding: 1px 7px;
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    &[hidden] {
+      display: none;
+    }
+    &[data-state="ativo"] {
+      border-color: color-mix(in oklab, var(--go), transparent 55%);
+      color: var(--go);
+    }
+    &[data-state="obsoleto"],
+    &[data-state="esquema-desconhecido"] {
+      border-color: color-mix(in oklab, var(--amber), transparent 55%);
+      color: var(--amber);
+    }
+  }
   .hud-stage[data-live="1"] {
     & .live {
       color: var(--go);

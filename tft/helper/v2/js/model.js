@@ -153,7 +153,16 @@ export function gepNote(g) {
         : g.state === "esquema-desconhecido"
           ? `GEP: esquema do banco desconhecido${g.detail ? ` (${g.detail})` : ""}; usando a leitura de tela`
           : `GEP ausente${why ? `: ${why}` : ""}; usando a leitura de tela`;
-  return { state: g.state, label };
+  // Texto curto do chip visível no HUD: ativo mostra a idade do último evento; os demais dizem que caiu para a tela.
+  const short =
+    g.state === "ativo"
+      ? `GEP ativo${age !== null ? ` · ${Math.round(age / 1000)}s` : ""}`
+      : g.state === "obsoleto"
+        ? "GEP parado"
+        : g.state === "esquema-desconhecido"
+          ? "GEP ?"
+          : "GEP off";
+  return { state: g.state, label, short };
 }
 
 export function buildModel({ state, rec }) {

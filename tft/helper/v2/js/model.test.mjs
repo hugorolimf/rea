@@ -561,4 +561,19 @@ test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assum
     /esquema.*events: key/,
   );
   assert.equal(gepNote(null), null);
+  // Chip curto do HUD: ativo mostra a idade; os demais avisam que caiu para a leitura de tela.
+  assert.equal(
+    gepNote({ state: "ativo", lastEventAgeMs: 4200 }).short,
+    "GEP ativo · 4s",
+  );
+  assert.equal(gepNote({ state: "ativo" }).short, "GEP ativo");
+  assert.equal(
+    gepNote({ state: "obsoleto", reason: "sem-eventos-recentes" }).short,
+    "GEP parado",
+  );
+  assert.equal(
+    gepNote({ state: "ausente", reason: "banco-ausente" }).short,
+    "GEP off",
+  );
+  assert.equal(gepNote({ state: "esquema-desconhecido" }).short, "GEP ?");
 });

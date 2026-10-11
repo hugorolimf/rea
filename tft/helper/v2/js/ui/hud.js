@@ -54,7 +54,8 @@ export function mountHud(root) {
       ...Array.from({ length: 7 }, () => el("li")),
     ),
     liveDot = el("span", { class: "live-dot" }),
-    liveText = el("span", { class: "live-text" });
+    liveText = el("span", { class: "live-text" }),
+    gepChip = el("span", { class: "gep-chip", hidden: "" });
   /* Vida */
   const hpNum = num(),
     hpBar = el("div", { class: "hp-bar" }, el("i"));
@@ -102,7 +103,7 @@ export function mountHud(root) {
       "hud-stage",
       "Fase",
       el("div", { class: "stack" }, stageNum, rounds),
-      el("div", { class: "live" }, liveDot, liveText),
+      el("div", { class: "live" }, liveDot, liveText, gepChip),
     ),
     cell(
       "hud-hp",
@@ -165,6 +166,11 @@ export function mountHud(root) {
       stageNode.dataset.live = status.live ? "1" : "0";
       // Estado da fonte GEP, discreto: só no tooltip do indicador (ativo/obsoleto/ausente/esquema desconhecido).
       liveText.title = status.gep?.label ?? "";
+      // Chip visível: confirma que o Overwolf/TFTAcademy estão alimentando o helper (ou que caiu para a leitura de tela).
+      gepChip.hidden = !status.gep;
+      gepChip.dataset.state = status.gep?.state ?? "";
+      gepChip.textContent = status.gep?.short ?? "";
+      gepChip.title = status.gep?.label ?? "";
       liveText.textContent = status.live
         ? "ao vivo"
         : status.waiting
