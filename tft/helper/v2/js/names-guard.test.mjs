@@ -196,6 +196,11 @@ const EXCEPTIONS = [
     snippet: "${r.unit.name}\\n${s.title}",
     why: "texto da dica (title) da peça na loja; o campeão é o retrato do tile",
   },
+  {
+    file: "ui/steps.js",
+    snippet: ": r.unit.name,",
+    why: "ramo sem aviso da dica (title) da peça: o campeão é o retrato do tile (o formatador separou o ternário em linhas)",
+  },
 ];
 
 const attrFree = (line) => line.replace(ATTR, "");
