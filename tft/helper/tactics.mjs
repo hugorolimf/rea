@@ -3,29 +3,22 @@ import { carouselPicks } from "./carousel.mjs";
 import {
   addCoverage,
   baseItemId,
-  coverageOf,
-  isComponent,
   isEmblemItem,
-  isManaItem,
   isThiefsGloves,
-  recipeOf,
 } from "./core/catalog/items.mjs";
+import {
+  buildContext,
+  championBuild,
+  compBuild,
+  wantedItems,
+} from "./core/items/builds.mjs";
 import { coveredKeys } from "./core/items/moves.mjs";
-import { fillRecipe, spend, takeOne } from "./core/items/stock.mjs";
+import { spend, takeOne } from "./core/items/stock.mjs";
 import { championRole, isAvatar } from "./core/catalog/champions.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
 import { starCopies, starsForCopies } from "./core/pool/copies.mjs";
-/**
- * Lista de itens desejados de um campeão: a build da comp escolhida primeiro, depois a build geral publicada.
- * Mesma ordem em build(), Passar itens (itemMoves) e item do banco (stage.mjs).
- */
-export const wishlist = (id, compBuilds, metaBuilds) => [
-  ...new Set([...(compBuilds?.[id] ?? []), ...(metaBuilds?.get(id) ?? [])]),
-];
 /** "campeão:item" de cada item já montado que a comp passa de um campeão para outro (regra: core/items/moves.mjs). */
 const coveredByMoves = coveredKeys;
-/** O item dá este efeito de cobertura (regra: core/catalog/items.mjs). */
-const covers = (id, tag) => coverageOf(id).includes(tag);
 export function tactics(analysis, catalog, options = {}) {
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c]));
   const items = new Map(catalog.items.map((i) => [i.apiName, i]));
@@ -104,345 +97,33 @@ export function tactics(analysis, catalog, options = {}) {
   const traitsOfUnit = (id, equipped) =>
     book.of(byId.get(id)?.traits ?? [], equipped).traits;
   const emblemByTrait = new Map(book.recipes.map((e) => [e.trait, e]));
-  const item = (id) => {
-    const i = items.get(id);
-    return {
-      id,
-      name: i?.name ?? id,
-      components: (i?.composition ?? []).map((id) => ({
-        id,
-        name: items.get(id)?.name ?? id,
-      })),
-    };
-  };
-  function build(c, equipped, coverage, compBuilds = null) {
-    const r = role(c),
-      desc = c.ability?.desc ?? "",
-      melee = c.stats.range <= 2,
-      onhit = /attacks|per attack|soldier|attack speed/i.test(desc),
-      aoe = /enemies|adjacent|splash|area/i.test(desc),
-      highMana = (c.stats.mana ?? 0) >= 70;
-    const scores = [];
-    const add = (id, score, reason) => {
-      if (items.has(id)) scores.push({ ...item(id), score, reason });
-    };
-    // Efeito medido de cada item neste campeão (MetaTFT): colocação média com o item contra a dele em geral.
-    // É o que diz se um item que o jogo te deu "faz sentido" nele, sem exigir a build ideal.
-    const champAvg = options.stats?.unit?.[c.apiName]?.[0] ?? null,
-      measured = (id) => {
-        const m = options.stats?.unitItem?.[`${c.apiName}|${id}`];
-        return m && champAvg != null && m[1] >= 300
-          ? { delta: m[0] - champAvg, games: m[1] }
-          : null;
-      };
-    // Com build da comp para este campeão, a lista publicada manda e a medição só desempata (sem itens de fora).
-    const compBuild = !!compBuilds?.[c.apiName]?.length;
-    const measuredIds = compBuild
-      ? []
-      : Object.keys(options.stats?.unitItem ?? {})
-          .filter((k) => k.startsWith(c.apiName + "|"))
-          .map((k) => k.slice(c.apiName.length + 1))
-          .filter((id) => measured(id));
-    const meta = [
-      ...new Set([
-        ...wishlist(c.apiName, compBuilds, options.metaBuilds),
-        ...measuredIds,
-      ]),
-    ];
-    // Só item montável (receita de 2 componentes) ou já no banco: artefato vem da bigorna e componente não é item final.
-    const buildable = (id) =>
-      recipeOf(items.get(id)) !== null ||
-      (options.inventory ?? []).includes(id);
-    if (meta?.length) {
-      // Ordem da meta manda; o lobby observado só desempata itens que já estão na lista.
-      const strong = units.some((u) => u.stars >= 2 && u.cost >= 3);
-      let rank = 0;
-      for (const id of meta) {
-        if (isEmblemItem(id) || isThiefsGloves(id) || !buildable(id)) continue;
-        rank++;
-        let bonus = 0,
-          why = "";
-        if (covers(id, "shredArmor") && armor) {
-          bonus = 10;
-          why = " Sobe pela frontline com armadura observada.";
-        } else if (covers(id, "shredMagic") && resists) {
-          bonus = 10;
-          why = " Sobe pela resistência mágica observada.";
-        } else if (covers(id, "wounds") && heals >= 2) {
-          bonus = 10;
-          why = " Sobe pela cura observada em rivais.";
-        } else if (/DragonsClaw/.test(id) && threat.physicalShare < 0.45) {
-          bonus = 8;
-          why = " Sobe pelo dano mágico do lobby.";
-        } else if (
-          /BrambleVest/.test(id) &&
-          (threat.physicalShare > 0.55 || crit)
-        ) {
-          bonus = 8;
-          why = " Sobe pelo dano físico/crítico do lobby.";
-        } else if (/GiantSlayer/.test(id) && strong) {
-          bonus = 6;
-          why = " Sobe pelos alvos resistentes de alto custo.";
-        }
-        const m = measured(id),
-          effect = m
-            ? `${m.delta <= 0 ? "melhora" : "piora"} a colocação em ${Math.abs(m.delta).toFixed(2).replace(".", ",")} (medido em ${m.games.toLocaleString("pt-BR")} partidas)`
-            : "";
-        if (compBuild)
-          // Build da comp: vale a posição; a medição desempata no máximo ±2,5 (menos que um degrau de 6).
-          add(
-            id,
-            126 -
-              rank * 6 +
-              Math.max(-2.5, Math.min(2.5, -(m?.delta ?? 0) * 10)) +
-              bonus,
-            rank +
-              "º item de " +
-              c.name +
-              (compBuilds[c.apiName].includes(id)
-                ? " na build da comp ("
-                : " na meta (") +
-              options.metaLabel +
-              ")." +
-              (m ? ` Em ${c.name}, ${effect}.` : "") +
-              why,
-          );
-        // Medido: quanto o item melhora (ou piora) a colocação deste campeão; 0,1 de colocação vale 4 pontos.
-        // Sem medição suficiente, vale a posição na lista publicada.
-        else
-          add(
-            id,
-            m ? 110 - m.delta * 40 + bonus : 126 - rank * 6 + bonus,
-            m
-              ? `Em ${c.name}, ${effect}.${why}`
-              : rank +
-                  "º item de " +
-                  c.name +
-                  " na meta (" +
-                  options.metaLabel +
-                  ")." +
-                  why,
-          );
-      }
-    } else if (r === "tank") {
-      add("DA_WarmogsArmor", 82, "Vida para sustentar a frontline.");
-      add(
-        "DA_GargoyleStoneplate",
-        84,
-        "Resistências ao receber foco de múltiplas unidades.",
-      );
-      add("DA_SteadfastHeart", 80, "Durabilidade para segurar a luta.");
-      add(
-        "DA_DragonsClaw",
-        threat.physicalShare < 0.45 ? 105 : 70,
-        "Resistência mágica; sobe de prioridade contra dano mágico observado.",
-      );
-      add(
-        "DA_BrambleVest",
-        threat.physicalShare > 0.55 || crit ? 103 : 65,
-        "Armadura e proteção contra ataques; priorizado pelo perfil físico/crítico rival.",
-      );
-      add(
-        "DA_SunfireCape",
-        heals ? 110 : 68,
-        "Feridas para enfrentar cura e regeneração; precisa alcançar os alvos.",
-      );
-      add(
-        "DA_SpiritVisage",
-        /heal|shield|restore/i.test(desc) ? 95 : 66,
-        "Sustain e amplificação de proteção para esta habilidade.",
-      );
-    } else if (r === "ad") {
-      add(
-        "DA_InfinityEdge",
-        95,
-        "Crítico para amplificar o dano físico da habilidade.",
-      );
-      add("DA_Deathblade", 83, "Dano de ataque para escalar a habilidade.");
-      add(
-        "DA_LastWhisper",
-        armor ? 108 : 78,
-        "Reduz armadura; ganha prioridade contra a frontline resistente observada.",
-      );
-      add(
-        "DA_GuinsoosRageblade",
-        onhit ? 98 : 80,
-        "Velocidade de ataque para ataques frequentes e lutas prolongadas.",
-      );
-      add(
-        "DA_GiantSlayer",
-        units.some((u) => u.stars >= 2 && u.cost >= 3) ? 95 : 75,
-        "Ajuda a derrubar alvos resistentes de alto investimento.",
-      );
-      add(
-        "DA_Bloodthirster",
-        melee ? 106 : 63,
-        "Sustain para um carry que precisa lutar perto dos inimigos.",
-      );
-      add(
-        "DA_TitansResolve",
-        melee ? 101 : 45,
-        "Escala em combate prolongado para lutadores na linha de frente.",
-      );
-      add(
-        "DA_SpearOfShojin",
-        highMana ? 92 : 58,
-        "Mana para conjurar uma habilidade de custo alto com mais frequência.",
-      );
-      add(
-        "DA_Quicksilver",
-        melee ? 86 : 69,
-        "Opção de proteção contra controle; conferir o controle do próximo oponente.",
-      );
-    } else {
-      add(
-        "DA_RabadonsDeathcap",
-        92,
-        "AP para elevar o dano mágico da habilidade.",
-      );
-      add(
-        "DA_JeweledGauntlet",
-        94,
-        "Crítico de habilidade para um carry mágico.",
-      );
-      add("DA_ArchangelsStaff", 86, "AP crescente para combates longos.");
-      add(
-        "DA_SpearOfShojin",
-        highMana ? 105 : 78,
-        "Mana para acelerar conjurações.",
-      );
-      add(
-        "DA_BlueBuff",
-        highMana ? 76 : 98,
-        "Mana para habilidades de custo menor; escolha um único acelerador de mana.",
-      );
-      add(
-        "DA_VoidStaff",
-        resists ? 112 : 78,
-        "Redução de resistência mágica contra os itens defensivos observados.",
-      );
-      add(
-        "DA_HextechGunblade",
-        87,
-        "Sustain para o carry e apoio à frontline.",
-      );
-      add(
-        "DA_Morellonomicon",
-        heals && aoe ? 116 : aoe ? 76 : 45,
-        "Feridas aplicadas pela habilidade; favorece dano em área contra cura rival.",
-      );
-      add(
-        "DA_NashorsTooth",
-        onhit ? 105 : 72,
-        "Ataques acelerados após conjurar; combina com este padrão de habilidade.",
-      );
-      add(
-        "DA_GuinsoosRageblade",
-        onhit ? 108 : 52,
-        "Prioriza ataques repetidos; útil para habilidades de soldados/on-hit.",
-      );
-    }
-    for (const s of scores) {
-      const utility = coverageOf(s.id)[0] ?? null;
-      // Item que a comp designa para esta unidade não é duplicata: é dela.
-      if (
-        utility &&
-        !(compBuilds?.[c.apiName] ?? []).includes(s.id) &&
-        coverage.has(utility) &&
-        !equipped.some((i) => clean(i) === s.id)
-      ) {
-        s.score -= 45;
-        s.reason +=
-          " A equipe já tem ou planeja esse efeito; evite duplicar sem necessidade de cobertura.";
-      }
-    }
-    // Componente solto já equipado neste campeão vale como metade da receita: completar não gasta slot novo.
-    const heldParts = equipped.filter(isComponent);
-    for (const s of scores) {
-      const stock = options.inventory ?? [],
-        required = stock.includes(s.id)
-          ? [s.id]
-          : s.components.map((c) => c.id);
-      // Banco (cada cópia uma vez) e, numa receita de 2, uma peça solta que a própria peça já leva (core/items/stock.mjs).
-      const { missing, usesHeld } = fillRecipe(required, {
-        stock,
-        held: heldParts,
-      });
-      s.usesHeld = usesHeld;
-      if (s.usesHeld) s.score += 30;
-      s.missing = missing.map(item);
-      s.craftable = required.length > 0 && missing.length === 0;
-      s.inventoryNote =
-        s.craftable && s.usesHeld
-          ? "Completa o " +
-            (items.get(s.usesHeld)?.name ?? "componente") +
-            " que já está neste campeão com o do seu banco"
-          : s.usesHeld && missing.length === 1
-            ? "Usa o " +
-              (items.get(s.usesHeld)?.name ?? "componente") +
-              " já equipado; falta o outro componente"
-            : s.craftable
-              ? "Disponível com os itens/componentes livres informados"
-              : missing.length === 1 && required.length > 1
-                ? "Falta um componente para montar"
-                : "Receita ainda incompleta";
-      s.score += s.craftable
-        ? meta?.length
-          ? 20
-          : 45
-        : (required.length - missing.length) * (meta?.length ? 6 : 12);
-    }
-    scores.sort((a, b) => b.score - a.score);
-    const chosenItems = [];
-    for (const s of scores) {
-      if (chosenItems.length === 3) break;
-      if (chosenItems.some((i) => isManaItem(i.id) && isManaItem(s.id)))
-        continue;
-      chosenItems.push(s);
-    }
-    const occupied = equipped.length,
-      locked = equipped.some(isThiefsGloves);
-    const slotsFree = locked ? 0 : Math.max(0, 3 - occupied);
-    const additions = [],
-      heldLeft = [...heldParts];
-    let freeUsed = 0;
-    for (const s of scores) {
-      if (freeUsed >= slotsFree && !heldLeft.length) break;
-      if (equipped.some((i) => clean(i) === s.id)) continue;
-      // Completar a peça solta que a unidade já leva não gasta slot; começar um item novo gasta.
-      const completesHeld =
-        !!s.usesHeld && takeOne(heldLeft, s.usesHeld) !== null;
-      if (!completesHeld) {
-        if (s.usesHeld || freeUsed >= slotsFree || locked) continue;
-        freeUsed++;
-      }
-      if (
-        isManaItem(s.id) &&
-        [...equipped, ...additions.map((i) => i.id)].some(isManaItem)
-      )
-        continue;
-      additions.push(s);
-    }
-    addCoverage(coverage, [...equipped, ...additions.map((i) => i.id)]);
-    return {
-      championId: c.apiName,
-      name: c.name,
-      role: r,
-      source: meta?.length
-        ? options.metaLabel
-        : "heurística local (sem dado de meta)",
-      equipped: equipped.map(item),
-      slotsFree,
-      ideal: chosenItems,
-      additions,
-      note: locked
-        ? "Luvas do Ladrão ocupam a build; não adicionar itens comuns."
-        : slotsFree === 0
-          ? "Três slots ocupados. Preserve os itens; a build ideal é referência para futuras cópias ou uso de removedor."
-          : "Busque os itens sugeridos para os slots livres. Componentes disponíveis não foram lidos; as receitas são objetivos de build.",
-    };
-  }
-  function plan(board, carry, compBuilds = null) {
+  // Build de cada campeão: o motor único de itens (core/items/builds.mjs). Com build publicada na comp, é a da aba
+  // Comps (mesmos itens, cópias, emblemas e ordem); sem ela, a reserva declarada (build geral + medição, ajustada pelo lobby).
+  const buildCtx = buildContext({
+    items,
+    role,
+    stats: options.stats,
+    metaBuilds: options.metaBuilds,
+    metaLabel: options.metaLabel,
+    inventory: options.inventory ?? [],
+    lobby: {
+      armor,
+      resists,
+      heals,
+      crit,
+      physicalShare: threat.physicalShare,
+      strong: units.some((u) => u.stars >= 2 && u.cost >= 3),
+    },
+    emblemTrait: (id) => book.emblems.get(id) ?? null,
+  });
+  const build = (c, equipped, coverage, comp = null) =>
+      championBuild(c, { equipped, coverage, comp, ctx: buildCtx }),
+    item = buildCtx.item;
+  // `comp`: a comp do plano ({ builds, buildStats }: a da recomendação ou a fixada); null = tabuleiro sem comp.
+  function plan(board, carry, comp = null) {
+    // Itens que cada peça pede (a build publicada da comp; sem ela, a reserva): Passar itens, emblema e loja usam a mesma.
+    const wish = (id) =>
+      wantedItems(id, { comp, metaBuilds: options.metaBuilds });
     const planned = board.map((u) => {
       const c = byId.get(u.id);
       const pool = analysis.pool.find((p) => p.name === u.name),
@@ -590,11 +271,11 @@ export function tactics(analysis, catalog, options = {}) {
     const itemOrder = [...planned].sort(
       (a, b) =>
         (b.name === carry) - (a.name === carry) ||
-        !!compBuilds?.[b.id]?.length - !!compBuilds?.[a.id]?.length ||
+        !!compBuild(comp, b.id) - !!compBuild(comp, a.id) ||
         (b.role === "tank") - (a.role === "tank"),
     );
     const itemPlans = itemOrder.map((u) =>
-      build(byId.get(u.id), u.items ?? [], coverage, compBuilds),
+      build(byId.get(u.id), u.items ?? [], coverage, comp),
     );
     const traitOf = new Map(traits.map((t) => [t.name, t])),
       stockAll = options.inventory ?? [];
@@ -638,9 +319,7 @@ export function tactics(analysis, catalog, options = {}) {
               ).includes(t.name),
           );
           const holder =
-            holders.find((b) =>
-              options.metaBuilds?.get(b.championId)?.includes(e.id),
-            ) ??
+            holders.find((b) => wish(b.championId).includes(e.id)) ??
             holders.find((b) => b.role === "tank") ??
             holders[0] ??
             null;
@@ -673,7 +352,6 @@ export function tactics(analysis, catalog, options = {}) {
       .slice(0, 5);
     // Mudanças de item: item em unidade que sai da comp, ou que não está na build de quem o carrega, vai para
     // quem o usa melhor entre as unidades que já estão em campo. Um removedor tira todos os itens de uma unidade.
-    const wish = (id) => wishlist(id, compBuilds, options.metaBuilds);
     const slotsLeft = new Map(
       itemPlans
         .filter((b) => current.has(b.championId))
@@ -810,7 +488,7 @@ export function tactics(analysis, catalog, options = {}) {
     };
   }
   for (const r of analysis.recommendations)
-    Object.assign(r, plan(r.board, r.carry, r.meta?.builds ?? null));
+    Object.assign(r, plan(r.board, r.carry, r.meta ?? null));
   if (options.previewIds?.length) {
     const board = options.previewIds.map((id) => {
       const c = byId.get(id),
@@ -831,7 +509,7 @@ export function tactics(analysis, catalog, options = {}) {
       board,
       board.find((u) => u.id === options.goalCarryId)?.name ??
         board.find((u) => byId.get(u.id).stats.range >= 3)?.name,
-      options.goalComp?.builds ?? null,
+      options.goalComp ?? null,
     );
   }
   const observedBoard = analysis.self.units
@@ -862,12 +540,12 @@ export function tactics(analysis, catalog, options = {}) {
   // Free items are caller-confirmed; equipped items remain attached to their observed owner.
   const coverage = new Set();
   for (const u of analysis.self.units) addCoverage(coverage, u.itemNames);
-  // Próximo item / Montar agora seguem a build da comp alvo (a mesma dos planos); quem não está nela usa a geral.
+  // Próximo item / Montar agora seguem a build da comp alvo (a mesma dos planos); quem não está nela usa a reserva.
   // O preview ainda não tem `meta` (o servidor põe depois): as builds vêm da comp fixada.
   const target = analysis.preview ?? analysis.recommendations[0] ?? null,
-    targetBuilds = analysis.preview
-      ? (options.goalComp?.builds ?? null)
-      : (target?.meta?.builds ?? null);
+    targetComp = analysis.preview
+      ? (options.goalComp ?? null)
+      : (target?.meta ?? null);
   const currentBuilds = analysis.self.units
     .filter((u) => byId.has(u.championName))
     .map((u) => ({
@@ -875,7 +553,7 @@ export function tactics(analysis, catalog, options = {}) {
         byId.get(u.championName),
         u.itemNames ?? [],
         coverage,
-        targetBuilds,
+        targetComp,
       ),
       stars: u.starLevel,
     }));

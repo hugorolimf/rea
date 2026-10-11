@@ -1,4 +1,4 @@
-// Correção pontual de carga ao vivo (pesquisa/lentidao-ao-vivo.md): ceder o loop, fila das análises, teto de espera de
+// Correção pontual de carga ao vivo (planos/feitos/lentidao-ao-vivo.md): ceder o loop, fila das análises, teto de espera de
 // rede da evidência, medição do loop e gravação espaçada do cache do explorer.
 // Rodar com: node --test tests/live-load.test.mjs
 import test from "node:test";

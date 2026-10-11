@@ -315,6 +315,7 @@ test("partida gravada: ouro, nível, XP, estágio, loja, reserva e banco de iten
     augmentOffer: null,
     augmentPicked: null,
     augmentUnknown: 0,
+    augmentUnresolved: [],
     wisps: 0,
   });
   assert.equal(s.recordGames, null, "banco do fixture sem tabela settings");
@@ -1165,10 +1166,10 @@ test("Wisp na loja pelo leitor e pela mescla: wisps separados, shop só com camp
 // --- aprimoramentos (oferta e escolhidos) --------------------------------------------------------------------------
 
 const AUGS = new Set(["DA_18_BigGrabBag", "DA_Min_Max", "DA_Kingslayer"]);
-const augRow = (dt, feature, key, data) => ({
+const augRow = (dt, feature, key, data, round = "2-1") => ({
   dt,
   event_type: feature,
-  round: "2-1",
+  round,
   feature,
   key,
   data,
@@ -1364,6 +1365,7 @@ test("aprimoramentos pelo leitor: oferta e escolhido do jogador mapeados ao cat�
     augmentOffer: 3,
     augmentPicked: 1,
     augmentUnknown: 0,
+    augmentUnresolved: [],
     wisps: 0,
   });
   // Dois escolhidos em momentos diferentes: em ordem, cada um com o estágio da hora.
@@ -1380,6 +1382,7 @@ test("aprimoramentos pelo leitor: oferta e escolhido do jogador mapeados ao cat�
       "match_info",
       "picked_augment",
       augData("DA_Kingslayer"),
+      "3-2",
     ),
   ]);
   assert.deepEqual(two.fields.augmentPicked.value, [
@@ -1406,8 +1409,9 @@ test("aprimoramentos: só os pares feature.key do jogador (outra feature com a m
   assert.equal(s.lastEventAgeMs, 8000, "mas contam como sinal de vida");
   // `me.picked_augment` é aceito (o TFTAcademy não filtra a feature do escolhido).
   const viaMe = augGep([
-    augRow(LAST_DT + 1, "me", "picked_augment", '"DA_Kingslayer"'),
+    augRow(LAST_DT + 1, "me", "picked_augment", '"DA_Kingslayer"', null),
   ]);
+  // Sem a coluna `round` no evento, vale o estágio do último `round_type`.
   assert.deepEqual(viaMe.fields.augmentPicked.value, [
     { id: "DA_Kingslayer", stage: "1-3" },
   ]);
@@ -1438,10 +1442,11 @@ test("aprimoramentos: sem a coluna feature só as chaves inequívocas (a chave m
   ]);
 });
 
-test("aprimoramentos na mescla: o GEP fresco vence a oferta da tela e traz os escolhidos; vale mesmo contra a precedência dos demais campos", () => {
+test("aprimoramentos na mescla: só o GEP (a oferta lida da tela por OCR é descartada) e os escolhidos vêm com ele, mesmo contra a precedência dos demais campos", () => {
   const gep = augGep(FULL_AUG_ROWS);
   const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Fora"] };
   const seen = mergeGep(base, gep);
+  // A oferta do FULL_AUG_ROWS foi seguida da escolha (`picked_augment`), mas o `augments.me` vazio não veio: segue aberta.
   assert.deepEqual(seen.augments, [
     "DA_18_BigGrabBag",
     "DA_Min_Max",
@@ -1450,10 +1455,35 @@ test("aprimoramentos na mescla: o GEP fresco vence a oferta da tela e traz os es
   assert.equal(seen.sources.augments, "gep");
   assert.equal(seen.sourcesDetail.augments.confidence, "observed");
   assert.equal(seen.sourcesDetail.augments.ageMs, 10_000);
+  assert.deepEqual(seen.augmentOffer, {
+    open: true,
+    stage: "2-1",
+    cards: [
+      {
+        slot: 1,
+        id: "DA_18_BigGrabBag",
+        text: "DA_18_BigGrabBag",
+        rerolled: false,
+      },
+      { slot: 2, id: "DA_Min_Max", text: "da_min_max", rerolled: false },
+      { slot: 3, id: "DA_Kingslayer", text: "DA_Kingslayer", rerolled: false },
+    ],
+    unresolved: [],
+    ageMs: 10_000,
+  });
+  assert.deepEqual(seen.augmentSource, {
+    state: "ativo",
+    source: "gep",
+    reason: null,
+    held: false,
+    picked: 1,
+    unresolved: [],
+  });
   assert.deepEqual(seen.pickedAugments, [{ id: "DA_Min_Max", stage: "2-1" }]);
   assert.equal(seen.sources.pickedAugments, "gep");
   const state = buildGameState(seen, { now: 1_000_000, gameId: "g" });
   assert.equal(state.me.pickedAugments.source, "gep");
+  assert.equal(state.me.augmentOffer.source, "gep");
   // A precedência com histerese (tela escolhida para ouro) não esconde o que só o GEP observa.
   const screenWins = mergeGep(base, gep, () => false);
   assert.equal(screenWins.gold, 7);
@@ -1462,17 +1492,32 @@ test("aprimoramentos na mescla: o GEP fresco vence a oferta da tela e traz os es
     { id: "DA_Min_Max", stage: "2-1" },
   ]);
   assert.equal(screenWins.augments.length, 3);
-  // GEP obsoleto ou ausente: volta à tela, sem erro, e sem escolhidos.
+  // GEP obsoleto ou ausente: SEM FONTE de aprimoramentos (a oferta da tela não volta), sem erro e sem escolhidos.
   const stale = mergeGep(
     base,
     augGep(FULL_AUG_ROWS, { augments: AUGS }, LAST_DT + 900),
   );
-  assert.deepEqual(stale.augments, ["DA_Kingslayer", "DA_Fora"]);
+  assert.equal(stale.augments, null);
+  assert.equal(stale.augmentOffer, null);
+  assert.equal(stale.sources.augments, undefined);
   assert.equal(stale.pickedAugments, undefined);
   assert.equal(stale.gepStatus.state, "obsoleto");
+  assert.deepEqual(stale.augmentSource, {
+    state: "sem-fonte",
+    source: null,
+    reason: "sem-eventos-recentes",
+    held: false,
+    picked: 0,
+    unresolved: [],
+  });
+  const none = mergeGep(base, null);
+  assert.equal(none.augments, null);
+  assert.equal(none.augmentSource.state, "sem-fonte");
+  assert.equal(none.augmentSource.reason, "desligada");
+  assert.equal(buildGameState(none).me.augmentOffer.value, null);
 });
 
-test("aprimoramentos: oferta incompleta, vazia ou fora do catálogo não substitui a da tela; escolhido fora do catálogo é desconhecido", () => {
+test("aprimoramentos: carta fora do catálogo fica de fora e NOMEADA; oferta vazia fecha a escolha; sem eventos é aguardando", () => {
   const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Min_Max"] };
   const partial = augGep(
     [
@@ -1492,28 +1537,43 @@ test("aprimoramentos: oferta incompleta, vazia ou fora do catálogo não substit
     "DA_18_BigGrabBag",
     "DA_Min_Max",
   ]);
+  assert.deepEqual(partial.fields.augmentOffer.unresolved, ["DA_Inexistente"]);
   assert.deepEqual(partial.fields.augmentPicked.value, []);
   assert.equal(partial.fields.augmentPicked.unknown, 1);
+  assert.deepEqual(partial.fields.augmentPicked.unresolved, ["DA_Inexistente"]);
   assert.equal(partial.coverage.augmentUnknown, 2);
+  assert.deepEqual(partial.coverage.augmentUnresolved, ["DA_Inexistente"]);
   const seen = mergeGep(base, partial);
   assert.deepEqual(
     seen.augments,
-    base.augments,
-    "oferta incompleta: fica a da tela",
+    ["DA_18_BigGrabBag", "DA_Min_Max"],
+    "as cartas do catálogo valem; a desconhecida fica nomeada",
   );
-  assert.notEqual(seen.sources.augments, "gep");
+  assert.equal(seen.sources.augments, "gep");
+  assert.deepEqual(seen.augmentOffer.cards[2], {
+    slot: 3,
+    id: null,
+    text: "DA_Inexistente",
+    rerolled: false,
+  });
+  assert.deepEqual(seen.augmentOffer.unresolved, ["DA_Inexistente"]);
+  assert.deepEqual(seen.augmentSource.unresolved, ["DA_Inexistente"]);
   assert.equal(seen.pickedAugments, undefined);
   assert.equal(seen.sources.pickedAugments, undefined);
-  // Oferta vazia (tela de escolha fechada): a da tela continua.
+  // Oferta vazia (escolha feita/fechada): nenhuma oferta, mesmo que a tela ainda mostre uma antiga.
   const closed = augGep(
     [augRow(LAST_DT + 1, "augments", "me", "{}")],
     { augments: AUGS },
     LAST_DT + 3,
   );
   assert.deepEqual(closed.fields.augmentOffer.value, []);
-  assert.deepEqual(mergeGep(base, closed).augments, base.augments);
-  // Sem nenhum evento de aprimoramentos: nada muda.
-  assert.deepEqual(mergeGep(base, augGep([])).augments, base.augments);
+  const closedSeen = mergeGep(base, closed);
+  assert.deepEqual(closedSeen.augments, []);
+  assert.equal(closedSeen.augmentOffer.open, false);
+  // GEP ativo sem nenhum evento de aprimoramento ainda (antes do 2-1): aguardando, oferta desconhecida.
+  const before = mergeGep(base, augGep([]));
+  assert.equal(before.augments, null);
+  assert.equal(before.augmentSource.state, "aguardando");
 });
 
 test("aprimoramentos escolhidos na análise: o registro manual prevalece (mesmo vazio); sem ele valem os do GEP", () => {

@@ -4,8 +4,10 @@
 // `workerSpawner`), então os testes usam um pipeline falso e até uma thread falsa.
 //
 // Regras:
-//  - Um pedido ativo por vez; no máximo UM esperando. Chegou outro enquanto um roda e outro espera: o que esperava é
-//    substituído (`superseded`) e só o mais recente roda depois (coalescência).
+//  - Um pedido ativo por vez. Com `supersede` (padrão), no máximo UM esperando: chegou outro enquanto um roda e outro espera,
+//    o que esperava é substituído (`superseded`) e só o mais recente roda depois (coalescência). Com `supersede: false`
+//    os pedidos esperam em fila (FIFO) e cada um recebe o resultado da PRÓPRIA entrada: é o modo do servidor, em que
+//    entradas diferentes (decisões do usuário, partida revista, adversário visto) nunca podem trocar de resultado.
 //  - O pedido em execução nunca é interrompido por um mais novo (análise síncrona não se interrompe); só por
 //    `timeout`, `cancel({ kill })` ou queda da thread. A thread é recriada, com o contexto reenviado.
 //  - O resultado é JSON já serializado (ArrayBuffer transferido). `latest` só avança (nunca volta para uma revisão
@@ -66,6 +68,7 @@ export function workerSpawner({
  * @param {() => WorkerLike} config.spawn  cria a thread: `postMessage(msg, transfer?)`, `on("message"|"error"|"exit")`, `terminate()`
  * @param {number} [config.timeoutMs]      limite de execução de um pedido (a thread é recriada ao estourar)
  * @param {number} [config.startTimeoutMs] limite para a thread avisar `ready`
+ * @param {boolean} [config.supersede]     `true` (padrão): coalesce o pedido que espera; `false`: fila FIFO sem descarte
  * @param {number} [config.maxBaseAge]     defasagem máxima (em leituras) da resposta imediata; padrão 1
  * @param {number} [config.maxRestarts]    recriações permitidas dentro de `restartWindowMs`; acima disso: `failed`
  * @param {number} [config.restartDelayMs] espera antes de recriar (dobra a cada recriação seguida, máx. 5 s)
@@ -79,6 +82,7 @@ export function createAnalysisWorker(config) {
     timeoutMs = 20_000,
     startTimeoutMs = 15_000,
     maxBaseAge: defaultMaxBaseAge = DEFAULT_MAX_BASE_AGE,
+    supersede = true,
     maxRestarts = 5,
     restartWindowMs = 60_000,
     restartDelayMs = 250,
@@ -104,7 +108,7 @@ export function createAnalysisWorker(config) {
   let reading = 0; // leitura: cresce quando a chave de entrada muda
   let lastKey = null;
   let running = null; // { ticket, gen, timer }
-  let waiting = null;
+  const queued = []; // pedidos esperando, do mais antigo ao mais novo (com `supersede`, no máximo um)
   let latest = null; // { rev, reading, key, bytes, completedAt, ctxRev, workerMs, stages }
   const open = new Set(); // pedidos cuja resposta imediata (`usable`) ainda não saiu
   const counters = {
@@ -265,24 +269,24 @@ export function createAnalysisWorker(config) {
     }
     open.add(ticket);
     offerLatest(ticket);
-    if (waiting) {
-      const old = waiting;
-      counters.superseded++;
-      settle(old, outcome(old, "superseded", { successor: ticket }));
-      emit("superseded", { id: old.id, by: ticket.id });
-    }
-    waiting = ticket;
+    if (supersede)
+      for (const old of queued.splice(0)) {
+        counters.superseded++;
+        settle(old, outcome(old, "superseded", { successor: ticket }));
+        emit("superseded", { id: old.id, by: ticket.id });
+      }
+    queued.push(ticket);
     ensureWorker();
     pump();
     return ticket;
   }
 
   function pump() {
-    if (phase === "ready" && !running && waiting) dispatch(waiting);
+    if (phase === "ready" && !running && queued.length)
+      dispatch(queued.shift());
   }
 
   function dispatch(ticket) {
-    waiting = null;
     const gen = liveGen;
     ticket.status = "running";
     ticket.dispatchedAt = now();
@@ -489,9 +493,7 @@ export function createAnalysisWorker(config) {
   function fail(reason) {
     phase = "failed";
     emit("failed", { reason, restarts: restartTimes.length });
-    if (waiting) {
-      const stuck = waiting;
-      waiting = null;
+    for (const stuck of queued.splice(0)) {
       counters.unavailable++;
       settle(stuck, outcome(stuck, "unavailable", { reason: "restart-limit" }));
     }
@@ -566,14 +568,12 @@ export function createAnalysisWorker(config) {
     const ticket =
       typeof target === "object"
         ? target
-        : waiting?.id === target
-          ? waiting
-          : running?.ticket.id === target
-            ? running.ticket
-            : null;
+        : (queued.find((t) => t.id === target) ??
+          (running?.ticket.id === target ? running.ticket : null));
     if (!ticket || ticket.settled) return false;
     counters.cancelled++;
-    if (waiting === ticket) waiting = null;
+    const at = queued.indexOf(ticket);
+    if (at >= 0) queued.splice(at, 1);
     const isRunning = running?.ticket === ticket;
     settle(ticket, outcome(ticket, "cancelled"));
     if (isRunning) {
@@ -635,7 +635,8 @@ export function createAnalysisWorker(config) {
       reading,
       ctxRev,
       running: running?.ticket.id ?? null,
-      waiting: waiting?.id ?? null,
+      waiting: queued[0]?.id ?? null,
+      queued: queued.length,
       latest: latest
         ? {
             rev: latest.rev,
@@ -673,11 +674,11 @@ export function createAnalysisWorker(config) {
     clearTimeout(startTimer);
     clearTimeout(restartTimer);
     restartTimer = null;
-    for (const ticket of [waiting, running?.ticket]) {
+    for (const ticket of [...queued, running?.ticket]) {
       if (ticket) settle(ticket, outcome(ticket, "closed"));
     }
     if (running) clearTimeout(running.timer);
-    waiting = null;
+    queued.length = 0;
     running = null;
     const old = thread;
     thread = null;

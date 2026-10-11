@@ -183,9 +183,12 @@ test("streak.trend usa a janela e a quantidade de quedas da política; vida acim
   perturb(POLICY.trend, "drops", 2, () =>
     assert.equal(t.trend(4000).avgLoss, avg(2)),
   );
-  // A janela de perdas recentes é `POLICY.trend.windowMs`, contada do instante de cada queda.
-  assert.equal(t.trend(4000 + POLICY.trend.windowMs).recentLosses, 1);
+  // A janela de perdas recentes é `POLICY.trend.windowMs` e termina na última queda: enquanto a vida não muda, a
+  // contagem não cai a cada leitura (antes caía de 4 para 1 só com o relógio e a faixa oscilava com a vida parada); uma
+  // janela inteira sem queda (rodadas ganhas) zera.
+  assert.equal(t.trend(4000 + POLICY.trend.windowMs).recentLosses, 4);
   assert.equal(t.trend(4000 + POLICY.trend.windowMs + 1).recentLosses, 0);
+  assert.equal(t.trend(4000).samples, POLICY.trend.drops);
   // Acima do máximo do jogo é leitura inválida: não entra no registro de quedas.
   const u = feedHp([
     [80, 0],
@@ -215,9 +218,15 @@ test("nível-alvo: os limiares de vida e de ouro vêm da política e do teto de 
   });
   const first = (hp, goldNow) =>
     suggestTargetLevel(snap(hp), "1", 6, goldNow).reasons[0];
-  // Vida baixa (HP <= POLICY.hp.low): com o ouro do teto de juros ainda sobe; sem ele estabiliza.
-  assert.match(first(H.low, cap()), /permitem subir um nível/);
-  assert.match(first(H.low, cap() - 1), /estabilizar no nível atual/);
+  // Vida baixa (HP <= POLICY.hp.low): o plano continua mirando o próximo nível, com ou sem o teto de juros. Antes o alvo
+  // caía para o nível atual sem o teto e voltava com ele: a vida baixa (e o ouro passando de 50 g para lá e para cá)
+  // trocava o tamanho do tabuleiro e, com ele, a comp inteira (tft-pressao-vida).
+  const at = (hp, goldNow) =>
+    suggestTargetLevel(snap(hp), "1", 6, goldNow).level;
+  assert.match(first(H.low, cap()), /continua mirando o nível 7/);
+  assert.equal(at(H.low, cap()), 7);
+  assert.equal(at(H.low, cap() - 1), 7);
+  assert.equal(at(H.danger, 0), 7);
   assert.match(first(H.low + 1, cap()), /próximo nível como meta/);
   // Saudável com o teto de juros: dois níveis acima, a partir de POLICY.hp.hurt.
   assert.match(first(H.hurt, cap()), /dois níveis acima/);
@@ -226,10 +235,11 @@ test("nível-alvo: os limiares de vida e de ouro vêm da política e do teto de 
     assert.match(first(H.hurt, cap()), /próximo nível como meta/),
   );
   perturb(POLICY.hp, "low", H.low + 5, () =>
-    assert.match(first(H.low + 5, cap() - 1), /estabilizar no nível atual/),
+    assert.match(first(H.low + 5, cap() - 1), /continua mirando/),
   );
+  // O teto de juros ainda decide o "dois níveis acima" com a vida saudável.
   perturb(INCOME, "interestMax", 3, () =>
-    assert.match(first(H.low, cap()), /permitem subir um nível/),
+    assert.match(first(H.hurt, cap()), /dois níveis acima/),
   );
 });
 

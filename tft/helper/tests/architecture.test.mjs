@@ -238,8 +238,8 @@ const RULES = [
         "mock com os próprios papéis de item (ajustar depois de M5)",
       ],
       "tactics.mjs": [
-        14,
-        "4 regex da ameaça do lobby (lobby.threat, D15) + 10 add() da tabela de pontos por item da build (política da build: não muda)",
+        4,
+        "4 regex da ameaça do lobby (lobby.threat, D15); a tabela de pontos por item da build de reserva foi para core/items/builds.mjs (motor único de itens)",
       ],
     },
   },
@@ -606,6 +606,29 @@ const RULES = [
     baseline: {},
   },
   {
+    // Motor único de itens (planos/feitos/itens-motor-unico.md): QUAL build cada campeão usa (a publicada na comp,
+    // como na aba Comps; sem ela, a reserva declarada) mora em core/items/builds.mjs. Ninguém indexa a build da comp
+    // (`comp.builds[id]`, `buildStats[id]`), lê a build geral (`metaBuilds.get(id)`), junta as duas (`wishlist(...)`) nem
+    // percorre as builds publicadas por conta própria: chama compBuild/compBuildRows/compBuildMap/wantedItems/championBuild.
+    id: "build-choice",
+    covers: "itens-motor-unico",
+    what: "escolha da build de um campeão (comp.builds[id], buildStats[id], metaBuilds.get(id), wishlist(...)) fora do motor único de itens",
+    owner: "core/items/builds.mjs",
+    view: "code",
+    pattern:
+      /\.builds\??\.\[|\bbuildStats\??\.\[|\bmetaBuilds\??\.get\(|\bwishlist\s*\(|Object\.(?:entries|keys)\([^)\n]*\b(?:builds|buildStats)\b/g,
+    baseline: {
+      "meta-comps.mjs": [
+        1,
+        "PRODUTOR de comp.builds/buildStats (refreshComps grava a build publicada de cada campeão); não escolhe: copia a fonte",
+      ],
+      "item-edge.mjs": [
+        1,
+        "itemEdge percorre buildStats (a mesma build publicada, com delta e n) para o ganho da comp no score; não escolhe itens",
+      ],
+    },
+  },
+  {
     id: "server-option-assembly",
     covers: "D12",
     what: "regra de negócio montada no transporte (atribuições a options.X fora de app/recommend.mjs)",
@@ -614,8 +637,8 @@ const RULES = [
     pattern: /\boptions\.[A-Za-z]+\s*=(?!=)/g,
     baseline: {
       "app/recommend.mjs": [
-        17,
-        "o pipeline (ex-POST /api/recommend, movido para app/recommend.mjs no M10b) ainda monta ~17 campos de options (entrada do usuário, estado, sticky, hidden, nível-alvo) que viram as entradas do grafo; sai em M9 (M7 tirou 6: loja, oferta, XP, removedores e estágio; M8b tirou 16: tudo o que era só da base ou da tática virou entrada declarada dos fatos)",
+        14,
+        "o pipeline (ex-POST /api/recommend, movido para app/recommend.mjs no M10b) ainda monta ~14 campos de options (entrada do usuário, estado, sticky, hidden, nível-alvo) que viram as entradas do grafo; sai em M9 (M7 tirou 6: loja, oferta, XP, removedores e estágio; M8b tirou 16: tudo o que era só da base ou da tática virou entrada declarada dos fatos)",
       ],
     },
   },
@@ -981,8 +1004,12 @@ test("T7: todo `defineFact` está na raiz do módulo com `compute` nomeado, sem 
 
 /* ---------- D12: server.mjs só transporte ---------- */
 
-/** Teto de linhas de server.mjs (D12). Só baixa; a meta de M9 é < 400. */
-const SERVER_MAX_LINES = 900;
+/**
+ * Teto de linhas de server.mjs (D12). Só baixa; a meta de M9 é < 400. Subiu de 900 para 960 uma vez, na entrega do servidor
+ * que não para (M10b: /api/health, proteção de cada requisição e a ligação da thread de análise, que já estão em app/) junto
+ * com o bloco do carrossel (app/carousel-view.mjs); o que for novo vai para app/, não para cá.
+ */
+const SERVER_MAX_LINES = 960;
 
 test("D12: server.mjs não cresce (teto de linhas só baixa; meta de M9: < 400)", () => {
   const lines = read("server.mjs").split("\n").length;

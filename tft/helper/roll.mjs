@@ -6,6 +6,7 @@
 // o ganho esperado de força e a chance de "pelo menos uma evolui" para qualquer orçamento.
 // A regra de "vale rolar agora" é uma só (rollRule): strategy.mjs a aplica à decisão e o painel a mostra.
 import { GAME } from "./rules.mjs";
+import { buildHolders } from "./core/items/builds.mjs";
 import {
   POLICY,
   closeCurve,
@@ -73,7 +74,7 @@ export function teamOf(plan, analysis, options) {
       ...plan.board
         .filter((b) => (b.traits ?? []).some((t) => augTraits.has(t)))
         .map((b) => b.id),
-      ...Object.keys(plan.meta?.builds ?? {}),
+      ...buildHolders(plan.meta),
     ]);
   // Loja lida (as cartas que stage.mjs classificou): em que slots cada campeão aparece e quantas cópias o plano
   // manda comprar agora; as compradas saem da pool antes da rolagem.
@@ -264,12 +265,20 @@ export function teamOf(plan, analysis, options) {
         }
       return { ...raw, mix };
     },
-    /** Nomes das peças que mais rendem por cópia, para os textos de passos ("buscando X 2★ e Y 2★"). */
-    lookFor: () =>
+    /**
+     * Nomes das peças que mais rendem por cópia, para os textos de passos ("buscando X 2★ e Y 2★"). `plan`: peças do
+     * plano primeiro (estabilizar a vida busca cópias e upgrades do que fica no tabuleiro final; fora do plano só
+     * completa a lista); `only`: só as do plano (vazio se nenhuma evolui).
+     */
+    lookFor: ({ plan = false, only = false } = {}) =>
       listNames(
         live
-          .filter((p) => p.sim.evolve)
-          .sort((a, b) => b.prior - a.prior)
+          .filter((p) => p.sim.evolve && (!only || p.inPlan))
+          .sort(
+            (a, b) =>
+              (plan ? Number(b.inPlan) - Number(a.inPlan) : 0) ||
+              b.prior - a.prior,
+          )
           .slice(0, 3)
           .map((p) => `${p.name} ${p.goalStars}★`),
       ),
@@ -282,7 +291,9 @@ export function teamOf(plan, analysis, options) {
  * peça barata que fecha 2★ por pouco ouro conta tanto quanto o core que só fecha com 100g. A chance é a melhor
  * entre comprar tudo o que aparecer do time e focar numa peça só. O ganho esperado de força (soma do time,
  * com o core pesando mais) diz quanto rolar (economy.bestSpend) e vai no motivo, mas não decide sozinho.
- * Com a vida em perigo, rolar para estabilizar vale desde que o ganho esperado seja positivo. Sem peça viável ou
+ * Com a vida em perigo, rolar para estabilizar dispensa os 50%, mas exige uma chance mínima de fechar um upgrade do
+ * plano (R.dangerChance) e um ganho esperado que pague o ouro (R.dangerGainPerGold por ouro); abaixo disso não rola
+ * e o motivo diz qual das duas faltou (strategy.mjs troca por subir de nível ou estabilizar com itens). Sem peça viável ou
  * sem ouro acima do piso, não rola; com a peça principal bem mais provável no nível de rolagem da comp, espera.
  * Devolve o veredito (`kind`, `go`), o ouro a gastar, a peça principal, o motivo em uma linha e o ouro (`need`)
  * em que a regra passaria.
@@ -357,14 +368,45 @@ export function rollRule(
   };
   const goText = (v) =>
     `${pct(v.any)} de evoluir alguma peça com ${v.spend}g; ${v.main.name} ${v.main.goalStars}★ ${pct(v.mainChance)}.`;
-  // 1) A árvore de economia já mandou rolar: confirma (em perigo, basta ganho positivo).
+  // Vida em perigo: chance de fechar um upgrade do PLANO (a rolagem de estabilizar busca as peças do plano). Se todas
+  // as peças que evoluem são do plano, é a chance do time; se há peças fora dele, a da melhor peça do plano sozinha
+  // (limite inferior: focar nela fecha pelo menos isso). Sem peça do plano evoluindo, vale a chance de 2★ do time.
+  const planEvolving = evolving.filter((p) => p.inPlan),
+    planChance = (B) =>
+      !planEvolving.length || planEvolving.length === evolving.length
+        ? any[B]
+        : Math.max(...planEvolving.map((p) => p.curve[B])),
+    what = planEvolving.length ? "upgrade do plano" : "2★ do time",
+    dangerWorth = (B) =>
+      B >= GAME.shopCost &&
+      planChance(B) >= R.dangerChance &&
+      gain[B] >= R.dangerGainPerGold * B;
+  // 1) A árvore de economia já mandou rolar: confirma (em perigo, chance mínima de upgrade do plano e ganho que pague
+  // o ouro; abaixo disso, não rola e diz por quê).
   if (planned >= GAME.shopCost) {
     const B = Math.min(planned, CURVE_MAX);
-    if (danger ? gain[B] > 0 : worth(B)) {
-      const v = verdict(danger ? "danger" : "go", true, planned, B);
-      v.reason = danger
-        ? `Vida em risco: ${pct(v.any)} de evoluir alguma peça com ${planned}g.`
-        : goText(v);
+    if (danger) {
+      const chance = planChance(B);
+      if (dangerWorth(B)) {
+        const v = verdict("danger", true, planned, B);
+        v.reason = `Vida em risco: ${pct(chance)} de fechar ${what} com ${planned}g (+${v.gain} de força esperada).`;
+        return v;
+      }
+      const v = verdict("hold", false, 0, B),
+        minGain = round1(R.dangerGainPerGold * B);
+      let passes = null;
+      for (let b = B + 1; b <= CURVE_MAX && passes == null; b++)
+        if (dangerWorth(b)) passes = b;
+      v.reason = `Vida em risco, mas ${
+        chance < R.dangerChance
+          ? `só ${pct(chance)} de fechar ${what} com ${planned}g (mínimo ${pct(R.dangerChance)})`
+          : `${planned}g renderiam só +${v.gain} de força esperada (mínimo +${minGain})`
+      }${passes != null ? `; passaria com ~${passes}g` : ""}.`;
+      return v;
+    }
+    if (worth(B)) {
+      const v = verdict("go", true, planned, B);
+      v.reason = goText(v);
       return v;
     }
     return lowChance(verdict("hold", false, 0, B));

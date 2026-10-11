@@ -39,7 +39,11 @@ export function captureBoards(file, history) {
         subscribers.delete(res);
         continue;
       }
-      res.write(line);
+      try {
+        res.write(line);
+      } catch {
+        subscribers.delete(res); // conexão SSE quebrada: sai da lista, o servidor segue
+      }
     }
   }
   async function scan() {
@@ -163,11 +167,19 @@ export function captureBoards(file, history) {
       res.write("retry: 1000\n\n");
       subscribers.add(res);
       if (current) res.write("data: " + JSON.stringify(current) + "\n\n");
-      const beat = setInterval(() => res.write(": heartbeat\n\n"), 15000);
-      req.on("close", () => {
+      const beat = setInterval(() => {
+        try {
+          res.write(": heartbeat\n\n");
+        } catch {
+          res.destroy();
+        }
+      }, 15000);
+      const gone = () => {
         clearInterval(beat);
         subscribers.delete(res);
-      });
+      };
+      req.on("close", gone);
+      res.on("error", gone);
     },
     status() {
       return {

@@ -24,7 +24,7 @@ export {
   tierFloor,
 } from "./core/economy/gold.mjs";
 export { isPvp, nextRound, roundLabel } from "./core/economy/rounds.mjs";
-export { pressureOf } from "./core/economy/pressure.mjs";
+export { pressureOf, stageForPressure } from "./core/economy/pressure.mjs";
 export { freeByCost, freeOf } from "./core/pool/copies.mjs";
 export { slotChance } from "./core/pool/shop.mjs";
 export { binomialPmf } from "./core/pool/curve.mjs";

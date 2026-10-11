@@ -106,6 +106,30 @@ export function appendFields(bytes, fields) {
   return out;
 }
 
+/**
+ * Coloca um campo de primeiro nível NO COMEÇO do objeto JSON já serializado, sem reparsear (a resposta da thread não
+ * tem `metadata`, que o servidor conhece e a thread não). Devolve um `Uint8Array` novo. Lança `TypeError` se os bytes
+ * não forem um objeto JSON.
+ */
+export function prependField(bytes, key, value) {
+  let start = 0;
+  while (start < bytes.length && isSpace(bytes[start])) start++;
+  let end = bytes.length - 1;
+  while (end >= 0 && isSpace(bytes[end])) end--;
+  if (start >= end || bytes[start] !== 0x7b || bytes[end] !== 0x7d)
+    throw new TypeError("A resposta serializada não é um objeto JSON.");
+  let inner = start + 1;
+  while (inner < end && isSpace(bytes[inner])) inner++;
+  const empty = inner === end;
+  const head = encoder.encode(
+    `{${JSON.stringify(key)}:${JSON.stringify(value)}${empty ? "" : ","}`,
+  );
+  const out = new Uint8Array(head.length + (end + 1 - inner));
+  out.set(head, 0);
+  out.set(bytes.subarray(inner, end + 1), head.length);
+  return out;
+}
+
 /** Acrescenta o campo `base` (ver `baseField`) ao JSON serializado. */
 export const markBase = (bytes, info) =>
   appendFields(bytes, { base: baseField(info) });

@@ -59,6 +59,8 @@ export const GRAPH_INPUTS = Object.freeze({
   levelEstimated: null,
   targetLevel: null,
   gold: null,
+  targetGold: null,
+  targetHp: null,
   xp: null,
   stage: null,
   shop: null,
@@ -86,6 +88,7 @@ export const GRAPH_INPUTS = Object.freeze({
   conditional: null,
   sticky: null,
   holdPlan: null,
+  benchKnown: null,
   side: null,
   viewedPlayerId: null,
 });
@@ -144,19 +147,39 @@ export const shopsAheadFact = defineFact({
   doc: "Lojas ao alcance: o ouro de agora mais a renda das próximas rodadas (core/economy/gold.mjs).",
 });
 
-function targetOf({ snapshot, playerId, level, gold, targetLevel }) {
+function targetOf({
+  snapshot,
+  playerId,
+  level,
+  targetGold,
+  targetHp,
+  targetLevel,
+}) {
   if (targetLevel !== "auto")
     return { level: targetLevel, reasons: [], auto: false };
-  const target = suggestTargetLevel(snapshot, playerId, level, gold);
+  const target = suggestTargetLevel(snapshot, playerId, level, targetGold, {
+    hp: targetHp,
+  });
   return { level: target.level, reasons: target.reasons, auto: true };
 }
 
+/**
+ * O alvo lê o ouro e a vida DA RODADA (`targetGold`/`targetHp`, de target-level.mjs `steadyTargetInputs`), não o ouro de
+ * agora: o ouro cruzando o teto de juros durante a loja não alterna o alvo nem o tamanho do tabuleiro planejado.
+ */
 export const levelTargetFact = defineFact({
   id: "level.target",
-  inputs: ["snapshot", "playerId", "level", "gold", "targetLevel"],
+  inputs: [
+    "snapshot",
+    "playerId",
+    "level",
+    "targetGold",
+    "targetHp",
+    "targetLevel",
+  ],
   compute: targetOf,
   keep: 8,
-  doc: "Nível-alvo: o escolhido pelo usuário ou o sugerido por vida, ouro e tabuleiros (target-level.mjs).",
+  doc: "Nível-alvo: o escolhido pelo usuário ou o sugerido por vida e ouro da rodada e tabuleiros (target-level.mjs).",
 });
 
 function targetNumber({ target }) {
@@ -202,6 +225,7 @@ const STATE_INPUTS = Object.freeze({
   catalog: "catalog",
   playerId: "playerId",
   bench: "bench",
+  benchKnown: "benchKnown",
   hidden: "hidden",
   inventory: "inventory",
   bankRead: "bankRead",
@@ -234,6 +258,8 @@ const BASE_INPUTS = Object.freeze({
   augmentStats: "augmentStats",
   evidence: "evidence",
   conditional: "conditional",
+  // Tendência da vida (streak.mjs): o alcance (core/comps/reach.mjs) mede por ela a taxa de derrota e o dano por derrota.
+  trend: "trend",
 });
 
 /** O `options` do motor, montado SÓ com as entradas declaradas de `comps.base` (o D1 do teste de arquitetura mede isto). */
@@ -244,6 +270,8 @@ export function baseOptions(i) {
     shopsAhead: i.shops,
     playerId: i.playerId,
     bench: i.bench,
+    benchKnown: i.benchKnown,
+    trend: i.trend ?? null,
     hidden: i.hidden,
     inventory: i.inventory,
     bankRead: i.bankRead,
@@ -291,6 +319,7 @@ function readingOf(i) {
       snapshotIdentity(i.snapshot),
       i.playerId,
       i.bench,
+      i.benchKnown,
       i.hidden,
       i.inventory,
       i.bankRead,
@@ -305,7 +334,7 @@ function readingOf(i) {
         .map((c) => [c.id, c.appliedSwaps]),
       i.sticky?.id ?? null,
       i.sticky?.units ?? null,
-      i.holdPlan === true,
+      i.holdPlan ?? false,
       i.stage.stage,
       i.metaDates,
     ]),
@@ -382,6 +411,7 @@ function tacticalOf(i) {
         rerollLevel: i.goal.rerollLevel,
         stars3: i.goal.stars3,
         builds: i.goal.builds,
+        buildStats: i.goal.buildStats ?? {},
       },
     });
   return analysis;
@@ -424,6 +454,8 @@ function stageAt(slot, i) {
     shop: i.shop,
     metaBuilds: i.metaBuilds,
     inventory: i.inventory,
+    // A faixa de vida da loja é a mesma da estratégia: entra a tendência da vida.
+    trend: i.trend,
   });
 }
 
@@ -479,6 +511,7 @@ const STAGE_INPUTS = Object.freeze({
   shop: "shop",
   metaBuilds: "metaBuilds",
   inventory: "inventory",
+  trend: "trend",
 });
 const STAGE_DOC =
   "Campo de agora do plano: o que manter, comprar (com a loja lida) e passar de itens (stage.mjs).";
@@ -620,6 +653,8 @@ export function recommendValues({
     catalog,
     playerId: options.playerId,
     bench: options.bench,
+    // A reserva foi lida (GEP fresco)? Sem isso, `bench: []` é "não sei", não "reserva vazia".
+    benchKnown: options.benchKnown === true,
     hidden: options.hidden,
     inventory: options.inventory,
     bankRead: options.bankRead !== false,
@@ -627,6 +662,11 @@ export function recommendValues({
     levelEstimated: options.levelEstimated === true,
     targetLevel,
     gold: options.gold,
+    // Ouro e vida da rodada para o nível-alvo (app/recommend.mjs, targetLevelTracker); sem eles (partida revista, golden),
+    // o ouro lido e a vida do snapshot.
+    targetGold:
+      options.targetGold !== undefined ? options.targetGold : options.gold,
+    targetHp: options.targetHp ?? null,
     xp: options.xp,
     stage: options.stage ?? null,
     shop: options.shop,
@@ -656,7 +696,8 @@ export function recommendValues({
     boardStats,
     augmentStats,
     sticky: options.sticky ?? null,
-    holdPlan: options.holdPlan === true,
+    // true (segura), false (sem plano) ou { release: id } (plan-state.mjs holdFor: fato novo libera o desafiante).
+    holdPlan: options.holdPlan ?? false,
     side: options.side,
     viewedPlayerId: options.viewedPlayerId,
   };

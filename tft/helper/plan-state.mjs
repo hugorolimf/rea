@@ -3,21 +3,74 @@
 //
 // O que o estado resolve (ver README, "Plano em andamento"):
 // - o plano que o motor mantém (`sticky`) vivia só na memória do servidor e morria no reinício; agora fica em disco;
-// - o motor trocava de plano quando a vantagem passava da incerteza + custo, mas cada leitura nova (ouro, loja) medida
-//   de novo podia inverter a ordem: partidas reais tiveram 8 trocas Veigar<->Teemo na mesma rodada. A troca agora exige que
-//   o desafiante lidere por mais de uma rodada (`CONFIRM`); uma inversão no meio zera a contagem;
+// - o motor trocava de plano quando a vantagem passava da margem, mas cada leitura nova medida de novo podia inverter a
+//   ordem: partidas reais tiveram 8 trocas Veigar<->Teemo na mesma rodada. A troca agora exige que o desafiante lidere de
+//   novo DEPOIS DE UM FATO NOVO (`CONFIRM`): loja nova, peça comprada ou vendida, outra rodada, outro nível, ouro, itens ou
+//   aprimoramento (`factKey`). Reler o mesmo estado não é evidência nova e não conta; outro desafiante recomeça;
 // - o que já foi conquistado (estrelas, itens, aprimoramentos, nível) ficava invisível: `plan-progress.mjs` o transforma
 //   em checklist e este módulo guarda as marcas entre rodadas.
 //
-// Troca de classe (o plano mantido virou aposta ou deixou de usar o aprimoramento escolhido) NÃO espera confirmação:
-// o motor só aplica o `holdPlan` entre planos da mesma classe.
+// A vantagem do desafiante vem do motor em COLOCAÇÃO ESPERADA (`switch.unit === "placement"`): a mesma medida que ordena
+// a lista e que a tela mostra (engine.mjs, E). A troca vale quando E_mantido − E_desafiante passa do custo de trocar mais a
+// histerese; o motor decide, este módulo só segura até o fato novo.
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { buildChecklist } from "./plan-progress.mjs";
 
-/** Leituras distintas e rodadas distintas em que o desafiante precisa liderar antes de assumir o plano. */
-export const CONFIRM = Object.freeze({ readings: 3, rounds: 2 });
+/** Fatos distintos (factKey) em que o desafiante precisa liderar: o primeiro em que apareceu e mais um, novo. */
+export const CONFIRM = Object.freeze({ facts: 2 });
+
+/**
+ * Identidade do FATO de jogo que uma análise lê: estágio-rodada, nível, ouro, loja, peças (campo e banco), itens do banco
+ * e aprimoramentos escolhidos. Duas leituras com o mesmo fato são a mesma evidência (reler não confirma um desafiante).
+ * Texto estável (listas ordenadas); campos ausentes contam como null.
+ */
+export function factKey({
+  stage = null,
+  level = null,
+  gold = null,
+  shop = [],
+  board = [],
+  bench = [],
+  inventory = [],
+  augments = [],
+} = {}) {
+  const units = (list) =>
+    (list ?? [])
+      .map((u) =>
+        typeof u === "string"
+          ? u
+          : `${u?.championName ?? u?.id ?? "?"}:${u?.starLevel ?? u?.stars ?? 1}`,
+      )
+      .sort();
+  return JSON.stringify([
+    stage ?? null,
+    level ?? null,
+    gold ?? null,
+    (shop ?? []).map((x) => (typeof x === "string" ? x : (x?.id ?? null))),
+    units(board),
+    units(bench),
+    [...(inventory ?? [])].sort(),
+    [...(augments ?? [])].sort(),
+  ]);
+}
+/** Campos da nota de troca do motor (engine.mjs `switch`) que o desafiante guarda e a tela mostra. */
+const noteOf = (sw) => ({
+  title: sw.to ?? sw.title,
+  gain: sw.gain ?? null,
+  cost: sw.cost ?? null,
+  hysteresis: sw.hysteresis ?? null,
+  expectedFrom: sw.expectedFrom ?? null,
+  expectedTo: sw.expectedTo ?? null,
+  unit: sw.unit ?? null,
+});
+
+const comma = (x) => String(Math.round(x * 100) / 100).replace(".", ",");
+/** "lidera por 0,3 de colocação esperada" (ou, em nota antiga, a unidade dela). */
+const leadText = (sw) =>
+  `lidera por ${comma(sw.gain ?? 0)}${sw.unit === "placement" ? " de colocação esperada" : sw.unit === "score" ? " pontos de score" : "º"}`;
+
 const HISTORY_MAX = 80,
   VERSION = 1,
   CURRENT = "free:current";
@@ -35,10 +88,6 @@ const emptyState = (gameId = null) => ({
   // marcados): o servidor as usa para renovar a análise sozinho, sem a interface aberta (app/auto-refresh.mjs).
   decisions: null,
 });
-
-/** Rodada "2-3" ou, sem leitura de estágio, o minuto corrido (uma rodada dura cerca de um minuto). */
-const roundOf = (stage, at) =>
-  stage ? String(stage) : `t${Math.floor(at / 60000)}`;
 
 /**
  * Rastreador do plano da partida. `file` guarda o estado entre reinícios (null = só memória); `now` é injetável.
@@ -98,8 +147,6 @@ export function planTracker({ file = null, now = Date.now } = {}) {
     if (state.history.length > HISTORY_MAX)
       state.history.splice(0, state.history.length - HISTORY_MAX);
   };
-  const confirmed = (c) =>
-    !!c && c.readings >= CONFIRM.readings && c.rounds.length >= CONFIRM.rounds;
 
   const adopt = (top, stage, level) => {
     const id = top.meta?.id ?? top.freeId,
@@ -142,23 +189,27 @@ export function planTracker({ file = null, now = Date.now } = {}) {
     },
 
     /**
-     * O motor deve segurar o plano em andamento nesta análise? Verdadeiro enquanto há plano comprometido e o desafiante
-     * (se houver) ainda não foi confirmado. "Seu tabuleiro atual" não é compromisso: é o que sobra sem plano.
+     * O motor deve segurar o plano em andamento nesta análise? `false` sem plano comprometido ("Seu tabuleiro atual" não é
+     * compromisso); `true` enquanto não há desafiante ou o fato (`fact`, factKey) é o mesmo em que ele apareceu;
+     * `{ release: id }` quando chegou um fato novo: se o mesmo desafiante ainda vencer a margem nesta reavaliação, o motor
+     * troca agora; outro desafiante continua segurado (recomeça a contagem).
      */
-    holdFor(gameId) {
+    holdFor(gameId, fact = null) {
       if (
         state.gameId !== String(gameId) ||
         !state.plan ||
         state.plan.id === CURRENT
       )
         return false;
-      return !confirmed(state.challenger);
+      const c = state.challenger;
+      return c && fact != null && c.fact !== fact ? { release: c.id } : true;
     },
 
     /**
      * Registra uma análise nova: adota/mantém/troca o plano, conta o desafiante e atualiza o checklist.
      * `top` = recomendação 1 (decide o plano); `shown` = a mostrada (a comp fixada pelo usuário, se houver);
-     * `baseId` identifica a análise base (a mesma base não conta duas vezes como leitura do desafiante).
+     * `fact` (factKey) identifica o fato de jogo lido (sem ele, `baseId` + estágio): o desafiante guarda o fato em que
+     * apareceu e só é liberado (holdFor) quando chega outro.
      * Devolve `{ switched, progress }`.
      */
     track({
@@ -173,50 +224,51 @@ export function planTracker({ file = null, now = Date.now } = {}) {
       chosen = [],
       ledger = null,
       baseId = null,
+      fact = null,
       pinned = false,
     }) {
       forGame(gameId);
       const at = now(),
-        round = roundOf(stage, at),
+        seen = fact ?? `${baseId}|${stage}`,
         id = top.meta?.id ?? top.freeId;
-      let switched = null;
+      let switched = null,
+        lead = null;
+      // Nota de troca do motor: no plano mostrado (também sem evidência) ou, em motor antigo, na evidência dele.
+      const note = top.switch ?? top.evidence?.switch ?? null;
       if (!state.plan) {
         adopt(top, stage, level);
         log({ type: "adopt", text: `Plano: ${top.title}` }, stage);
         state.challenger = null;
       } else if (id === state.plan.id) {
-        const sw = top.evidence?.switch;
+        const sw = note;
         if (sw?.held && sw.toId) {
+          // Venceu a margem com o plano segurado: registra o desafiante no fato em que apareceu (o mesmo desafiante mantém
+          // o primeiro fato; outro recomeça).
           const c = state.challenger?.id === sw.toId ? state.challenger : null;
-          if (!c || c.lastBase !== baseId || baseId === null) {
-            const next = c ?? {
+          if (!c)
+            log(
+              {
+                type: "hold",
+                text: `Mantido ${state.plan.title}; ${sw.to} ${leadText(sw)}, aguardando um fato novo`,
+              },
+              stage,
+            );
+          state.challenger = {
+            ...(c ?? {
               id: sw.toId,
-              title: sw.to,
-              readings: 0,
-              rounds: [],
+              fact: seen,
               firstAt: new Date(at).toISOString(),
-            };
-            next.readings++;
-            if (!next.rounds.includes(round)) next.rounds.push(round);
-            Object.assign(next, {
-              title: sw.to,
-              gain: sw.gain,
-              noise: sw.noise,
-              cost: sw.cost,
-              lastBase: baseId,
-              lastRound: round,
-            });
-            if (!c)
-              log(
-                {
-                  type: "hold",
-                  text: `Mantido ${state.plan.title}; ${sw.to} lidera por ${String(sw.gain).replace(".", ",")}º, aguardando confirmação`,
-                },
-                stage,
-              );
-            state.challenger = next;
-          }
-        } else state.challenger = null;
+            }),
+            ...noteOf(sw),
+            readings: (c?.readings ?? 0) + 1,
+          };
+        } else {
+          state.challenger = null;
+          // Mantido porque a vantagem não passa do custo de trocar + histerese: não há o que confirmar, mas a tela diz
+          // por que o plano segue.
+          if (sw?.kept && sw.toId && sw.gain > 0)
+            lead = { id: sw.toId, ...noteOf(sw), pending: false };
+        }
         // Mesma comp: acompanha o crescimento do tabuleiro (nível sobe) sem mexer no resto.
         const units = top.board.map((u) => u.id);
         if (units.join() !== state.plan.units.join()) {
@@ -247,12 +299,12 @@ export function planTracker({ file = null, now = Date.now } = {}) {
           fromId: state.plan.id,
           toId: id,
         };
-        const sw = top.evidence?.switch;
+        const sw = note;
         adopt(top, stage, level);
         log(
           {
             type: "switch",
-            text: `Troca de plano: ${switched.from} → ${top.title}`,
+            text: `Troca de plano: ${switched.from} → ${top.title}${sw?.unit === "placement" && sw.expectedFrom != null ? ` (${comma(sw.expectedFrom)}º → ${comma(sw.expectedTo)}º esperado: ganho ${comma(sw.gain)} > custo ${comma(sw.cost)} + margem ${comma(sw.hysteresis ?? 0)})` : ""}`,
             gain: sw?.gain ?? null,
           },
           stage,
@@ -280,19 +332,26 @@ export function planTracker({ file = null, now = Date.now } = {}) {
             // O plano mostrado é a comp fixada pelo usuário, não o plano automático.
             pinned,
           },
-          // Desafiante que lidera mas ainda não passou da confirmação (nada muda na tela até confirmar).
+          // Desafiante que lidera mas ainda não passou da confirmação (`pending`: nada muda na tela até confirmar) ou que
+          // lidera sem passar da margem de troca (`pending: false`: o plano segue e a nota diz por quê).
           challenger: c
             ? {
                 id: c.id,
                 title: c.title,
-                readings: c.readings,
-                rounds: c.rounds.length,
+                ...noteOf(c),
+                readings: c.readings ?? 1,
                 need: { ...CONFIRM },
-                gain: c.gain,
-                noise: c.noise,
-                cost: c.cost,
+                pending: true,
               }
-            : null,
+            : lead,
+          // Alcance do plano mostrado em uma linha (core/comps/reach.mjs: peças que tem, que faltam e a chance no prazo).
+          reach:
+            (
+              shown?.reach ??
+              analysis?.compRanking?.find(
+                (r) => r.id === (shown?.meta?.id ?? top.meta?.id),
+              )?.reach
+            )?.text ?? null,
           ...built.checklist,
           changes: state.history.slice(-6).reverse(),
         },

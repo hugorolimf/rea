@@ -205,19 +205,34 @@ export function locateItem(
   };
 }
 
-/** Situação dos até 3 itens ideais da peça `cell` (da Formação) dado o banco; o primeiro item não consome o do seguinte. */
+/**
+ * Situação dos até 3 itens ideais da peça `cell` (da Formação) dado o banco. Os componentes de um item não são gastos
+ * para o seguinte (cada linha mostra o que dá para fazer por ela), mas cada CÓPIA de um item pronto conta uma vez: com
+ * `Voto ×3` na build, um Voto equipado cobre uma linha, um Voto no banco outra, e a terceira segue pedindo o item.
+ */
 export function buildStates(cell, bank = []) {
-  const b = cell?.build;
-  return (b?.ideal ?? []).slice(0, 3).map((item) => ({
-    item,
-    state: locateItem(item, {
+  const b = cell?.build,
+    equipped = [...(b?.equipped ?? [])],
+    bankLeft = [...(bank ?? [])],
+    owners = (b?.owners ?? []).map((o) => ({ ...o, items: [...o.items] }));
+  return (b?.ideal ?? []).slice(0, 3).map((item) => {
+    const state = locateItem(item, {
       cellId: cell.id,
-      equipped: b.equipped ?? [],
-      bank,
-      owners: b.owners ?? [],
+      equipped,
+      bank: bankLeft,
+      owners,
       moves: b.moves ?? [],
-    }),
-  }));
+    });
+    const id = baseItem(item.id);
+    if (state.kind === "on") takeOne(equipped, (e) => baseItem(e.id) === id);
+    else if (state.kind === "ready" && !state.have) takeItem(bankLeft, id);
+    else if (state.kind === "move" && !state.parts && state.from)
+      takeOne(
+        owners.find((o) => o.unitId === state.from.unitId)?.items ?? [],
+        id,
+      );
+    return { item, state };
+  });
 }
 
 /**

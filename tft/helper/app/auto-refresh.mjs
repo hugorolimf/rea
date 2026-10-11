@@ -11,7 +11,11 @@
 //      `readState`) e o desliga quando a partida termina.
 // Sem partida o tick é só `probe()` (fase do cliente em cache): nenhuma leitura de estado e nenhuma análise. Este módulo
 // não importa o servidor nem o motor: tudo entra por parâmetro (os testes usam relógio e pipeline falsos).
-import { analysisKey, decisionPayload } from "../core/state/analysis-key.mjs";
+import {
+  REFRESH_WINDOW_MS,
+  analysisKey,
+  decisionPayload,
+} from "../core/state/analysis-key.mjs";
 
 /** Decisões que valem enquanto o usuário ainda não mandou nenhuma POST (nenhuma comp fixada, nenhum aprimoramento). */
 export const DEFAULT_DECISIONS = Object.freeze({
@@ -23,24 +27,37 @@ export const DEFAULT_DECISIONS = Object.freeze({
 });
 
 /**
- * Resultados recentes da análise por chave de análise (a de core/state/analysis-key.mjs), compartilhados pelo POST da
- * interface e pelo laço. Guarda também o que está em cálculo: quem pedir a mesma chave junto espera o mesmo resultado em
- * vez de repetir o trabalho. Pequeno de propósito (a chave traz a janela de 2 min, então só as últimas importam).
+ * Resultados recentes da análise, compartilhados pelo POST da interface e pelo laço. Cada resultado vale para UMA OU MAIS
+ * chaves: a chave de análise da tela (core/state/analysis-key.mjs) e o conteúdo da entrada da análise pesada
+ * (app/recommend.mjs); quem pedir qualquer uma delas recebe o mesmo resultado. Guarda também o que está em cálculo: quem
+ * pedir a mesma chave junto espera o mesmo resultado em vez de repetir o trabalho. Pequeno de propósito e com prazo
+ * (`ttlMs`, a janela de 2 min da chave de análise): um resultado velho ou de estado que já mudou é descartado.
  */
-export function createRecentResults({ max = 6 } = {}) {
+export function createRecentResults({
+  max = 6,
+  ttlMs = REFRESH_WINDOW_MS,
+  now = Date.now,
+} = {}) {
   let entries = [];
-  const find = (key) => entries.find((e) => e.key === key);
+  const listOf = (keys) => (Array.isArray(keys) ? keys : [keys]);
+  const fresh = (e) => e.pending || now() - e.at < ttlMs;
+  const find = (keys) => {
+    const wanted = listOf(keys);
+    return entries.find((e) => fresh(e) && wanted.some((k) => e.keys.has(k)));
+  };
   return {
     /** Há resultado ou cálculo em andamento para esta chave? */
     has: (key) => !!find(key),
     /** Resultado pronto desta chave, ou null. */
     peek: (key) => find(key)?.parts ?? null,
     /**
-     * Devolve `{ parts, via }`: `via` = "cache" (já pronto), "junto" (esperou o cálculo de outro pedido) ou "novo"
-     * (calculou aqui com `compute()`). Se quem calculava falhou, calcula aqui. Falha de `compute` propaga.
+     * `keys`: uma chave ou uma lista (qualquer uma acerta). Devolve `{ parts, via }`: `via` = "cache" (já pronto),
+     * "junto" (esperou o cálculo de outro pedido) ou "novo" (calculou aqui com `compute()`). Um acerto por uma chave
+     * registra as outras no mesmo resultado. Se quem calculava falhou, calcula aqui. Falha de `compute` propaga.
      */
-    async run(key, compute) {
-      const hit = find(key);
+    async run(keys, compute) {
+      const hit = find(keys);
+      if (hit) for (const k of listOf(keys)) hit.keys.add(k);
       if (hit?.parts) return { parts: hit.parts, via: "cache" };
       if (hit?.pending) {
         try {
@@ -49,12 +66,18 @@ export function createRecentResults({ max = 6 } = {}) {
           // quem calculava falhou: este pedido calcula por conta própria
         }
       }
-      const entry = { key, parts: null, pending: null };
+      const entry = {
+        keys: new Set(listOf(keys)),
+        parts: null,
+        pending: null,
+        at: 0,
+      };
       entry.pending = compute();
       entries.push(entry);
       if (entries.length > max) entries.shift();
       try {
         entry.parts = await entry.pending;
+        entry.at = now();
         return { parts: entry.parts, via: "novo" };
       } catch (e) {
         entries = entries.filter((x) => x !== entry);
@@ -83,6 +106,8 @@ export function createRecentResults({ max = 6 } = {}) {
  * - `sources.sync(ativo)`: liga/desliga o leitor de tela (GEP e arquivos do jogo são lidos a cada `readState`).
  * - `now`, `timers`: relógio e agendador; `report(nome, ms)`: tempo para o TEMPO; `log(nível, texto)`.
  * `intervalMs` = tick; `minGapMs` = mínimo entre análises (dobra a cada falha seguida, até `maxBackoffMs`).
+ * `maxTickMs`: um tick que passa disso (uma fonte que nunca responde) é abandonado e o laço segue no próximo; o laço nunca
+ * fica preso esperando uma leitura.
  */
 export function createAutoRefresh({
   probe,
@@ -96,6 +121,7 @@ export function createAutoRefresh({
   intervalMs = 3000,
   minGapMs = 3000,
   maxBackoffMs = 30_000,
+  maxTickMs = 180_000,
   startDelayMs = 1000,
   report = () => {},
   log = () => {},
@@ -106,6 +132,9 @@ export function createAutoRefresh({
     failures = 0,
     rejectedKey = null,
     running = false,
+    runningSince = 0,
+    lastTickAt = null,
+    lastError = null,
     stopped = true,
     timer = null,
     counters = { ticks: 0, runs: 0, same: 0, waits: 0, rejected: 0, errors: 0 };
@@ -189,8 +218,16 @@ export function createAutoRefresh({
   }
   /** Um passo do laço (os testes o chamam direto). Nunca lança: o erro vira aviso no log e o próximo tick tenta de novo. */
   async function tick() {
-    if (running) return { action: "busy" };
+    if (running) {
+      // Um tick preso (fonte que nunca responde) não pode parar o laço: passado o limite, é abandonado.
+      if (now() - runningSince < maxTickMs) return { action: "busy" };
+      complain(
+        `laço automático: o tick anterior passou de ${Math.round(maxTickMs / 1000)} s sem terminar; abandonado, o laço segue`,
+      );
+      counters.errors++;
+    }
     running = true;
+    const mine = (runningSince = now());
     counters.ticks++;
     const t0 = now();
     let outcome;
@@ -198,9 +235,12 @@ export function createAutoRefresh({
       outcome = await step();
     } catch (e) {
       if (e?.code !== "ENOENT") complain(`laço automático: ${e?.message ?? e}`);
+      lastError = { at: now(), message: e?.message ?? String(e) };
       outcome = { action: "error", error: e?.message ?? String(e) };
     } finally {
-      running = false;
+      // Só quem ainda é o tick vigente libera a vaga (um tick abandonado que termina tarde não solta o seguinte).
+      if (runningSince === mine) running = false;
+      lastTickAt = now();
     }
     // O custo do tick barato (estado lido, chave igual): a análise tem a própria linha.
     if (outcome.action !== "idle" && outcome.action !== "run")
@@ -209,8 +249,14 @@ export function createAutoRefresh({
   }
   const schedule = (ms) => {
     timer = timers.setTimeout(async () => {
-      await tick();
-      if (!stopped) schedule(intervalMs);
+      try {
+        await tick();
+      } catch (e) {
+        // `tick` não lança; isto só protege o agendamento (um erro aqui matava o laço para sempre).
+        complain(`laço automático: ${e?.message ?? e}`);
+      } finally {
+        if (!stopped) schedule(intervalMs);
+      }
     }, ms);
     timer?.unref?.();
   };
@@ -239,6 +285,8 @@ export function createAutoRefresh({
       gameId,
       failures,
       lastRunAt,
+      lastTickAt,
+      lastError,
       ...counters,
     }),
     /** Contadores desde a última chamada, em uma linha para o resumo por minuto do TEMPO. */

@@ -8,12 +8,12 @@
 
 import { baseItemId } from "./core/catalog/items.mjs";
 import { takeAll, takeOne } from "./core/items/stock.mjs";
+import { shrunkDelta } from "./core/items/builds.mjs";
 
-// Encolhimento forte: a fonte publica só a melhor build de cada campeão, então a variação vem inflada
-// (escolher a melhor entre várias exagera o efeito; 235 de 236 builds aparecem como ganho, mediana −1,07
-// em ~100 partidas). Com K = 1500, a build do Rengar (2127 partidas, −0,24) fica em −0,14 e uma build
-// de 22 partidas quase não conta.
-const SHRINK_K = 1500;
+// Encolhimento forte da variação publicada (235 de 236 builds aparecem como ganho, mediana −1,07 em ~100 partidas):
+// a regra mora no motor único de itens (core/items/builds.mjs, `shrunkDelta`, K = 1500), que também ordena as builds
+// da comp candidata. Reexportada aqui para quem importava daqui.
+export const shrunk = shrunkDelta;
 // Builds não somam: a melhor conta inteira, as seguintes cada vez menos, e o total tem teto (em colocações).
 const WEIGHTS = [1, 0.6, 0.35];
 const MAX_GAIN = 0.4;
@@ -38,10 +38,6 @@ export function compBuildStats(cluster) {
       };
   return builds;
 }
-
-/** Variação encolhida pelo número de partidas: builds raras pesam pouco. */
-export const shrunk = (b) =>
-  Number.isFinite(b?.delta) && b.n > 0 ? (b.delta * b.n) / (b.n + SHRINK_K) : 0;
 
 /**
  * Colocação esperada da comp com os itens que você tem. Para cada campeão da comp cuja build publicada melhora

@@ -26,7 +26,7 @@ export function analysisInputs(
       shop: (seen.shop ?? []).map((card) =>
         card?.wisp ? null : (card?.id ?? null),
       ),
-      // Oferta lida da tela; some quando uma das cartas já foi marcada como escolhida.
+      // Oferta aberta lida do jogo (GEP, sem OCR); some quando uma das cartas já consta como escolhida.
       augmentIds: offer.some((id) => augments.includes(id)) ? [] : offer,
       xp: seen.xp,
       removers: seen.removers === 0 ? 0 : null,

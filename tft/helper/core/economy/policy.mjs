@@ -15,7 +15,7 @@ export const POLICY = {
   ],
   // Faixas de vida. Perigo: HP ≤ danger, ou ≤ dangerLate a partir do estágio lateStage, ou ≤ weak com board fraca.
   // `fastReroll`: reroll rápido (piso fastReroll) com a vida até aqui; é o ÚNICO piso de reroll rápido (D4).
-  // `low`/`comfortable`: nível-alvo (target-level.mjs) estabiliza com HP ≤ low e mira mais alto com HP ≥ comfortable.
+  // `low`/`comfortable`: nível-alvo (target-level.mjs) mantém o próximo nível com HP ≤ low e mira mais alto com HP ≥ comfortable.
   // `shaky`: aprimoramento de economia rende pouco com HP abaixo disto (augment-advice.mjs).
   hp: {
     critical: 20,
@@ -29,9 +29,16 @@ export const POLICY = {
     shaky: 40,
   },
   lateStage: 4,
+  // Nível-alvo (target-level.mjs): mira dois níveis acima com o ouro no teto de juros (o patamar máximo do jogo, 50 g) e
+  // HP ≥ hp.hurt, ou com o tabuleiro acima do lobby e HP ≥ hp.comfortable. Para o alvo (o tamanho do tabuleiro planejado)
+  // não alternar dentro da rodada, o ouro e a vida que ele lê são os DA RODADA (steadyTargetInputs): o maior ouro e a
+  // menor vida lidos no mesmo estágio-rodada. Sem estágio lido vale a histerese: quem já mirava +2 só desce quando o ouro
+  // cai `goldBand` g abaixo do teto de juros.
+  targetLevel: { goldBand: 10 },
   // Tendência da vida (streak.mjs mede, pressureOf decide): a média das últimas `drops` quedas e as perdas na janela
   // `windowMs` (~4 rodadas). No ritmo da média, chegar a `floorHp` de vida em `rounds` rodadas é perigo; `losses` ou mais
   // perdas recentes com vida ≤ `lossesHp` também (o tabuleiro não segura o lobby: estabilizar antes da vida acabar).
+  // A projeção só vale com `drops` quedas medidas: uma ou duas quedas não são tendência.
   trend: {
     drops: 3,
     windowMs: 5 * 60 * 1000,
@@ -40,6 +47,10 @@ export const POLICY = {
     losses: 3,
     lossesHp: 65,
   },
+  // Sequência de derrotas proposital: até o estágio `lastStage`, com vida acima de `hp` e pelo menos `gold` guardados,
+  // perder rodadas é a economia funcionando (ouro de sequência e juros), não perigo. Aí a tendência e o tabuleiro fraco
+  // não disparam a faixa; só a vida absoluta (`hp.danger`/`hp.critical`) vale. Ouro ou estágio não lidos: sem isenção.
+  lossStreak: { lastStage: 3, hp: 50, gold: 30 },
   // Ouro que fica guardado depois de gastar, por faixa; no reroll lento o piso é 50 e no rápido, fastReroll. A árvore de
   // estratégia também lê estes pisos como colchão depois de comprar XP: perigo `danger`, reroll antes do nível `healthy`,
   // 3★ inviável e comp de nível `hurt` (nunca exige mais que `hurt` para subir).
@@ -68,6 +79,10 @@ export const POLICY = {
   // evolução (`minValue` de força: um 2★ de custo 1 da comp não vale rolar sozinho); o carry pesa `carryWeight`,
   // os demais cores `coreWeight` e a peça fora da comp `offPlanWeight`; a espera pelo nível de rolagem só é
   // sugerida se a chance subir `waitMargin`; `rows` limita a lista enviada e `simTargets` os alvos da simulação conjunta.
+  // Vida em perigo: rolar dispensa os 50%, mas exige `dangerChance` de fechar um upgrade do plano com o orçamento
+  // (ou de 2★ do time, se nenhuma peça do plano evolui) e um ganho esperado que pague o ouro: pelo menos
+  // `dangerGainPerGold` de força por ouro (30 g rendendo ~`minValue`). Abaixo disso, sobe de nível ou estabiliza
+  // com itens e posição.
   roll: {
     chance: 0.5,
     minValue: 1,
@@ -76,6 +91,8 @@ export const POLICY = {
     waitMargin: 0.15,
     rows: 14,
     simTargets: 10,
+    dangerChance: 0.1,
+    dangerGainPerGold: 1 / 30,
   },
   // Fração do ganho máximo que ainda conta como "tão bom quanto" ao escolher quanto rolar.
   spendTolerance: 0.04,

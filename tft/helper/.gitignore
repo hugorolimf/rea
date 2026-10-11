@@ -4,3 +4,6 @@ catalog.raw.json
 server.log
 server.log.1
 server.*.run
+supervisor.log
+supervisor.log.1
+supervisor.stop

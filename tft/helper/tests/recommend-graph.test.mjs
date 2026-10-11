@@ -282,12 +282,13 @@ test("T6 só a loja muda (D1): a base recalcula, e com ela a tática e os planos
 });
 
 test("T6 rolagem (-2 g): lojas ao alcance, base, leitura, tática e planos recalculam; o resto do mundo não", () => {
+  // Na mesma rodada o ouro da rodada (targetGold, o maior lido nela) não cai com a rolagem: o nível-alvo não recalcula
+  // (target-level.mjs, steadyTargetInputs). Antes ele lia o ouro de agora e alternava em 49/50 g.
   const set = recomputedBy((values) => ({ gold: values.gold - 2 }));
   hasAll(
     set,
     [
       "economy.shopsAhead",
-      "level.target",
       "comps.base",
       "comps.readingId",
       "tactics.analysis",
@@ -298,9 +299,21 @@ test("T6 rolagem (-2 g): lojas ao alcance, base, leitura, tática e planos recal
   );
   hasNone(
     set,
-    ["clock.stage", "catalog.traits", "traits.grants", "comps.swapped"],
+    [
+      "level.target",
+      "clock.stage",
+      "catalog.traits",
+      "traits.grants",
+      "comps.swapped",
+    ],
     "rolagem",
   );
+});
+
+test("T6 ouro da rodada novo (rodada seguinte com outro ouro): o nível-alvo recalcula", () => {
+  const set = recomputedBy((values) => ({ targetGold: values.gold - 30 }));
+  hasAll(set, ["level.target"], "ouro da rodada");
+  hasNone(set, ["economy.shopsAhead", "clock.stage"], "ouro da rodada");
 });
 
 test("T6 ouro +1 sem mudar as lojas ao alcance nem o nível-alvo: a base e a tática NÃO recalculam (corte antecipado)", () => {

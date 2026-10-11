@@ -1,6 +1,12 @@
 # Para o TFT Helper por completo: servidor(es) nas portas do helper e o leitor de tela.
 $ErrorActionPreference = 'SilentlyContinue'
 $stopped = @()
+# O supervisor primeiro (senão ele sobe o servidor de novo): arquivo de parada e encerramento.
+& (Join-Path $PSScriptRoot 'supervisor.ps1') -Parar
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+  Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'supervisor.ps1' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $stopped += "supervisor (PID $($_.ProcessId))" }
+Remove-Item (Join-Path $PSScriptRoot 'supervisor.stop') -ErrorAction SilentlyContinue
 foreach ($connection in Get-NetTCPConnection -State Listen -LocalPort 3218, 3219, 3220, 3221) {
   $process = Get-Process -Id $connection.OwningProcess
   if ($process -and $process.ProcessName -eq 'node') { Stop-Process -Id $process.Id -Force; $stopped += "servidor na porta $($connection.LocalPort) (PID $($process.Id))" }

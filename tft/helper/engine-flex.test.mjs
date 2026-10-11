@@ -204,7 +204,7 @@ test("evidência manda: o tabuleiro em volta do trunfo pronto vence quando os da
   );
 });
 
-test("evidência: tabuleiro medido melhor mas difícil de montar é aposta e não passa à frente", () => {
+test("evidência: tabuleiro medido melhor mas difícil de montar entra pela chance em E (sem degrau de 'aposta')", () => {
   const owned = ["DA_18_Ahri", "DA_18_Leona", "DA_18_Rammus"];
   const a = settle(
     ahriSnap(),
@@ -226,11 +226,12 @@ test("evidência: tabuleiro medido melhor mas difícil de montar é aposta e nã
       r.evidence.expected >= 2.0 + (1 - r.evidence.chance) * 1.5 - 0.01,
       `${r.title}: ${r.evidence.expected} × chance ${r.evidence.chance}`,
     );
-  const top = a.recommendations[0];
-  assert.ok(
-    !top.evidence.bet,
-    `${top.title} (chance ${top.evidence.chance}) não é aposta`,
-  );
+  // A ordem é a colocação esperada E (com a chance e a reserva dentro): uma aposta só lidera se o E dela for melhor.
+  const e = (r) => r.components.expected.value;
+  for (let i = 1; i < a.recommendations.length; i++)
+    assert.ok(e(a.recommendations[i - 1]) <= e(a.recommendations[i]));
+  const safe = a.recommendations.filter((r) => !r.evidence.bet);
+  if (safe.length) assert.ok(e(a.recommendations[0]) <= e(safe[0]));
 });
 
 test("regra do Rival: sem o aprimoramento os dois rivais não ficam juntos; com Aminimigos, o plano usa os dois", () => {
@@ -339,8 +340,10 @@ test("score das comps: chance de montar vem do nível de agora; disputa dos riva
   );
   assert.equal(low.filter((r) => r.best).length, 1, "só uma é a melhor");
   assert.equal(low[0].best, true, "a melhor é a primeira do ranking");
+  // O nível usado vai no resultado: o melhor para o alcance entre o de agora e o alvo da comp (nunca abaixo do de agora).
   assert.ok(
-    low.every((r) => r.level === 5) && high.every((r) => r.level === 9),
+    low.every((r) => r.level >= 5 && r.reach.level === r.level) &&
+      high.every((r) => r.level >= 9),
     "o nível usado vai no resultado",
   );
   // Mais nível, mais chance de achar peças caras: o total das chances sobe.

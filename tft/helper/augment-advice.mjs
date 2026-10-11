@@ -1,4 +1,4 @@
-// Classifica as opções de aprimoramento lidas da tela. Com dados (augment-stats.mjs), a ordem é a colocação
+// Classifica as opções de aprimoramento lidas do jogo (GEP). Com dados (augment-stats.mjs), a ordem é a colocação
 // esperada: a média medida do aprimoramento quando escolhido nesta rodada (NoxuTFT, encolhida para a média geral
 // quando a amostra é pequena) mais o tier dele na comp do seu plano (MetaTFT). Sem dados, vale o encaixe na comp
 // e no momento da partida (sinergia, campeões citados, HP, ouro, estágio, itens), que fica como explicação.

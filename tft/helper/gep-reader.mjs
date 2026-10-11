@@ -39,6 +39,8 @@ const KEYS = new Map([
   ["store.shop_visible", "shopVisible"],
   ["bench.bench_pieces", "bench"],
   ["bench.item_bench", "itemBench"],
+  // O carrossel é compartilhado pela mesa inteira (as mesmas peças para todos): não é dado de rival.
+  ["carousel.carousel_pieces", "carousel"],
   ["match_info.round_type", "roundType"],
   ["match_info.match_state", "matchState"],
   ["roster.player_status", "roster"],
@@ -57,6 +59,7 @@ const FALLBACK_KEYS = {
   shop_visible: "store.shop_visible",
   bench_pieces: "bench.bench_pieces",
   item_bench: "bench.item_bench",
+  carousel_pieces: "carousel.carousel_pieces",
   round_type: "match_info.round_type",
   match_state: "match_info.match_state",
   player_status: "roster.player_status",
@@ -86,6 +89,17 @@ export function defaultGepDb() {
   const base =
     process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
   return path.join(base, "TFTAcademy", "tft-events.db");
+}
+
+/**
+ * Banco da ponte própria (`overwolf-bridge/`, app ow-electron do próprio helper): mesmo esquema do TFTAcademy, outro arquivo.
+ * `TFT_BRIDGE_DB` troca o caminho. Precedência entre fontes de eventos: própria > TFTAcademy (e, abaixo delas, a tela).
+ */
+export function ownGepDb() {
+  if (process.env.TFT_BRIDGE_DB) return process.env.TFT_BRIDGE_DB;
+  const base =
+    process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+  return path.join(base, "TFT Helper Bridge", "tft-events.db");
 }
 
 /**
@@ -403,6 +417,43 @@ export function parseBench(data, isChampion = () => true, isItem = () => true) {
   return { units: units.sort((a, b) => a.cell - b.cell), unknown };
 }
 
+/**
+ * `carousel.carousel_pieces` (um evento no início de cada carrossel): `slot_N: {name, item_1, item_2}`, o campeão de cada
+ * peça do carrossel e o item que ele traz (componente, item completo ou emblema; `item_2` nunca veio preenchido). Devolve
+ * `{slots, unknown}`; cada espaço é `{slot, id, text, item, itemText, items}`: `id`/`item` são o campeão/primeiro item
+ * quando estão no catálogo (senão null, com o texto original em `text`/`itemText`), `items` todos os itens conhecidos.
+ * Payload vazio (`{}`) = carrossel sem peças; null se não é um objeto.
+ */
+export function parseCarouselPieces(
+  data,
+  isChampion = () => true,
+  isItem = () => true,
+) {
+  const v = parseJson(data);
+  if (!isPlain(v)) return null;
+  const slots = [];
+  let unknown = 0;
+  for (const [key, piece] of Object.entries(v)) {
+    const at = /^slot_(\d+)$/.exec(key)?.[1],
+      name = text(piece?.name);
+    if (at === undefined || !isPlain(piece) || !name) continue;
+    const texts = [piece.item_1, piece.item_2, piece.item_3]
+        .map(text)
+        .filter(Boolean),
+      items = texts.filter(isItem);
+    if (!isChampion(name) || items.length < texts.length) unknown++;
+    slots.push({
+      slot: Number(at),
+      id: isChampion(name) ? name : null,
+      text: name,
+      item: items[0] ?? null,
+      itemText: texts[0] ?? null,
+      items,
+    });
+  }
+  return { slots: slots.sort((a, b) => a.slot - b.slot), unknown };
+}
+
 /** Identidade do jogador local no `roster.player_status` (`localplayer: true`); null se não há exatamente um. */
 export function parseLocalIdentity(data) {
   const v = parseJson(data);
@@ -484,10 +535,17 @@ export function emptyGepState() {
     shopVisible: null,
     bench: null,
     items: null,
+    carousel: null, // peças do carrossel (`carousel_pieces`): {value: slots, stage, unknown}; fica até o próximo carrossel
     augmentOffer: null, // oferta atual (cartas do `augments.me`); lista vazia = tela de escolha fechada
     augmentPicked: null, // escolhidos nesta partida, em ordem, sem repetir
   };
 }
+
+/** Rodada "S-R" da coluna `round` do banco; "0-0" (antes da primeira rodada) e texto fora do formato não são rodada. */
+const realStage = (value) => {
+  const at = parseStage(text(value));
+  return at && at.stage !== 0 ? stageText(at) : null;
+};
 
 const stamp = (value, ts, extra = {}) => ({ value, ts, ...extra });
 
@@ -549,6 +607,16 @@ export function applyGepEvent(state, row, env = {}) {
       else if (inProgress === false) state.ended = true;
       break;
     }
+    case "carousel": {
+      const c = parseCarouselPieces(row.data, env.isChampion, env.isItem);
+      // A rodada é a do evento (coluna `round`); sem ela, a do último `round_type` (vem no mesmo segundo, com id menor).
+      if (c)
+        state.carousel = stamp(c.slots, ts, {
+          unknown: c.unknown,
+          stage: realStage(row.round) ?? state.stage?.value ?? null,
+        });
+      break;
+    }
     case "shopVisible":
       state.shopVisible = asBool(parseJson(row.data)) ?? state.shopVisible;
       break;
@@ -559,22 +627,45 @@ export function applyGepEvent(state, row, env = {}) {
     }
     case "augmentOffer": {
       const o = parseAugmentOffer(row.data, env.resolveAugment);
-      if (o)
-        state.augmentOffer = stamp(o.cards, ts, {
-          ids: o.ids,
-          unknown: o.unknown,
-        });
+      if (!o) break;
+      // Rodada da oferta: a coluna `round` do evento; sem ela, a do último `round_type`.
+      const stage = realStage(row.round) ?? state.stage?.value ?? null,
+        last = state.augmentOffer?.last ?? null,
+        // Troca (reroll): cada linha nova da MESMA rodada muda só a carta trocada (observado em tft-events.db); a carta
+        // trocada fica marcada até a oferta da rodada seguinte. Oferta vazia (escolha feita) não apaga a última vista.
+        sameRound = !!last && last.stage === stage,
+        rerolled = o.cards.map(
+          (c, i) =>
+            sameRound &&
+            (last.rerolled[i] === true ||
+              (last.cards[i] !== undefined &&
+                last.cards[i].text.toLowerCase() !== c.text.toLowerCase())),
+        );
+      state.augmentOffer = stamp(o.cards, ts, {
+        ids: o.ids,
+        unknown: o.unknown,
+        stage,
+        rerolled,
+        last: o.cards.length
+          ? { stage, cards: o.cards, rerolled }
+          : last && { ...last },
+      });
       break;
     }
     case "augmentPicked": {
       // O payload é cumulativo (todos os escolhidos até agora): entra cada nome ainda não visto, em ordem. O mesmo
-      // aprimoramento reenviado não conta duas vezes; o estágio é o da hora em que o nome apareceu.
+      // aprimoramento reenviado não conta duas vezes; o estágio é o do evento (coluna `round`) ou o da hora em que o nome
+      // apareceu.
       const list = [...(state.augmentPicked?.value ?? [])];
       let added = false;
       for (const p of parseAugmentPickedList(row.data, env.resolveAugment)) {
         if (list.some((x) => x.text.toLowerCase() === p.text.toLowerCase()))
           continue;
-        list.push({ ...p, stage: state.stage?.value ?? null, ts });
+        list.push({
+          ...p,
+          stage: realStage(row.round) ?? state.stage?.value ?? null,
+          ts,
+        });
         added = true;
       }
       if (added) state.augmentPicked = stamp(list.slice(-MAX_PICKED), ts);
@@ -689,7 +780,10 @@ function evaluateCore(snap, ctx, now, staleMs) {
     };
   const reject = (reason) => ({ ...out, reason });
   if (ctx.inMatch === false) return reject("fora-de-partida");
-  if (g.endedAt) return reject("partida-encerrada");
+  // Treino (sem rivais): o banco marca `ended_at` por heurística própria; com o cliente ainda mostrando a partida em
+  // andamento (`inMatch` verdadeiro) ela segue valendo, e só a saída do cliente da partida a encerra (acima).
+  if (g.endedAt && !(ctx.practice === true && ctx.inMatch === true))
+    return reject("partida-encerrada");
   if (ctx.set != null && g.set != null && Number(g.set) !== Number(ctx.set))
     return reject("set-diferente");
   if (out.gameId && ctx.gameId != null && String(ctx.gameId) !== out.gameId)
@@ -713,6 +807,14 @@ function evaluateCore(snap, ctx, now, staleMs) {
       : null,
     level: field(s.level, s.level?.value),
     xp: field(s.xp, s.xp?.value),
+    // Peças do carrossel da última rodada de carrossel (o GEP não as apaga): quem usa confere `stage` com a rodada atual.
+    carousel: s.carousel
+      ? {
+          ...field(s.carousel, s.carousel.value),
+          stage: s.carousel.stage,
+          unknown: s.carousel.unknown,
+        }
+      : null,
     stage: s.stage
       ? { ...field(s.stage, s.stage.value), name: s.stage.name }
       : null,
@@ -735,15 +837,26 @@ function evaluateCore(snap, ctx, now, staleMs) {
             unknown: s.items.unknown,
           }
         : null,
-    // Oferta: só os ids do catálogo; `unknown` > 0 = alguma carta fora do catálogo (o servidor não usa oferta incompleta).
+    // Oferta: `value` = só os ids do catálogo; `cards` = as cartas na ordem dos espaços (`{slot, id|null, text, rerolled}`),
+    // com o nome cru do GEP; `unresolved` = nomes fora do catálogo (registrados, nunca descartados em silêncio).
     augmentOffer: s.augmentOffer
       ? {
           ...field(s.augmentOffer, s.augmentOffer.ids),
           count: s.augmentOffer.value.length,
           unknown: s.augmentOffer.unknown,
+          stage: s.augmentOffer.stage ?? null,
+          cards: s.augmentOffer.value.map((c, i) => ({
+            slot: i + 1,
+            id: c.id,
+            text: c.text,
+            rerolled: s.augmentOffer.rerolled?.[i] === true,
+          })),
+          unresolved: s.augmentOffer.value
+            .filter((c) => !c.id)
+            .map((c) => c.text),
         }
       : null,
-    // Escolhidos: `{id, stage}` em ordem, só os do catálogo; `unknown` conta os que não bateram.
+    // Escolhidos: `{id, stage}` em ordem, só os do catálogo; `unknown` conta os que não bateram e `unresolved` os nomeia.
     augmentPicked: s.augmentPicked
       ? {
           ...field(
@@ -754,6 +867,9 @@ function evaluateCore(snap, ctx, now, staleMs) {
           ),
           count: s.augmentPicked.value.length,
           unknown: s.augmentPicked.value.filter((x) => !x.id).length,
+          unresolved: s.augmentPicked.value
+            .filter((x) => !x.id)
+            .map((x) => x.text),
         }
       : null,
   };
@@ -768,6 +884,13 @@ function evaluateCore(snap, ctx, now, staleMs) {
       augmentUnknown:
         (fields.augmentOffer?.unknown ?? 0) +
         (fields.augmentPicked?.unknown ?? 0),
+      // Nomes do GEP que não bateram com augments.json (catálogo desatualizado ou nome novo): ficam à vista.
+      augmentUnresolved: [
+        ...new Set([
+          ...(fields.augmentOffer?.unresolved ?? []),
+          ...(fields.augmentPicked?.unresolved ?? []),
+        ]),
+      ],
       wisps: fields.shop?.wisps?.length ?? null,
     },
     identity: s.identity
@@ -832,7 +955,7 @@ function columns(db, table) {
  * Opções: `file`, `now`, `staleMs`, `minIntervalMs`, `champions`/`items`/`augments` (conjuntos de ids do catálogo; sem eles
  * aceita tudo) e `wisps` (Map `apiName → {name}` de `wispCatalog`; sem ele só reconhece ids com "Wisp").
  */
-export function gepReader({
+function singleGepReader({
   file = defaultGepDb(),
   now = Date.now,
   staleMs = Number(process.env.TFT_GEP_STALE_MS) > 0
@@ -945,7 +1068,7 @@ export function gepReader({
           : `key IN (${marks(KEY_NAMES)})`;
       const rows = db
         .prepare(
-          `SELECT id, timestamp AS ts, ${featureCol}, key, data FROM events
+          `SELECT id, timestamp AS ts, ${featureCol}, ${ecols.has("round") ? "round" : "NULL AS round"}, key, data FROM events
            WHERE game_id = ? AND id > ? AND ${where} ORDER BY id LIMIT ${BATCH}`,
         )
         .all(
@@ -1008,6 +1131,46 @@ export function gepReader({
   };
 }
 
+/**
+ * Leitor de eventos GEP. Com `file` (ou `TFT_GEP_DB`) lê só esse arquivo, como sempre. Sem eles escolhe entre as duas fontes
+ * locais, na ordem **ponte própria (`ownGepDb`) > TFTAcademy (`defaultGepDb`)**: vale a primeira com estado `ativo`; se
+ * nenhuma está ativa, a primeira `obsoleta`; senão a primeira que existe (para o motivo ser o dela). O resultado traz
+ * `origin` ("proprio" | "tftacademy") e `origins` (estado de cada fonte consultada), que o chip da interface mostra.
+ * A segunda fonte só é lida quando a primeira não está ativa. Nunca lança.
+ */
+export function gepReader(options = {}) {
+  if (options.file !== undefined || process.env.TFT_GEP_DB)
+    return singleGepReader(options);
+  const sources = [
+    ["proprio", singleGepReader({ ...options, file: ownGepDb() })],
+    ["tftacademy", singleGepReader({ ...options, file: defaultGepDb() })],
+  ];
+  return {
+    status(ctx = {}) {
+      const seen = [];
+      for (const [origin, reader] of sources) {
+        const result = reader.status(ctx);
+        seen.push({ origin, result });
+        if (result.state === "ativo") break;
+      }
+      const pick =
+        seen.find((s) => s.result.state === "ativo") ??
+        seen.find((s) => s.result.state === "obsoleto") ??
+        seen.find((s) => s.result.reason !== "banco-ausente") ??
+        seen[0];
+      return {
+        ...pick.result,
+        origin: pick.origin,
+        origins: seen.map((s) => ({
+          origin: s.origin,
+          state: s.result.state,
+          reason: s.result.reason ?? null,
+        })),
+      };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Integração com o estado lido pelo servidor.
 
@@ -1025,13 +1188,16 @@ export function gepSummary(gep) {
  * `sources.<campo>` = origem ("gep", "screen", "game-log", "derived"|null); `sourcesDetail.<campo>` traz
  * `{source, ageMs, confidence}`. `gepBench` (reserva do GEP) só existe com a fonte ativa; o servidor o usa no motor.
  * Também só com a fonte ativa: `wisps` (`[{slot, id, name, known}]`, da loja do GEP; o Wisp nunca entra como campeão em
- * `shop`), `augments` (oferta, ids do catálogo; vence a da tela) e `pickedAugments` (`[{id, stage}]`).
+ * `shop`) e `pickedAugments` (`[{id, stage}]`). Aprimoramentos vêm SÓ do GEP, com ou sem ele: `augments` (ids da oferta
+ * aberta, `[]` fechada, null sem fonte), `augmentOffer` (`{open, stage, cards: [{slot, id, text, rerolled}], unresolved,
+ * ageMs}`) e `augmentSource` (`{state: "ativo"|"aguardando"|"sem-fonte", source, reason, held, picked, unresolved}`).
  * `pick(campo)` diz se o GEP vale para o campo agora (gold, level, xp, stage, shop, items, bench): a precedência com
  * histerese e divergência mora em core/state/precedence.mjs e o servidor passa a decisão; sem `pick` o GEP vale em tudo.
  */
 export function mergeGep(seen, gep, pick = () => true) {
   const gepStatus = gepSummary(gep);
-  if (!gep?.available) return { ...seen, gepStatus };
+  if (!gep?.available)
+    return { ...seen, ...augmentsWithoutSource(seen, gepStatus), gepStatus };
   const f = gep.fields,
     out = { ...seen, gepStatus },
     sources = { ...seen.sources },
@@ -1083,6 +1249,27 @@ export function mergeGep(seen, gep, pick = () => true) {
     take("stage", f.stage, (v) => {
       out.stage = v;
     });
+  // O `round_type` do GEP (rodada e nome: "Carousel", "PVP"...) vai sempre para a detecção do carrossel, valha ou não o
+  // estágio dele; as peças do carrossel só o GEP observa (core/state/carousel.mjs confere a rodada).
+  if (f.stage)
+    out.gepRound = {
+      stage: f.stage.value,
+      name: f.stage.name ?? null,
+      ageMs: f.stage.ageMs,
+    };
+  if (f.carousel?.value?.length)
+    take(
+      "carousel",
+      f.carousel,
+      (v) =>
+        (out.carouselOffer = {
+          stage: f.carousel.stage,
+          slots: v,
+          unknown: f.carousel.unknown,
+          ageMs: f.carousel.ageMs,
+        }),
+      true,
+    );
   // Loja escondida (shop_visible false) não sobrescreve: o que a tela vê continua valendo.
   if (f.shop && f.shop.visible !== false) {
     let shopTaken = false;
@@ -1108,12 +1295,25 @@ export function mergeGep(seen, gep, pick = () => true) {
       out.gepBench = v;
     });
   else sources.bench = seen.sources?.bench ?? null;
-  // Aprimoramentos (GEP fresco > leitor de tela): a oferta troca a da tela só quando completa (nenhuma carta fora do
-  // catálogo) e com 2 ou 3 cartas (oferta vazia = tela de escolha fechada: a da tela continua, como sempre); os escolhidos
-  // só existem aqui (`pickedAugments: [{id, stage}]`) e o servidor os usa quando o usuário não marcou nenhum à mão.
-  const offer = f.augmentOffer;
-  if (offer && offer.unknown === 0 && offer.value?.length >= 2)
+  // Aprimoramentos: SÓ o GEP (nada de OCR; a oferta que o leitor de tela lia dos cards é descartada). `augments` = ids da
+  // oferta aberta (cartas fora do catálogo ficam de fora e nomeadas em `augmentOffer.unresolved`), `[]` = escolha fechada,
+  // null = nenhum evento de aprimoramento nesta partida ainda. Os escolhidos (`pickedAugments: [{id, stage}]`) o servidor
+  // usa quando o usuário não corrigiu nada à mão. `augmentSource` diz à tela de onde vêm (ou que não há fonte).
+  const offer = f.augmentOffer,
+    seenAny = !!offer || !!f.augmentPicked;
+  out.augments = null;
+  out.augmentOffer = null;
+  delete sources.augments;
+  if (offer) {
     take("augments", offer, (v) => (out.augments = v), true);
+    out.augmentOffer = {
+      open: offer.cards.length > 0,
+      stage: offer.stage,
+      cards: offer.cards,
+      unresolved: offer.unresolved,
+      ageMs: offer.ageMs,
+    };
+  }
   if (f.augmentPicked?.value?.length)
     take(
       "pickedAugments",
@@ -1121,11 +1321,79 @@ export function mergeGep(seen, gep, pick = () => true) {
       (v) => (out.pickedAugments = v),
       true,
     );
+  out.augmentSource = {
+    state: seenAny ? "ativo" : "aguardando",
+    source: "gep",
+    reason: seenAny ? null : "sem-eventos-de-aprimoramento",
+    held: false,
+    picked: f.augmentPicked?.value?.length ?? 0,
+    unresolved: gep.coverage?.augmentUnresolved ?? [],
+  };
   return {
     ...out,
     stale,
     sources,
     sourcesDetail: { ...seen.sourcesDetail, ...detail },
+  };
+}
+
+/**
+ * Sem GEP fresco não há fonte de aprimoramentos: a oferta lida da tela (OCR dos cards) é descartada em vez de usada, e
+ * `augmentSource.state` = "sem-fonte" com o motivo do GEP (a tela mostra "aprimoramentos: sem fonte"). Os escolhidos já
+ * observados nesta partida o servidor mantém à parte (app/state.mjs).
+ */
+function augmentsWithoutSource(seen, gepStatus) {
+  const sources = { ...seen.sources };
+  delete sources.augments;
+  return {
+    augments: null,
+    augmentOffer: null,
+    ...(seen.sources ? { sources } : {}),
+    augmentSource: {
+      state: "sem-fonte",
+      source: null,
+      reason: gepStatus.reason ?? gepStatus.state ?? null,
+      held: false,
+      picked: 0,
+      unresolved: [],
+    },
+  };
+}
+
+/**
+ * Escolhidos da partida retidos entre leituras (puro). `memory` = `{gameId, value: [{id, stage}]}` ou null; `seen` = o
+ * resultado de `mergeGep`. Com escolhidos do GEP agora, eles viram a memória. Sem eles (GEP obsoleto por um momento, banco
+ * travado), na MESMA partida (`gameId` igual e não nulo) os últimos vistos continuam valendo, marcados `held` (a lista do
+ * GEP é cumulativa: escolhido não se desfaz). Partida nova (ou sem id) zera. Devolve `{memory, seen}`.
+ */
+export function holdPickedAugments(memory, seen, gameId) {
+  const id = gameId == null || gameId === "" ? null : String(gameId);
+  if (!id) return { memory: null, seen };
+  if (seen.pickedAugments?.length)
+    return { memory: { gameId: id, value: seen.pickedAugments }, seen };
+  if (memory?.gameId !== id || !memory.value?.length)
+    return { memory: memory?.gameId === id ? memory : null, seen };
+  return {
+    memory,
+    seen: {
+      ...seen,
+      pickedAugments: memory.value,
+      sources: { ...seen.sources, pickedAugments: "gep" },
+      sourcesDetail: {
+        ...seen.sourcesDetail,
+        pickedAugments: {
+          source: "gep",
+          ageMs: null,
+          confidence: "observed",
+          held: true,
+        },
+      },
+      augmentSource: {
+        ...seen.augmentSource,
+        held: true,
+        picked: memory.value.length,
+      },
+    },
   };
 }
 

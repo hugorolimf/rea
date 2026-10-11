@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { augmentAdvice } from "../../augment-advice.mjs";
 import { contestAlert } from "../../contest.mjs";
 import { teamCode } from "../../team-code.mjs";
-import { planTracker } from "../../plan-state.mjs";
+import { factKey, planTracker } from "../../plan-state.mjs";
 import { gepBenchUnits } from "../../gep-reader.mjs";
 import { analysisInputs } from "../../core/state/inputs.mjs";
 import { recommendInventory } from "../../item-holdings.mjs";
@@ -180,6 +180,7 @@ export function assembleStep(ctx, run, step) {
   }
   const itemIds = new Set(catalog.items.map((i) => i.apiName));
   options.bench = gepBenchUnits(seen, HERO_ID);
+  options.benchKnown = !options.replayGameId && seen.sources?.bench === "gep";
   options.inventory = recommendInventory(
     options.replayGameId ? options.inventory : [],
     seen,
@@ -204,8 +205,21 @@ export function assembleStep(ctx, run, step) {
   options.sticky = options.replayGameId
     ? null
     : run.tracker.sticky(metadata.gameId);
+  // O fato lido (plan-state.mjs factKey): o desafiante só é liberado num fato novo.
+  const fact = factKey({
+    stage: seen.stage ?? null,
+    level: options.level,
+    gold: options.gold,
+    shop: options.shop,
+    board:
+      snapshot.statsBlock.players.find((p) => String(p.playerId) === HERO_ID)
+        ?.boardPieces ?? [],
+    bench: options.bench,
+    inventory: options.inventory,
+    augments: options.augments,
+  });
   options.holdPlan =
-    !options.replayGameId && run.tracker.holdFor(metadata.gameId);
+    !options.replayGameId && run.tracker.holdFor(metadata.gameId, fact);
   options.streak = options.replayGameId ? null : (step.streak ?? null);
   options.trend = options.replayGameId ? null : (step.trend ?? null);
   options.hidden = step.hidden ?? {};
@@ -224,7 +238,17 @@ export function assembleStep(ctx, run, step) {
     goal,
     targetLevel: options.targetLevel,
   });
-  return { snapshot, metadata, options, seen, goal, chosen, book, values };
+  return {
+    snapshot,
+    metadata,
+    options,
+    seen,
+    goal,
+    chosen,
+    book,
+    values,
+    fact,
+  };
 }
 
 /**
@@ -233,7 +257,7 @@ export function assembleStep(ctx, run, step) {
  */
 export function runStep(ctx, run, step, { time = NO_TIMER } = {}) {
   const { catalog, metaComps, meta, augmentById } = ctx;
-  const { snapshot, metadata, options, seen, chosen, book, values } =
+  const { snapshot, metadata, options, seen, chosen, book, values, fact } =
     assembleStep(ctx, run, step);
   // Cada leitura reafirma todas as entradas e lê o fato no mesmo trecho síncrono (bindRun).
   const graph = run.fresh ? createRecommendGraph(run.graphOptions) : run.graph;
@@ -300,6 +324,7 @@ export function runStep(ctx, run, step, { time = NO_TIMER } = {}) {
         chosen: chosen.map((a) => ({ id: a.id, name: a.name })),
         ledger: step.ledger ?? null,
         baseId: view.readingId(),
+        fact,
         pinned: !!analysis.preview,
       }),
     );

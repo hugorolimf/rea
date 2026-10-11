@@ -1,98 +1,63 @@
 // Rodar com: node --test "tft/helper/tests/*.test.mjs"
+// O score é a colocação esperada E numa régua (comp-score.mjs): monótono em E, e as partes são só informação.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WEIGHTS, compScore } from "../comp-score.mjs";
+import { SCORE_SCALE, compScore, scoreFromExpected } from "../comp-score.mjs";
 
 const base = {
   expected: 4.4,
   itemGain: 0,
   carryItems: 0,
   carryWanted: 3,
-  chanceNow: 0.5,
-  chancePlan: null,
+  reach: 0.5,
   held: 0.3,
   shopHits: 0,
   dispute: 0,
 };
 
-test("pesos somam 1 e os itens são a maior parte", () => {
-  assert.ok(
-    Math.abs(Object.values(WEIGHTS).reduce((a, b) => a + b, 0) - 1) < 1e-9,
-  );
-  assert.equal(Math.max(...Object.values(WEIGHTS)), WEIGHTS.items);
+test("o score é monótono em E: colocação esperada melhor, score maior; régua de 0 a 100", () => {
+  assert.equal(scoreFromExpected(SCORE_SCALE.best), 100);
+  assert.equal(scoreFromExpected(SCORE_SCALE.worst), 0);
+  assert.equal(scoreFromExpected(1), 100);
+  assert.equal(scoreFromExpected(8), 0);
+  assert.equal(scoreFromExpected(null), 0);
+  let prev = Infinity;
+  for (let e = 2; e <= 6; e += 0.05) {
+    const s = scoreFromExpected(e);
+    assert.ok(s <= prev, `E ${e}: ${s} > ${prev}`);
+    prev = s;
+  }
+  assert.ok(scoreFromExpected(4.2) > scoreFromExpected(4.3));
 });
 
-test("itens que você tem sobem o score; sem itens e sem nada, o score é baixo", () => {
-  const none = compScore({ ...base, held: 0, chanceNow: 0, expected: 4.9 });
-  assert.equal(none.score, 0);
-  const without = compScore(base),
-    withItems = compScore({ ...base, itemGain: 0.3, carryItems: 3 });
-  assert.ok(
-    withItems.score - without.score >= 25,
-    `${withItems.score} vs ${without.score}`,
-  );
-});
-
-test("chance de montar no seu nível pesa; o nível alvo só completa", () => {
-  const low = compScore({ ...base, chanceNow: 0.02 }),
-    high = compScore({ ...base, chanceNow: 0.9 });
-  assert.ok(high.score > low.score + 10);
-  assert.equal(high.chance, 0.9);
-  const withPlan = compScore({ ...base, chanceNow: 0.1, chancePlan: 0.9 });
-  assert.ok(withPlan.parts.chance > 0.1 && withPlan.parts.chance < 0.9);
-  assert.equal(withPlan.chancePlan, 0.9);
-});
-
-test("o que você já tem (com chance de subir de estrela) e a loja de agora somam", () => {
-  assert.ok(
-    compScore({ ...base, held: 0.8 }).score >
-      compScore({ ...base, held: 0.3 }).score,
-  );
-  assert.ok(compScore({ ...base, shopHits: 2 }).score > compScore(base).score);
-});
-
-test("disputa alta reduz o score em até 45%", () => {
-  const free = compScore({
+test("as partes não mudam o score: itens, o que você tem, alcance, loja e disputa só informam", () => {
+  const a = compScore(base),
+    b = compScore({
       ...base,
       itemGain: 0.3,
       carryItems: 3,
-      held: 0.8,
-      chanceNow: 0.9,
-    }),
-    alta = compScore({
-      ...base,
-      itemGain: 0.3,
-      carryItems: 3,
-      held: 0.8,
-      chanceNow: 0.9,
-      dispute: 5,
-    }),
-    maxima = compScore({
-      ...base,
-      itemGain: 0.3,
-      carryItems: 3,
-      held: 0.8,
-      chanceNow: 0.9,
-      dispute: 40,
+      held: 0.9,
+      reach: 0.95,
+      chance: 0.4,
+      shopHits: 2,
+      dispute: 9,
     });
-  assert.ok(alta.score < free.score * 0.7);
-  assert.equal(alta.contest, 0.65);
-  assert.equal(maxima.contest, 0.55);
+  assert.equal(a.score, b.score);
+  assert.equal(a.score, scoreFromExpected(4.4));
+  assert.ok(b.parts.items > a.parts.items);
+  assert.equal(b.parts.reach, 0.95);
+  assert.equal(b.chance, 0.4, "a chance de montar tudo é exibida à parte");
+  assert.equal(a.chance, 0.5, "sem `chance`, exibe o próprio alcance");
+  assert.equal(b.contest, 0.55);
+  assert.equal(compScore({ ...base, dispute: 5 }).contest, 0.65);
 });
 
-test("sem colocação esperada nem ganho: não quebra e fica entre 0 e 100", () => {
-  const s = compScore({});
-  assert.ok(s.score >= 0 && s.score <= 100);
-  assert.equal(
-    compScore({
-      expected: 1,
-      itemGain: 9,
-      carryItems: 9,
-      carryWanted: 3,
-      chanceNow: 2,
-      held: 2,
-      shopHits: 9,
-    }).score,
-    100,
-  );
+test("E e top 4 saem junto do score; sem E o score é 0 e não quebra", () => {
+  const s = compScore({ ...base, expected: 3.876, top4: 61.24 });
+  assert.equal(s.expected, 3.88);
+  assert.equal(s.top4, 61.2);
+  const none = compScore({});
+  assert.equal(none.score, 0);
+  assert.equal(none.expected, null);
+  assert.equal(none.top4, null);
 });

@@ -45,6 +45,8 @@ export function buildGameState(seen, { now = null, gameId = null } = {}) {
       // Wisps da loja e aprimoramentos escolhidos: só o GEP os observa; sem ele são desconhecidos.
       wisps: make("wisps", seen?.wisps),
       pickedAugments: make("pickedAugments", seen?.pickedAugments),
+      // Oferta de aprimoramentos aberta agora (ids do catálogo; [] = escolha fechada): também só do GEP.
+      augmentOffer: make("augments", seen?.augments),
     },
   };
 }

@@ -307,7 +307,7 @@ test("aprimoramentos, nível e ouro entram no checklist", () => {
   assert.ok(progress.next.some((s) => s.kind === "augment"));
 });
 
-test("desafiante na mesma rodada, mesmo lendo muitas vezes, não troca o plano", () => {
+test("desafiante lido muitas vezes no MESMO fato não troca o plano: reler não é evidência nova", () => {
   const tracker = make();
   step(0);
   tracker.track({
@@ -320,7 +320,7 @@ test("desafiante na mesma rodada, mesmo lendo muitas vezes, não troca o plano",
   for (let i = 1; i <= 8; i++) {
     step(i * 5);
     assert.equal(
-      tracker.holdFor("G1"),
+      tracker.holdFor("G1", "f1"),
       true,
       `leitura ${i}: o plano segue segurado`,
     );
@@ -329,18 +329,20 @@ test("desafiante na mesma rodada, mesmo lendo muitas vezes, não troca o plano",
       stage: "2-3",
       level: 4,
       baseId: `b${i}`,
+      fact: "f1",
       top: recommendation({ swit: held("m2", "Comp B") }),
       analysis: analysisOf(),
     });
     assert.equal(switched, null);
     assert.equal(progress.plan.id, "m1");
     assert.equal(progress.challenger.title, "Comp B");
-    assert.equal(progress.challenger.rounds, 1);
+    assert.equal(progress.challenger.pending, true);
   }
+  assert.equal(tracker.holdFor("G1", "f1"), true);
   assert.equal(tracker.sticky("G1").id, "m1");
 });
 
-test("inversão no meio zera a confirmação: Comp B, depois Comp C, depois ninguém", () => {
+test("outro desafiante recomeça: Comp B, depois Comp C, depois ninguém", () => {
   const tracker = make();
   step(0);
   tracker.track({
@@ -350,13 +352,13 @@ test("inversão no meio zera a confirmação: Comp B, depois Comp C, depois ning
     top: recommendation(),
     analysis: analysisOf(),
   });
-  const read = (t, stage, swit, baseId) => {
+  const read = (t, stage, swit, fact) => {
     step(t);
     return tracker.track({
       gameId: "G1",
       stage,
       level: 4,
-      baseId,
+      fact,
       top: recommendation({ swit }),
       analysis: analysisOf(),
     });
@@ -368,16 +370,17 @@ test("inversão no meio zera a confirmação: Comp B, depois Comp C, depois ning
     1,
     "outro desafiante recomeça a contagem",
   );
-  read(40, "2-5", held("m3", "Comp C"), "d");
+  assert.equal(tracker.holdFor("G1", "c"), true, "Comp C apareceu no fato c");
+  assert.deepEqual(tracker.holdFor("G1", "d"), { release: "m3" });
   assert.equal(
     read(50, "2-5", null, "e").progress.challenger,
     null,
     "o plano voltou ao topo: sem desafiante",
   );
-  assert.equal(tracker.holdFor("G1"), true);
+  assert.equal(tracker.holdFor("G1", "e"), true);
 });
 
-test("a mesma análise base não conta duas vezes como leitura do desafiante", () => {
+test("sem o fato da leitura, o rastreador usa a análise base + o estágio (a mesma base não libera)", () => {
   const tracker = make();
   step(0);
   tracker.track({
@@ -398,10 +401,12 @@ test("a mesma análise base não conta duas vezes como leitura do desafiante", (
       analysis: analysisOf(),
     });
   }
-  assert.equal(tracker.snapshot().challenger.readings, 1);
+  assert.equal(tracker.snapshot().challenger.fact, "mesma|2-3");
+  assert.equal(tracker.holdFor("G1", "mesma|2-3"), true);
+  assert.equal(tracker.holdFor("G1"), true, "sem fato, nada é liberado");
 });
 
-test("desafiante que lidera por mais de uma rodada é confirmado: libera a troca e o novo plano vira o mantido", () => {
+test("desafiante que volta a liderar depois de um fato novo é liberado na hora: troca e o novo plano vira o mantido", () => {
   const tracker = make();
   step(0);
   tracker.track({
@@ -411,26 +416,25 @@ test("desafiante que lidera por mais de uma rodada é confirmado: libera a troca
     top: recommendation(),
     analysis: analysisOf(),
   });
-  const rounds = ["2-3", "2-4", "2-4", "2-5"];
-  rounds.forEach((stage, i) => {
-    step(20 + i * 20);
-    tracker.track({
-      gameId: "G1",
-      stage,
-      level: 4,
-      baseId: `x${i}`,
-      top: recommendation({ swit: held("m2", "Comp B") }),
-      analysis: analysisOf(),
-    });
+  step(20);
+  tracker.track({
+    gameId: "G1",
+    stage: "2-3",
+    level: 4,
+    fact: "x0",
+    top: recommendation({ swit: held("m2", "Comp B") }),
+    analysis: analysisOf(),
   });
-  assert.ok(tracker.snapshot().challenger.readings >= CONFIRM.readings);
-  assert.equal(tracker.holdFor("G1"), false, "confirmado: o motor pode trocar");
-  step(140);
+  assert.equal(CONFIRM.facts, 2);
+  assert.equal(tracker.holdFor("G1", "x0"), true, "mesmo fato: segura");
+  // Fato novo (loja nova, compra, rodada...): o motor recebe { release } e troca se Comp B ainda vencer a margem.
+  assert.deepEqual(tracker.holdFor("G1", "x1"), { release: "m2" });
+  step(40);
   const { switched, progress } = tracker.track({
     gameId: "G1",
-    stage: "2-5",
+    stage: "2-3",
     level: 4,
-    baseId: "final",
+    fact: "x1",
     top: recommendation({
       id: "m2",
       title: "Comp B",
@@ -442,11 +446,15 @@ test("desafiante que lidera por mais de uma rodada é confirmado: libera a troca
   assert.equal(progress.plan.id, "m2");
   assert.equal(progress.challenger, null);
   assert.equal(tracker.sticky("G1").id, "m2");
-  assert.equal(tracker.holdFor("G1"), true, "o plano novo também é segurado");
+  assert.equal(
+    tracker.holdFor("G1", "x2"),
+    true,
+    "o plano novo também é segurado",
+  );
   assert.ok(progress.changes.some((c) => c.type === "switch"));
 });
 
-test("troca de classe do motor (plano mantido virou aposta) é adotada na hora, sem confirmação", () => {
+test("troca decidida pelo motor (sem segurar) é adotada na hora", () => {
   const tracker = make();
   step(0);
   tracker.track({
@@ -657,8 +665,8 @@ test("motor: com holdPlan o plano mantido fica no topo e a vantagem do desafiant
     });
   const ranking = run().compRanking.filter((r) => r.evidence);
   assert.ok(ranking.length > 5, "comps medidas na cópia local");
-  // Do pior para o melhor: o primeiro plano que o motor abandona sozinho pela regra de troca (mesma classe, ganho acima
-  // da incerteza + custo) é o caso que o hold precisa segurar.
+  // Do pior para o melhor: o primeiro plano que o motor abandona sozinho pela regra de troca (vantagem em colocação
+  // esperada acima do custo de trocar + histerese) é o caso que o hold precisa segurar.
   let found = null;
   for (const cand of [...ranking].reverse()) {
     const m = comps.find((c) => c.id === cand.id),
@@ -704,7 +712,22 @@ test("motor: com holdPlan o plano mantido fica no topo e a vantagem do desafiant
     free.meta?.id ?? free.freeId,
     "o desafiante registrado é o que o motor escolheria",
   );
-  assert.ok(sw.gain > sw.noise + sw.cost);
+  assert.ok(sw.gain > sw.cost + sw.hysteresis);
+  assert.equal(sw.unit, "placement");
+  assert.ok(Math.abs(sw.expectedFrom - sw.expectedTo - sw.gain) < 0.011);
+  // Fato novo: liberado só para o desafiante já visto; outro id continua segurado.
+  const released = run({
+      sticky,
+      stickyCompId: sticky.id,
+      holdPlan: { release: sw.toId },
+    }).recommendations[0],
+    other = run({
+      sticky,
+      stickyCompId: sticky.id,
+      holdPlan: { release: "outro" },
+    }).recommendations[0];
+  assert.equal(released.meta?.id ?? released.freeId, sw.toId);
+  assert.equal(other.meta?.id ?? other.freeId, sticky.id);
 });
 
 test("as decisões do usuário ficam por partida, só tocam o estado quando mudam e sobrevivem ao reinício (M10b)", async () => {

@@ -191,9 +191,18 @@ test("o harness continua sendo uma transcrição fiel do pipeline de POST /api/r
   // mesmos métodos de `bindRun`, na mesma ordem.
   const read = (file) =>
     fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
+  // Desde o M10b a parte pesada (da base à disputa) mora em app/analysis-pipeline.mjs (roda na thread de análise) e o resto
+  // (validação, estado, plano em andamento) em app/recommend.mjs: o harness segue a ordem dos dois, intercalada.
   const server = read("app/recommend.mjs"),
-    post = server.slice(server.indexOf("async function run("));
+    heavy = read("app/analysis-pipeline.mjs"),
+    post = server.slice(server.indexOf("async function run(")),
+    compute = heavy.slice(heavy.indexOf("async function compute(")),
+    all = server + "\n" + heavy;
   assert.ok(post.length > 0, "app/recommend.mjs: `run` não encontrado");
+  assert.ok(
+    compute.length > 0,
+    "app/analysis-pipeline.mjs: `compute` não encontrado",
+  );
   const harness = read("tests/golden/harness.mjs"),
     // A montagem de `options` está em `assembleStep` e o resto em `runStep`, nessa ordem no arquivo.
     steps = harness.slice(harness.indexOf("export function assembleStep("));
@@ -210,14 +219,18 @@ test("o harness continua sendo uma transcrição fiel do pipeline de POST /api/r
     "validate(input)",
     "gepBenchUnits(",
     "recommendInventory(",
-    "recommendValues(",
+    "analyzer.run(",
+    "planState.track(",
+  ]);
+  // O que o plano em andamento lê é capturado ANTES dos aprimoramentos e da disputa (a ordem de sempre do pipeline).
+  order("app/analysis-pipeline.mjs", compute, [
     "view.target()",
     "view.base()",
     "view.tactical()",
     "view.field(",
     "view.strategy(",
     "composeAnalysis(",
-    "planState.track(",
+    "track = structuredClone(",
     "augmentAdvice(",
     "contestAlert(",
   ]);
@@ -238,7 +251,7 @@ test("o harness continua sendo uma transcrição fiel do pipeline de POST /api/r
   // O emblema de aprimoramento é regra do núcleo (M9) e chega ao motor pelo fato `traits.grants` (M8b): nem o servidor nem
   // o harness montam `options.augment*` (a catraca T2 `augment-emblem-rule` também trava a regra copiada).
   for (const [name, text] of [
-    ["app/recommend.mjs", server],
+    ["app/recommend.mjs + analysis-pipeline.mjs", all],
     ["harness", harness],
   ]) {
     assert.ok(

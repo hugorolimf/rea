@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { findIndicator, rollRows, rollRule, teamOf } from "../roll.mjs";
 import { strategy } from "../strategy.mjs";
+import { POLICY } from "../economy.mjs";
 import { makeState } from "./fixtures.mjs";
 
 const rivals = { count: 7, cost: 2, stars: 1, size: 6 };
@@ -174,7 +175,7 @@ test("regra: sem ouro acima do piso não rola e diz que os juros caem", () => {
   assert.equal(verdict.go, false);
   assert.equal(verdict.kind, "hold");
   assert.match(verdict.reason, /Ouro no piso \(50g\)/);
-  // Perigo com ganho positivo basta; sem alvo que renda, não.
+  // Perigo dispensa os 50%: com chance alta de upgrade do plano e ganho que paga o ouro, rola para estabilizar.
   const danger = rollRule(team, team.simulate(), {
     level: 8,
     cash: 52,
@@ -185,6 +186,75 @@ test("regra: sem ouro acima do piso não rola e diz que os juros caem", () => {
   });
   assert.equal(danger.kind, "danger");
   assert.equal(danger.spend, 30);
+});
+
+// Golden danger-hp27 (tft-pressao-vida): em perigo, "basta ganho positivo" mandava rolar 8 g com ~0% de achar upgrade.
+// Agora o perigo exige POLICY.roll.dangerChance de fechar upgrade do plano e dangerGainPerGold de força por ouro.
+test("perigo: rolar exige chance mínima de upgrade do plano e ganho que pague o ouro; abaixo disso diz por quê", () => {
+  const R = POLICY.roll,
+    G = POLICY.simulation.maxGold + 1;
+  // Time sintético: uma peça do plano com chance `p` de fechar o 2★ e ganho `g` em qualquer orçamento.
+  const rule = ({ p, g, planned = 8, inPlan = true }) => {
+    const curve = new Float64Array(G).fill(p),
+      main = {
+        id: "TFT_X",
+        name: "X",
+        cost: 3,
+        own: 2,
+        goal: 3,
+        goalStars: 2,
+        free: 5,
+        value: 4,
+        prior: 1,
+        inPlan,
+        curve,
+        status: "ok",
+        sim: { evolve: true },
+      };
+    return rollRule(
+      { live: [main], pieces: [main], denom: { 3: 50 } },
+      {
+        mix: {
+          any: Float64Array.from(curve),
+          gain: new Float64Array(G).fill(g),
+        },
+      },
+      { level: 8, cash: 18, floor: 10, planned, danger: true, rollAt: 8 },
+    );
+  };
+  // ~0% (o caso do golden): não rola e o motivo diz a chance e o mínimo.
+  const none = rule({ p: 0.003, g: 0.5 });
+  assert.equal(none.go, false);
+  assert.equal(none.spend, 0);
+  assert.equal(none.kind, "hold");
+  assert.match(
+    none.reason,
+    /^Vida em risco, mas só 0% de fechar upgrade do plano com 8g \(mínimo 10%\)/,
+  );
+  // Chance boa, mas o ganho esperado não paga o ouro (30 g rendendo menos de ~1 de força).
+  const cheap = rule({ p: 0.3, g: 0.1, planned: 30 });
+  assert.equal(cheap.go, false);
+  assert.match(
+    cheap.reason,
+    /30g renderiam só \+0\.1 de força esperada \(mínimo \+1\)/,
+  );
+  // 12% de upgrade do plano e ganho acima do mínimo: rola para estabilizar.
+  const go = rule({ p: 0.12, g: 0.6, planned: 14 });
+  assert.equal(go.kind, "danger");
+  assert.equal(go.go, true);
+  assert.equal(go.spend, 14);
+  assert.match(
+    go.reason,
+    /^Vida em risco: 12% de fechar upgrade do plano com 14g/,
+  );
+  // Os limiares: um pouco abaixo de cada um não rola.
+  assert.equal(rule({ p: R.dangerChance - 0.01, g: 5, planned: 14 }).go, false);
+  assert.equal(
+    rule({ p: 0.5, g: R.dangerGainPerGold * 14 - 0.01, planned: 14 }).go,
+    false,
+  );
+  // Sem peça do plano evoluindo, a régua é a de 2★ do time.
+  assert.match(rule({ p: 0.003, g: 0.5, inPlan: false }).reason, /2★ do time/);
 });
 
 test("a simulação do time é reaproveitada quando só o ouro muda e refeita quando a pool muda", () => {

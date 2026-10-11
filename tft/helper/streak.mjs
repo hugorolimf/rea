@@ -51,7 +51,7 @@ export function streakTracker() {
       return kind ? { kind, length, inferred: true } : null;
     },
     /**
-     * Tendência da vida: queda média das últimas perdas e quantas perdas houve na janela recente (~4 rodadas); os
+     * Tendência da vida: queda média das últimas perdas (`samples` quedas) e quantas perdas houve na janela recente (~4 rodadas); os
      * tamanhos são `POLICY.trend.drops` e `POLICY.trend.windowMs`. Não depende do estágio lido da tela.
      */
     trend(now = Date.now()) {
@@ -59,13 +59,21 @@ export function streakTracker() {
       for (let i = 1; i < hpLog.length; i++)
         if (hpLog[i].hp < hpLog[i - 1].hp)
           drops.push({ at: hpLog[i].at, loss: hpLog[i - 1].hp - hpLog[i].hp });
-      const last = drops.slice(-POLICY.trend.drops);
+      const last = drops.slice(-POLICY.trend.drops),
+        W = POLICY.trend.windowMs,
+        lastAt = drops.at(-1)?.at ?? null;
       return {
         avgLoss: last.length
           ? last.reduce((n, d) => n + d.loss, 0) / last.length
           : 0,
-        recentLosses: drops.filter((d) => now - d.at <= POLICY.trend.windowMs)
-          .length,
+        // Quedas que entraram na média: com menos de `POLICY.trend.drops`, pressureOf não projeta (não é tendência).
+        samples: last.length,
+        // Perdas na janela que termina na ÚLTIMA queda (não no relógio): sem uma queda nova a contagem não cai sozinha
+        // a cada leitura (a faixa não oscila com a vida parada); uma janela inteira sem queda (rodadas ganhas) zera.
+        recentLosses:
+          lastAt !== null && now - lastAt <= W
+            ? drops.filter((d) => lastAt - d.at <= W).length
+            : 0,
       };
     },
   };

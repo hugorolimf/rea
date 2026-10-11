@@ -1,51 +1,39 @@
 // O pipeline da recomendação (antes o corpo de POST /api/recommend em server.mjs): validação da entrada, leitura do estado,
 // montagem de `options`, análise base (com a busca de evidência), tática, planos, plano em andamento, aprimoramentos e
 // disputa. Quem chama é o POST (interface) e o laço automático (app/auto-refresh.mjs): o servidor conduz a análise
-// sozinho durante a partida, sem a interface aberta, e os dois dividem os mesmos caches.
+// sozinho durante a partida, sem a interface aberta, e os dois dividem os mesmos resultados.
 //
 // A ORDEM das etapas é a de sempre (o harness do golden, tests/golden/harness.mjs, é uma transcrição dela e
-// tests/golden.test.mjs guarda a ordem aqui). Isto é uma MUDANÇA DE LUGAR: nenhuma regra mudou. O que é novo:
-//   - `run(entrada, { source })` devolve `{ status, data, stages }` em vez de escrever na resposta HTTP;
+// tests/golden.test.mjs guarda a ordem aqui e em app/analysis-pipeline.mjs). Isto é uma MUDANÇA DE LUGAR: nenhuma regra
+// mudou. O que é novo:
+//   - `run(entrada, { source })` devolve `{ status, data | bytes, stages }` em vez de escrever na resposta HTTP;
 //   - as decisões do usuário de um POST da interface (`source: "ui"`) ficam guardadas por partida em plan-state, e o laço
 //     as usa quando a interface não está aberta;
 //   - uma camada por chave de análise (core/state/analysis-key.mjs, `results`): o POST que repete a chave de uma análise
-//     recente (do laço ou de outro POST) responde dela, sem refazer;
+//     recente (do laço ou de outro POST) responde dela, sem refazer. A segunda chave é o CONTEÚDO da entrada da análise
+//     pesada (estado + opções): duas chamadas com a mesma entrada dividem o cálculo em andamento ou o recente, mesmo que
+//     a chave de análise da tela difira (fase do cliente, idade do arquivo, janela de 2 min);
 //   - (M8b) a base, a tática e os planos são FATOS do grafo (app/recommend-facts.mjs): cada um com as entradas declaradas e
-//     memoizado por conteúdo. Sumiram `analysisCache`, `baseAnalysisCache`, `pendingBase`, a chave de cache montada à mão
-//     (`analysis-keys.mjs`) e o `structuredClone` da base antes da tática (agora dentro do fato `tactics.analysis`). A loja
-//     passou a ser entrada da base (defeito D1).
-//
-// Fronteira para a thread de análise (M10a/M10b, ainda não ligada; ver ARQUITETURA.md): estado e efeitos (validate,
-// current/seenState, hidden, sticky/holdPlan, streaks, matches.augments, track, appendFile, caches) ficam aqui; a parte
-// pura é da marca "análise base" até "contestAlert".
+//     memoizado por conteúdo; a loja é entrada da base (defeito D1);
+//   - (M10b) a parte PESADA (da análise base até a disputa) mora em app/analysis-pipeline.mjs e roda na thread de análise
+//     (app/analysis-runner.mjs decide onde; sem thread, roda aqui mesmo, com o mesmo código). Daqui ficam o estado e os
+//     efeitos: validate, current/seenState, hidden, sticky/holdPlan, streaks, matches.augments, planState.track (com o que o
+//     pipeline capturou) e o arquivo de trocas de plano.
 import fs from "node:fs/promises";
-import { teamCode } from "../team-code.mjs";
-import { augmentAdvice } from "../augment-advice.mjs";
 import { isThiefsGloves } from "../core/catalog/items.mjs";
 import { isAvatar } from "../core/catalog/champions.mjs";
 import { analysisKey, decisionPayload } from "../core/state/analysis-key.mjs";
 import { analysisInputs } from "../core/state/inputs.mjs";
 import { chosenAugmentIds, gepBenchUnits } from "../gep-reader.mjs";
-import { contestAlert } from "../contest.mjs";
 import { gameRows } from "../replay.mjs";
 import { hiddenHoldings } from "../pool-tracker.mjs";
 import { recommendInventory } from "../item-holdings.mjs";
-import {
-  evidenceStats,
-  settleEvidence,
-  turnLock,
-  yieldToLoop,
-} from "./live-load.mjs";
-import {
-  MAX_PLANS,
-  bindRun,
-  composeAnalysis,
-  computeCounts,
-  createRecommendGraph,
-  plansOf,
-  recommendValues,
-  recomputedText,
-} from "./recommend-facts.mjs";
+import { appendFields, prependField } from "../analysis-protocol.mjs";
+import { factKey } from "../plan-state.mjs";
+import { createAnalysisPipeline } from "./analysis-pipeline.mjs";
+import { createAnalysisRunner } from "./analysis-runner.mjs";
+import { targetLevelTracker } from "../target-level.mjs";
+import { yieldToLoop } from "./live-load.mjs";
 
 /** Marcas de tempo por etapa de uma análise: `lap("x")` guarda o que passou desde a marca anterior. */
 export function stageTimer() {
@@ -59,6 +47,14 @@ export function stageTimer() {
       marks.push(`${label}=${(now - last).toFixed(0)}`);
       last = now;
     },
+    /** Registra uma etapa medida em outro lugar (a thread de análise), sem mexer na marca de agora. */
+    put(label, ms) {
+      marks.push(`${label}=${Number(ms).toFixed(0)}`);
+    },
+    /** Recomeça a contagem de agora (depois de registrar etapas medidas fora com `put`). */
+    restart() {
+      last = performance.now();
+    },
     text: () => marks.join(" "),
   };
 }
@@ -68,6 +64,9 @@ export function stageTimer() {
  * `traitRules`, `capturesFile`, `planLog`, `budgetMs`), estado/efeitos do servidor (`current`, `replayState`, `seenState`,
  * `gepContext`, `matches`, `planState`, `streaks`, `gameFiles`, `evidenceClient`, `overlay`, `results`) e as cópias de meta
  * (`meta`, `metaComps`, `boardStats`, `augmentStats`: leitura por getter, o servidor as renova). `now` = relógio em ms.
+ * `analysisWorker` (opcional): a thread de análise (`createAnalysisWorker`, analysis-worker.mjs, com `supersede: false`); sem
+ * ela a análise pesada roda aqui mesmo, no processo principal, com o mesmo código. `log(nível, texto)` recebe os avisos
+ * de falha da thread. `analyzer` (opcional) troca o executor inteiro (testes).
  */
 export function createRecommender(deps) {
   const {
@@ -94,41 +93,33 @@ export function createRecommender(deps) {
     results,
     now = Date.now,
   } = deps;
-  // Uma análise por vez depois da base: a análise cede o loop entre as etapas, e a ordem das análises (plano em andamento,
-  // sequências) continua a de antes.
-  const analysisTurn = turnLock();
-  // Respostas do explorer já obtidas: filtro → {avg, games, top4} (null = falhou; a análise segue sem ela).
-  const evidenceMap = new Map();
-  // Tabelas condicionais já obtidas: filtro do trunfo → {units, traits} (o que rende junto com ele).
-  const conditionalMap = new Map();
-  // Versão do conteúdo dos dois mapas (muda a cada resposta guardada ou apagada): decide quando refazer a cópia que o
-  // grafo recebe (os mapas mudam no lugar; as entradas do grafo são tratadas como imutáveis).
-  let evidenceVersion = 0;
-  let evidenceCopy = { version: -1, evidence: null, conditional: null };
-  const evidenceInputs = () => {
-    if (evidenceCopy.version !== evidenceVersion)
-      evidenceCopy = {
-        version: evidenceVersion,
-        evidence: new Map(evidenceMap),
-        conditional: new Map(conditionalMap),
-      };
-    return {
-      evidence: evidenceCopy.evidence,
-      conditional: evidenceCopy.conditional,
-    };
-  };
-  // Perguntas que falharam (rede) ficam como null para não repetir a cada leitura; voltam a ser tentadas em 10 min.
-  setInterval(
-    () => {
-      for (const map of [evidenceMap, conditionalMap])
-        for (const [k, v] of map)
-          if (v === null && map.delete(k)) evidenceVersion++;
-    },
-    10 * 60 * 1000,
-  ).unref();
-  // O grafo de fatos da recomendação: guarda a base, a tática e os planos por conteúdo das entradas (o histórico faz o
-  // papel dos caches antigos; um fato recalcula só se uma entrada DECLARADA dele mudou).
-  const graph = createRecommendGraph({ clock: () => performance.now() });
+  // Ouro e vida da rodada que decidem o nível-alvo (target-level.mjs): o laço e o POST dividem a mesma memória.
+  const targetInputs = deps.targetInputs ?? targetLevelTracker();
+  // Onde a análise pesada roda. O pipeline do processo principal só é criado se for preciso (sem thread, ou se ela cair).
+  const analyzer =
+    deps.analyzer ??
+    createAnalysisRunner({
+      worker: deps.analysisWorker ?? null,
+      log: deps.log,
+      context: () => ({
+        meta: deps.meta,
+        metaComps: deps.metaComps,
+        boardStats: deps.boardStats,
+        augmentStats: deps.augmentStats,
+      }),
+      makePipeline: () =>
+        createAnalysisPipeline({
+          heroId: HERO_ID,
+          catalog,
+          plannerCatalog,
+          localNames,
+          augmentById,
+          traitRules,
+          evidenceClient,
+          budgetMs: EVIDENCE_BUDGET_MS,
+          yieldBetween: yieldToLoop,
+        }),
+    });
 
   function validate(input) {
     if (!input || typeof input !== "object" || Array.isArray(input))
@@ -141,8 +132,11 @@ export function createRecommender(deps) {
         : Number(input.level);
     if (level !== null && (!Number.isInteger(level) || level < 1 || level > 11))
       throw Error("Nível deve ser de 1 a 11.");
+    // Ausente (o cliente ao vivo só manda decisões), nulo ou vazio = sem ouro do cliente: o servidor usa o próprio estado.
     const gold =
-      input.gold === null || input.gold === "" ? null : Number(input.gold);
+      input.gold === undefined || input.gold === null || input.gold === ""
+        ? null
+        : Number(input.gold);
     if (gold !== null && (!Number.isInteger(gold) || gold < 0 || gold > 999))
       throw Error("Ouro inválido.");
     // Sem banco informado: o jogo não expõe o banco de ninguém e a entrada manual foi removida (FONTES-DE-DADOS.md).
@@ -269,10 +263,7 @@ export function createRecommender(deps) {
    * `{ status: 409, data: { error, metadata }, stages }` para um snapshot de outro set. `stages` = tempos por etapa.
    */
   async function run(input, { source = "ui", stages = stageTimer() } = {}) {
-    const meta = deps.meta,
-      metaComps = deps.metaComps,
-      boardStats = deps.boardStats,
-      augmentStats = deps.augmentStats;
+    const metaComps = deps.metaComps;
     const options = validate(input),
       { snapshot, metadata } = options.replayGameId
         ? await replayState(options.replayGameId)
@@ -373,7 +364,11 @@ export function createRecommender(deps) {
     // escolhidos (registro manual ou GEP) também são entrada derivada do estado: entram na mesma atribuição.
     Object.assign(
       options,
-      { augments: augmentPick.ids },
+      {
+        augments: augmentPick.ids,
+        // Sem GEP fresco a reserva é DESCONHECIDA (não vazia): o motor diz "reserva não lida" em vez de "você não tem".
+        benchKnown: !options.replayGameId && seen.sources?.bench === "gep",
+      },
       analysisInputs(seen, {
         augments: augmentPick.ids,
         estimatedLevel: metadata.estimatedLevel,
@@ -397,9 +392,22 @@ export function createRecommender(deps) {
     options.sticky = options.replayGameId
       ? null
       : planState.sticky(metadata.gameId);
-    // Plano em andamento: um desafiante só o substitui depois de liderar por mais de uma rodada (plan-state.mjs).
+    // Plano em andamento: um desafiante só o substitui se ainda liderar depois de um FATO NOVO (plan-state.mjs): o fato
+    // lido agora (estágio-rodada, nível, ouro, loja, peças, itens, aprimoramentos) decide se ele já pode ser liberado.
+    const fact = factKey({
+      stage: seen.stage ?? null,
+      level: options.level,
+      gold: options.gold,
+      shop: options.shop,
+      board:
+        snapshot.statsBlock.players.find((p) => String(p.playerId) === HERO_ID)
+          ?.boardPieces ?? [],
+      bench: options.bench,
+      inventory: options.inventory,
+      augments: options.augments,
+    });
     options.holdPlan =
-      !options.replayGameId && planState.holdFor(metadata.gameId);
+      !options.replayGameId && planState.holdFor(metadata.gameId, fact);
     if (!options.replayGameId)
       streaks.observe({
         gameId: metadata.gameId,
@@ -410,6 +418,19 @@ export function createRecommender(deps) {
       });
     options.streak = options.replayGameId ? null : streaks.current();
     options.trend = options.replayGameId ? null : streaks.trend();
+    // Nível-alvo: ouro e vida DA RODADA (o maior ouro e a menor vida do estágio-rodada; sem estágio, histerese), para o
+    // ouro cruzando 50 g na loja não alternar o alvo. Partida revista: o ouro e a vida dela, sem memória.
+    if (!options.replayGameId) {
+      const steady = targetInputs.observe({
+        gameId: metadata.gameId,
+        stage: options.stage ?? null,
+        gold: options.gold,
+        hp: snapshot.statsBlock.players.find(
+          (p) => String(p.playerId) === HERO_ID,
+        )?.health,
+      });
+      Object.assign(options, { targetGold: steady.gold, targetHp: steady.hp });
+    }
     // Banco dos rivais estimado pelas peças que saíram do tabuleiro deles (ver pool-tracker.mjs). Meio
     // em meio para a base não mudar a cada segundo de decaimento. Só rivais vivos no snapshot
     // atual contam: a captura só grava quando o tabuleiro muda, e um eliminado pode sumir da lista.
@@ -447,254 +468,123 @@ export function createRecommender(deps) {
           decisionPayload(metadata, picked),
           now(),
         );
-    const compute = async () => {
-      const countsBefore = computeCounts(graph);
-      // A evidência que a ÚLTIMA leitura da base usou. Depois da base há `await`s (a vaga, o loop cedido entre os planos) em
-      // que a evidência pode mudar (respostas do explorer de outra análise, perguntas que o teto de espera deixou abertas,
-      // a limpeza de 10 min): a tática e os planos têm de partir da MESMA evidência da base que guardaram, senão o fato
-      // `comps.base` seria refeito no meio do laço de planos e `composeAnalysis` colaria o campo e a estratégia de uma
-      // tática em planos de outra. Fixada ao fim de `settleEvidence`.
-      let seenEvidence = null,
-        pinnedEvidence = null;
-      // Os fatos da recomendação (app/recommend-facts.mjs). `targetLevel` é a ESCOLHA do usuário ("auto" ou um nível); o
-      // nível-alvo resolvido é o fato `level.target`. Cada leitura reafirma todas as entradas no mesmo trecho síncrono.
-      const view = bindRun(
-        graph,
-        recommendValues({
-          snapshot,
-          catalog,
-          options,
-          meta,
-          metaComps,
-          boardStats,
-          augmentStats,
-          chosen,
-          goal,
-          targetLevel: options.targetLevel,
-        }),
-        () => pinnedEvidence ?? evidenceInputs(),
-      );
-      const target = view.target();
-      options.targetLevel = target.level;
-      options.augmentStats = augmentStats;
-      // O motor escolhe os trunfos e diz o que precisa saber da MetaTFT; o servidor busca e refaz a análise.
-      // Scouting, XP, sequência e removedores só afetam a tática e a estratégia, não a escolha das comps; a loja afeta
-      // a nota das comps (shopHits) e por isso é entrada da base.
-      let baseComputed = false;
-      // Perguntas novas ao explorer (tabelas dos trunfos, depois os totais dos tabuleiros): busca em paralelo e refaz a
-      // análise com as respostas. Três rodadas bastam: trunfos → candidatos → medição. A espera de rede tem teto
-      // (EVIDENCE_BUDGET_MS) e o tempo de analyze x rede vai para o log (app/live-load.mjs). A base fica no histórico do
-      // grafo (por conteúdo das entradas, evidência inclusa): uma leitura igual não refaz nada, e o que mudou na
-      // evidência entra como entrada nova.
-      await settleEvidence({
-        analyzeNow: () => {
-          // Sem `await` aqui dentro: outra análise não roda no meio, então a diferença de `computes` é desta leitura.
-          seenEvidence = evidenceInputs();
-          const before = view.computes("comps.base"),
-            built = view.base();
-          baseComputed ||= view.computes("comps.base") > before;
-          return built;
-        },
-        ask: (f) =>
-          Promise.all([
-            ...f.conditionalRequests.map((c) =>
-              evidenceClient
-                .conditional(c)
-                .then((got) => conditionalMap.set(c, got))
-                .catch(() => conditionalMap.set(c, null))
-                .finally(() => evidenceVersion++),
-            ),
-            evidenceClient.totals(f.evidenceRequests).then((got) => {
-              for (const [k, val] of got) evidenceMap.set(k, val);
-              if (got.size) evidenceVersion++;
-            }),
-          ]),
-        budgetMs: EVIDENCE_BUDGET_MS,
-        stats: (stages.evidence = evidenceStats()),
-      });
-      pinnedEvidence = seenEvidence;
-      stages.note = baseComputed ? "base=nova" : "base=cache";
-      stages.lap("base");
-      // Daqui até o fim a análise cede o loop entre as etapas (/api/state e SSE entram no meio); a vaga mantém a
-      // ordem das análises. Solta ao terminar (ou falhar).
-      const release = await analysisTurn();
-      try {
-        stages.lap("fila");
-        await yieldToLoop();
-        // A base com a tática por cima, a comp fixada e as trocas: o fato `tactics.analysis`.
-        const tactical = view.tactical();
-        stages.lap("tactics");
-        await yieldToLoop();
-        // Campo de agora e estratégia de cada plano (as sugestões e o fixado): um fato por plano, cedendo o loop entre eles.
-        const count = plansOf(tactical).length;
-        if (count > MAX_PLANS)
-          throw Error(
-            `A análise trouxe ${count} planos; o grafo tem fatos para ${MAX_PLANS}.`,
-          );
-        const perPlan = [];
-        for (let slot = 0; slot < count; slot++) {
-          perPlan.push({
-            stage: view.field(slot),
-            strategy: view.strategy(slot),
-          });
-          await yieldToLoop();
-        }
-        // Os fatos ficam intactos: o resto do pipeline (plano em andamento, aprimoramentos, disputa) trabalha numa cópia.
-        const analysis = composeAnalysis(tactical, perPlan, (ids) =>
-          teamCode(ids, plannerCatalog),
-        );
-        analysis.currentLevel = options.level;
-        stages.lap("planos");
-        if (
-          !options.replayGameId &&
-          analysis.self.health > 0 &&
-          (analysis.recommendations[0]?.meta ||
-            analysis.recommendations[0]?.freeId)
-        ) {
-          const top = analysis.recommendations[0];
-          // Livro-razão do TFT.log (compras): só o teto da reserva das peças do plano que ainda não estão em campo.
-          let ledger = null;
-          try {
-            ledger = gameFiles.ledger(
-              metadata.gameId,
-              snapshot.statsBlock.players.find(
-                (p) => String(p.playerId) === HERO_ID,
-              )?.boardPieces ?? [],
-            );
-          } catch {}
-          // Plano em andamento: adota/mantém/troca (com confirmação) e atualiza o checklist de progresso.
-          const { switched, progress } = planState.track({
-            gameId: metadata.gameId,
-            stage: seen.stage ?? null,
-            level: options.level,
-            targetLevel: options.targetLevel,
-            gold: options.gold,
-            top,
-            shown: analysis.preview ?? top,
-            analysis,
-            chosen: chosen.map((a) => ({ id: a.id, name: a.name })),
-            ledger,
-            baseId: view.readingId(),
-            pinned: !!analysis.preview,
-          });
-          analysis.planProgress = progress;
-          // Troca de plano na mesma partida: registra quando, de qual para qual e com que margem (revisão depois).
-          if (switched)
-            fs.appendFile(
-              planLog,
-              JSON.stringify({
-                gameId: metadata.gameId,
-                at: new Date().toISOString(),
-                stage: options.stage
-                  ? `${options.stage.stage}-${options.stage.round}`
-                  : null,
-                level: options.level,
-                hp: analysis.self.health,
-                from: switched.from,
-                to: switched.to,
-                expected: top.evidence?.expected ?? null,
-                switch: top.evidence?.switch ?? null,
-              }) + "\n",
-            ).catch(() => {});
-        }
-        stages.lap("plano");
-        analysis.chosenAugments = chosen.map((a) => ({
-          id: a.id,
-          name: a.name,
-          desc: a.desc,
-          traits: a.traits.map((t) => traitRules.nameOf(t)).filter(Boolean),
-          // Origem: "gep" (lido do jogo, com o estágio da escolha) ou "manual" (marcado na tela, que prevalece).
-          source: augmentsFrom,
-          stage: gepPicked.get(a.id) ?? null,
-        }));
-        // A ordem das ofertas considera o caminho já escolhido (sinergias dos aprimoramentos anteriores).
-        options.chosenAugments = chosen;
-        analysis.augmentAdvice = augmentAdvice(
-          options.augmentIds.map((id) => augmentById.get(id)).filter(Boolean),
-          analysis.preview ?? analysis.recommendations[0],
-          analysis,
-          catalog,
-          options,
-          localNames,
-        );
-        // Lobby jogando as mesmas peças da comp exibida: quem disputa e uma comp menos disputada para trocar.
-        analysis.contest = contestAlert({
-          plan: analysis.preview ?? analysis.recommendations[0],
-          opponents: analysis.opponents,
-          ranking: analysis.compRanking ?? [],
-          comps: metaComps.comps,
-          mine: analysis.self.units.map((u) => u.championName),
-          stage: options.stage,
-        });
-        stages.lap("resto");
-        analysis.buildSource = meta.builds.size
-          ? {
-              label: meta.label,
-              fetchedAt: meta.fetchedAt,
-              url: "https://www.metatft.com/",
-            }
-          : null;
-        analysis.targetLevel = options.targetLevel;
-        analysis.targetLevelAuto = target.auto;
-        analysis.targetLevelReasons = target.reasons;
-        analysis.levelEstimated = options.levelEstimated;
-        analysis.levelSource = options.levelSource;
-        const viewed = snapshot.statsBlock.players.find(
-          (p) => String(p.playerId) === options.viewedPlayerId,
-        );
-        if (options.viewedPlayerId && !viewed)
-          throw Error("Adversário não encontrado nesta partida.");
-        const viewedBoard = viewed
-          ? {
-              playerId: String(viewed.playerId),
-              name: viewed.riotIdGameName ?? viewed.summonerName,
-              isSelf: String(viewed.playerId) === HERO_ID,
-              units: viewed.boardPieces.map((u) => {
-                const c = catalog.champions.find(
-                  (c) => c.apiName === u.championName,
-                );
-                const t = traitRules.of(c?.traits, u.itemNames);
-                return {
-                  ...u,
-                  name: c?.name ?? u.championName,
-                  traits: t.traits,
-                  emblemTraits: t.added,
-                };
-              }),
-            }
-          : null;
-        // Os fatos que recalcularam desde o começo desta análise (o que o grafo reaproveitou não aparece; é aproximado: inclui
-        // o que outra análise em andamento recalculou no mesmo intervalo): vai para o `TEMPO`.
-        stages.note += ` fatos=${recomputedText(graph, countsBefore) || "nenhum"}`;
-        return { ...analysis, viewedBoard };
-      } finally {
-        release();
-      }
+    // A entrada da análise pesada (app/analysis-pipeline.mjs): tudo o que ela lê do estado de agora. Não leva as cópias de meta
+    // (vão à thread só quando mudam) nem `metadata`, que o pipeline não usa.
+    const payload = {
+      snapshot,
+      options,
+      chosen,
+      goal,
+      augmentsFrom,
+      gepPicked: Object.fromEntries(gepPicked),
     };
-    const { parts, via } = uiKey
-      ? await results.run(uiKey, compute)
+    // O CONTEÚDO da entrada é a segunda chave de compartilhamento: o laço e o POST com a mesma entrada (mesmo que a chave de
+    // análise da tela difira) dividem o cálculo em andamento ou o recente. Calculada antes de a análise mexer em `options`.
+    const contentKey = `c:${JSON.stringify(payload)}`;
+    const compute = async () => {
+      const out = await analyzer.run(payload, stages);
+      stages.note = `${out.notes} via=${out.via}`;
+      stages.evidence = { text: () => out.evidence };
+      // Plano em andamento (estado do servidor): adota/mantém/troca (com confirmação) e atualiza o checklist de progresso.
+      // Recebe o que o pipeline capturou ANTES de aprimoramentos e disputa mexerem na análise (a ordem de sempre).
+      let progress = null;
+      if (out.track) {
+        const t = out.track,
+          top = t.top;
+        // Livro-razão do TFT.log (compras): só o teto da reserva das peças do plano que ainda não estão em campo.
+        let ledger = null;
+        try {
+          ledger = gameFiles.ledger(
+            metadata.gameId,
+            snapshot.statsBlock.players.find(
+              (p) => String(p.playerId) === HERO_ID,
+            )?.boardPieces ?? [],
+          );
+        } catch {}
+        const { switched, progress: tracked } = planState.track({
+          gameId: metadata.gameId,
+          stage: seen.stage ?? null,
+          level: t.level,
+          targetLevel: t.targetLevel,
+          gold: t.gold,
+          top,
+          shown: t.shown,
+          analysis: { self: t.self },
+          chosen: chosen.map((a) => ({ id: a.id, name: a.name })),
+          ledger,
+          baseId: t.baseId,
+          fact,
+          pinned: t.pinned,
+        });
+        progress = tracked;
+        // Troca de plano na mesma partida: registra quando, de qual para qual e com que margem (revisão depois).
+        if (switched)
+          fs.appendFile(
+            planLog,
+            JSON.stringify({
+              gameId: metadata.gameId,
+              at: new Date().toISOString(),
+              stage: options.stage
+                ? `${options.stage.stage}-${options.stage.round}`
+                : null,
+              level: t.level,
+              hp: t.health,
+              from: switched.from,
+              to: switched.to,
+              expected: top.evidence?.expected ?? null,
+              switch: top.evidence?.switch ?? null,
+            }) + "\n",
+          ).catch(() => {});
+      }
+      stages.lap("plano");
+      // O que fica guardado (e dividido com quem pedir a mesma coisa): a resposta sem `metadata`, com o progresso do plano.
+      return out.bytes
+        ? {
+            bytes: progress
+              ? appendFields(out.bytes, { planProgress: progress })
+              : out.bytes,
+          }
+        : {
+            parts: progress
+              ? { ...out.parts, planProgress: progress }
+              : out.parts,
+          };
+    };
+    const keys = [uiKey, contentKey].filter(Boolean);
+    const { parts: shared, via } = results
+      ? await results.run(keys, compute)
       : { parts: await compute(), via: "novo" };
     // Chave repetida de uma análise recente (do laço, ou de outro POST em andamento): nada foi recalculado aqui.
     if (via !== "novo") {
       stages.cacheHit = true;
       stages.note = `chave=${via}`;
     }
-    return { status: 200, data: live({ metadata, ...parts }), stages };
+    if (shared.bytes) {
+      // A thread entrega o JSON pronto: o servidor só põe `metadata` na frente (nada de reparsear nem de serializar ~1 MB).
+      const body = prependField(shared.bytes, "metadata", metadata);
+      if (!options.replayGameId) overlay.recordRecommendationJson(body);
+      return { status: 200, bytes: body, stages };
+    }
+    return {
+      status: 200,
+      data: live({ metadata, ...shared.parts }),
+      stages,
+    };
   }
 
   return {
     run,
     validate,
-    /** O grafo de fatos (contadores em `graph.stats()`, estrutura em `graph.describe()`): diagnóstico e testes. */
-    graph,
+    /** Onde a análise pesada roda (`status()` diz se é a thread ou o processo principal) e a fila dela. */
+    analyzer,
     /**
      * Esquece os resultados recentes por chave de análise (cópias de meta, estatísticas ou partida mudaram). Os fatos do
-     * grafo não precisam ser apagados: a chave deles é o conteúdo das entradas, então uma cópia de meta nova entra como
-     * entrada que mudou e o que não mudou segue válido. O parâmetro `base` ficou por compatibilidade (era o que
-     * `updateComps` pedia para manter a análise base); já não tem efeito.
+     * grafo (na thread ou no processo principal) não precisam ser apagados: a chave deles é o conteúdo das entradas, então
+     * uma cópia de meta nova entra como entrada que mudou e o que não mudou segue válido. O parâmetro `base` ficou por
+     * compatibilidade (era o que `updateComps` pedia para manter a análise base); já não tem efeito.
      */
     clear() {
-      results.clear();
+      results?.clear();
     },
   };
 }

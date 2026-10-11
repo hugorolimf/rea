@@ -26,6 +26,7 @@ import {
   craftKindFromOrigins,
   kindFromOrigin,
 } from "./core/items/holdings.mjs";
+import { pendingItems } from "./core/items/builds.mjs";
 import { HOLD_VALUE } from "./item-holdings.mjs";
 import { isPlanItem } from "./item-value.mjs";
 
@@ -133,7 +134,9 @@ function assign(weights) {
  * - `assignments`: [{ champion:{id,name}, item:{id,name,radiant}, measured, value, confidence, samples, source,
  *   kind, situation, from, componentsNeeded }] (`value` = medido × custo de ação, o que soma no total);
  * - `champions`: campeões ordenados pelo valor que seus itens somam (os "carries" que emergem dos seus itens);
- * - `wishlist`: por campeão, os melhores itens do meta que você AINDA não tem (separada das atribuições).
+ * - `wishlist`: por campeão, o que você AINDA não tem da build dele (separada das atribuições): com `buildOf(id)` (a build
+ *   publicada na comp, do motor único de itens `core/items/builds.mjs`), os itens dessa build na ordem dela, como na aba
+ *   Comps, cada cópia contada; sem build publicada, a reserva: os melhores itens medidos (`rankedOf`).
  */
 export function buildItemPlan({
   units = [],
@@ -146,6 +149,7 @@ export function buildItemPlan({
   wantsOf = (u) => new Set(rankedOf(u).map((x) => x.id)),
   nameOf = (id) => id,
   wishLimit = 5,
+  buildOf = () => null,
 }) {
   const named = (u) => ({ id: u.id, name: u.name ?? u.id });
   const limitations = [
@@ -408,29 +412,42 @@ export function buildItemPlan({
     .sort((a, b) => b.total - a.total)
     .map((c, i) => ({ ...c, rank: i + 1 }));
 
-  // Lista de desejos: melhores itens do meta que você ainda não tem (com o banco lido) para cada campeão da comp.
-  const have = new Set(
-    bankRead
+  // Lista de desejos: o que você ainda não tem (com o banco lido) da build de cada campeão da comp. Com build publicada
+  // na comp, ela manda (itens, cópias e ordem de Comps); sem ela, a reserva: os melhores itens medidos.
+  const owned = bankRead
       ? [...insts.map((x) => x.id), ...assignments.map((a) => a.item.id)]
       : [],
-  );
-  const wishlist = units
-    .map((u) => ({
-      champion: named(u),
-      items: rankedOf(u.id)
-        .filter((x) => isPlanItem(x.id) && !have.has(x.id))
-        .slice(0, wishLimit)
-        .map(({ id, m }) => ({
+    have = new Set(owned);
+  const wishOf = (u) => {
+    const published = buildOf(u.id);
+    if (published?.length)
+      return pendingItems(published, owned).map((id) => {
+        const m = valueOf?.(u.id, id) ?? null;
+        return {
           item: { id, name: nameOf(id) },
-          value: m.value,
-          confidence: m.confidence,
-          samples: m.samples,
-          source: m.source,
+          value: m?.value ?? null,
+          confidence: m?.confidence ?? null,
+          samples: m?.samples ?? null,
+          source: "build-comp",
           componentsNeeded: recipes.get(id) ?? [],
-        })),
-    }))
+        };
+      });
+    return rankedOf(u.id)
+      .filter((x) => isPlanItem(x.id) && !have.has(x.id))
+      .slice(0, wishLimit)
+      .map(({ id, m }) => ({
+        item: { id, name: nameOf(id) },
+        value: m.value,
+        confidence: m.confidence,
+        samples: m.samples,
+        source: m.source,
+        componentsNeeded: recipes.get(id) ?? [],
+      }));
+  };
+  const wishlist = units
+    .map((u) => ({ champion: named(u), items: wishOf(u) }))
     .filter((w) => w.items.length)
-    .sort((a, b) => b.items[0].value - a.items[0].value);
+    .sort((a, b) => (b.items[0].value ?? 0) - (a.items[0].value ?? 0));
 
   return {
     active: !!active,

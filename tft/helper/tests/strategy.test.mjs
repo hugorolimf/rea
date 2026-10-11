@@ -277,8 +277,11 @@ const catalog = {
   items: [],
 };
 
-test("loja: carta secundária abaixo do patamar de juros só é comprada na faixa de perigo", () => {
-  const shopFor = (hp, stage) => {
+// Mudança da regra de vida (tft-pressao-vida): antes, na faixa de perigo, a cópia fora do plano que não fecha estrela era
+// comprada mesmo derrubando os juros. Ela não estabiliza agora (uma cópia solta não sobe estrela) e tira ouro das cópias
+// e upgrades do plano; agora fica. A cópia que fecha estrela continua comprada em qualquer faixa.
+test("loja: em perigo, a cópia fora do plano que não fecha estrela fica; a que fecha um 2★ é comprada", () => {
+  const shopFor = (hp, stage, reserve = []) => {
     const s = makeState({
       gold: 30,
       hp,
@@ -289,14 +292,24 @@ test("loja: carta secundária abaixo do patamar de juros só é comprada na faix
         ["Aphelios", 4, 1, 0],
         ["Poppy", 1, 1, 0],
       ],
+      reserve,
     });
     s.options.shop = ["TFT_Poppy"];
     return stagePlan(s.plan, s.analysis, catalog, s.options).shop[0];
   };
   // HP 42: em perigo a partir do estágio 4 (mesma régua da estratégia), saudável o bastante no estágio 3.
-  assert.equal(shopFor(42, "4-2").action, "comprar");
+  const danger = shopFor(42, "4-2");
+  assert.equal(danger.action, "segurar");
+  assert.match(danger.reason, /vida em perigo.*upgrades do plano/);
   assert.equal(shopFor(42, "3-2").action, "segurar");
+  assert.match(shopFor(42, "3-2").reason, /juros/);
   assert.equal(shopFor(80, "4-2").action, "segurar");
+  // Com duas cópias, a da loja fecha o 2★: força agora, comprada mesmo abaixo do patamar de juros.
+  for (const [hp, stage] of [
+    [42, "4-2"],
+    [80, "4-2"],
+  ])
+    assert.equal(shopFor(hp, stage, [["Poppy", 1, 1]]).action, "comprar");
 });
 
 test("rolar pelo time: campo, banco e comp entram na lista e o banco estimado dos rivais derruba a chance", () => {
@@ -562,7 +575,8 @@ test("nada perto de evoluir: 3★ distante não segura o veredito de inviável",
 test("perigo: com a vida baixa rola para estabilizar mesmo abaixo de 50%; com vida cheia o mesmo ouro acima do piso é guardado", () => {
   const danger = run({ gold: 24, hp: 25, level: 8, stage: "4-2", rivals }).r,
     healthy = run({ gold: 64, hp: 80, level: 8, stage: "4-2", rivals }).r;
-  // Mesmo ouro acima do piso (14g): a regra normal exige 50%, a de perigo basta ganho positivo.
+  // Mesmo ouro acima do piso (14g): a regra normal exige 50%; a de perigo, POLICY.roll.dangerChance (10%) de
+  // upgrade do plano (aqui ~12%) e ganho que pague o ouro (+0,6 com 14g, acima de 14/30).
   assert.equal(danger.action, "ROLAR");
   assert.equal(danger.panels.rolling.call.kind, "danger");
   assert.ok(

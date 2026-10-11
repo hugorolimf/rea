@@ -96,9 +96,19 @@ function freezeItems(previous, plans, order) {
           !idealIds.has(x) && !(previous[id] ?? []).some((t) => t.id === x),
       ).length,
       cap = Math.max(0, ITEM_SLOTS - foreign),
-      list = [];
+      list = [],
+      // Cópias que a build pede de cada item (Voto ×3 = três alvos), nunca menos que as já congeladas.
+      want = (itemId) =>
+        Math.max(
+          ideal.filter((i) => i.id === itemId).length,
+          (previous[id] ?? []).filter((t) => t.id === itemId).length,
+          1,
+        );
     const take = (item) => {
-      if (list.length < cap && !list.some((t) => t.id === item.id))
+      if (
+        list.length < cap &&
+        list.filter((t) => t.id === item.id).length < want(item.id)
+      )
         list.push({
           id: item.id,
           name: item.name,
@@ -195,12 +205,16 @@ export function buildChecklist({ shown, analysis, state, memory = {} }) {
     const wanted = targets[id];
     if (!wanted) continue;
     const plan = plansById.get(id),
-      equipped = new Set((plan?.equipped ?? []).map((i) => i.id)),
-      ideal = new Map((plan?.ideal ?? []).map((i) => [i.id, i]));
+      equipped = (plan?.equipped ?? []).map((i) => i.id),
+      ideal = new Map((plan?.ideal ?? []).map((i) => [i.id, i])),
+      seen = new Map();
     for (const t of wanted) {
+      // Cópia repetida da build (Voto ×3): cada uma tem a sua chave e só conta montada se há tantas equipadas.
+      const copy = seen.get(t.id) ?? 0;
+      seen.set(t.id, copy + 1);
       const live = ideal.get(t.id),
-        key = `${id}|${t.id}`,
-        built = equipped.has(t.id);
+        key = copy ? `${id}|${t.id}#${copy + 1}` : `${id}|${t.id}`,
+        built = equipped.filter((x) => x === t.id).length > copy;
       // Item que já existe em outra peça (a que sai, por exemplo) e o plano passa para esta: não falta, só se move.
       const moved = built
         ? null

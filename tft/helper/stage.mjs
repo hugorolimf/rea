@@ -5,8 +5,15 @@
 // Heurística; não simula combate.
 import { isBuyable, levelOdds, unlockLevel } from "./core/pool/shop.mjs";
 import { BUYABLE_ODDS } from "./core/pool/tables.mjs";
-import { lobbyStrength, pressureOf, tierFloor } from "./economy.mjs";
-import { wishlist } from "./tactics.mjs";
+import { starCopies } from "./core/pool/copies.mjs";
+import { shopCopies } from "./core/pool/buy-copies.mjs";
+import {
+  lobbyStrength,
+  pressureOf,
+  stageForPressure,
+  tierFloor,
+} from "./economy.mjs";
+import { compBuild, wantedItems } from "./core/items/builds.mjs";
 import {
   baseItemId,
   isComponent,
@@ -144,28 +151,36 @@ export function stagePlan(plan, analysis, catalog, options) {
   // Loja lida da tela: cada carta vira uma ação. Peça da meta > cópia de algo que você já tem (upgrade) > ponte.
   // Prioridade: carta que fecha upgrade > carry > peça da meta > cópia de unidade sua > ponte. Cartas secundárias
   // (cópia fora da meta, ponte) não são compradas se derrubarem o patamar de juros atual, salvo com a vida em risco.
-  // Com a vida em risco (mesma faixa de strategy.mjs) cartas secundárias podem derrubar o patamar de juros.
-  const bridgeIds = new Set(bridges.map((b) => b.id)),
+  // Com a vida em risco (a MESMA faixa de strategy.mjs: mesmas entradas, com a tendência e o estágio estimado) a ponte,
+  // que ocupa uma vaga vazia agora, pode derrubar o patamar de juros; a cópia fora do plano que não fecha estrela não
+  // estabiliza agora e fica: o ouro vai para cópias e upgrades do plano.
+  const lobby = lobbyStrength(analysis),
+    bridgeIds = new Set(bridges.map((b) => b.id)),
     pressure = pressureOf({
       hp: analysis.self.health,
-      stage: options.stage ?? null,
-      weak: lobbyStrength(analysis).weak,
+      stage: stageForPressure(options.stage ?? null, lobby.foeLevel),
+      weak: lobby.weak,
+      trend: options.trend ?? null,
+      gold,
     }),
     interestTier = gold === null ? 0 : tierFloor(gold);
+  // Cópias de 1★ suas por campeão lidas agora (campo + reserva, inclusive a do GEP): piso para a cópia da pool.
+  const ownCopies = new Map();
+  for (const u of [...analysis.self.units, ...(analysis.self.reserve ?? [])])
+    ownCopies.set(
+      u.championName,
+      (ownCopies.get(u.championName) ?? 0) +
+        starCopies(u.starLevel ?? u.stars ?? 1),
+    );
   const cards = (options.shop ?? [])
     .map((id, slot) => {
       if (!id) return null;
       const c = byId.get(id);
       if (!c) return null;
+      // Cópias suas: as da pool (campo + reserva do GEP), com piso nas estrelas lidas em campo e na reserva.
       const p = pool.get(c.name),
-        own = p?.own ?? 0,
+        own = Math.max(p?.own ?? 0, ownCopies.get(id) ?? 0),
         inGoal = goalIds.has(id);
-      const completes =
-        own === 8
-          ? "fecha 3★"
-          : own % 3 === 2 && own < 8
-            ? "fecha um 2★"
-            : null;
       const role = inGoal
         ? c.name === plan.carry
           ? "carry da meta"
@@ -175,24 +190,50 @@ export function stagePlan(plan, analysis, catalog, options) {
           : bridgeIds.has(id)
             ? "ponte para as sinergias da meta"
             : null;
-      const priority = !role
-        ? -1
-        : (completes ? 4 : 0) +
-          (c.name === plan.carry ? 3 : inGoal ? 2 : have(id) ? 1 : 0);
       return {
         slot: slot + 1,
         id,
         name: c.name,
         cost: c.cost,
         own,
-        completes,
+        completes: null,
+        closesWith: null,
+        copyNote: null,
         role,
-        priority,
-        core: inGoal || !!completes,
+        priority: -1,
+        core: inGoal,
         enemyCopies: p?.enemy ?? 0,
+        base: !role
+          ? -1
+          : c.name === plan.carry
+            ? 3
+            : inGoal
+              ? 2
+              : have(id)
+                ? 1
+                : 0,
       };
     })
     .filter(Boolean);
+  // Cartas iguais na mesma loja, em ordem de slot: cada uma desconta as cópias que as anteriores já trazem (a 1ª fecha
+  // o 2★; a 2ª é cópia a mais rumo ao 3★ ou extra). A carta que fecha leva junto as anteriores de que precisa
+  // (`closesWith`): elas também valem como "fecha estrela" na prioridade, nos juros e na vida em perigo.
+  const sameCards = new Map();
+  for (const card of cards)
+    sameCards.set(card.id, [...(sameCards.get(card.id) ?? []), card]);
+  for (const group of sameCards.values()) {
+    const steps = shopCopies(group[0].own, group.length);
+    for (const [i, card] of group.entries()) {
+      const step = steps[i];
+      card.completes = step.completes;
+      card.closesWith = step.closer === null ? null : group[step.closer].slot;
+      card.copyNote = step.text;
+      const closing = !!card.completes || card.closesWith !== null;
+      card.priority = card.base < 0 ? -1 : (closing ? 4 : 0) + card.base;
+      card.core = card.core || closing;
+      delete card.base;
+    }
+  }
   let budget = gold;
   for (const card of [...cards].sort((a, b) => b.priority - a.priority)) {
     if (card.priority < 0) {
@@ -200,13 +241,32 @@ export function stagePlan(plan, analysis, catalog, options) {
       card.reason = "fora do plano atual";
       continue;
     }
+    const withSlots = cards
+      .filter((s) => s.closesWith === card.slot)
+      .map((s) => s.slot);
     card.reason = [
       card.role,
-      card.completes,
-      card.own && !card.completes ? card.own + " cópia(s) suas" : null,
+      card.completes &&
+        card.completes +
+          (withSlots.length
+            ? ` (com a carta do slot ${withSlots.join(", ")})`
+            : ""),
+      card.closesWith !== null
+        ? `junto com a carta do slot ${card.closesWith}, ${cards.find((s) => s.slot === card.closesWith).completes}`
+        : null,
+      card.copyNote,
+      card.own && !card.completes && card.closesWith === null && !card.copyNote
+        ? card.own + " cópia(s) suas"
+        : null,
     ]
       .filter(Boolean)
       .join(" · ");
+    if (pressure.danger && !card.core && card.role === "cópia de unidade sua") {
+      card.action = "segurar";
+      card.reason +=
+        " · vida em perigo: não fecha estrela agora; o ouro vai para cópias e upgrades do plano";
+      continue;
+    }
     if (budget === null) {
       card.action = "comprar";
       continue;
@@ -260,12 +320,14 @@ export function stagePlan(plan, analysis, catalog, options) {
       (build?.slotsFree ?? 0) - (movedIn.get(u.id)?.size ?? 0),
     );
   }
-  // Item pronto no banco: vai para a unidade em campo que mais o usa. Ordem: está na build de meta dela
-  // (melhor posição primeiro), depois papel compatível; peça da meta antes de temporária; precisa de slot livre.
+  // Item pronto no banco: vai para a unidade em campo que mais o usa. Ordem: está na build dela (a da comp; sem
+  // ela, a reserva; melhor posição primeiro), depois papel compatível; peça da meta antes de temporária; precisa de slot livre.
   const itemNames = new Map(catalog.items.map((i) => [i.apiName, i.name])),
     kind = itemRole;
-  // Mesma lista de desejo de build() e Passar itens (tactics.mjs); completar componente equipado não gasta slot.
-  const wishOf = (id) => wishlist(id, plan.meta?.builds, options.metaBuilds),
+  // Mesma lista de itens de build(), Passar itens e dica de emblema (core/items/builds.mjs: a build publicada da comp; sem
+  // ela, a reserva); completar componente equipado não gasta slot.
+  const wishOf = (id) =>
+      wantedItems(id, { comp: plan.meta, metaBuilds: options.metaBuilds }),
     room = new Map(
       board.map((u) => [
         u.id,
@@ -311,7 +373,13 @@ export function stagePlan(plan, analysis, catalog, options) {
       reason: !pick
         ? "nenhuma unidade em campo com slot livre usa bem este item; guarde"
         : pick.rank >= 0
-          ? pick.rank + 1 + "º item de " + pick.u.name + " na meta"
+          ? pick.rank +
+            1 +
+            "º item de " +
+            pick.u.name +
+            (compBuild(plan.meta, pick.u.id)
+              ? " na build da comp"
+              : " na build geral (reserva)")
           : "papel compatível com " +
             pick.u.name +
             (pick.u.status === "meta"

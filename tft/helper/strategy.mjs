@@ -20,6 +20,7 @@ import {
   nextTier,
   pressureOf,
   projectGold,
+  stageForPressure,
   rerollLevelOf,
   rollLevelOf,
   sellValue,
@@ -101,6 +102,8 @@ function decide(plan, analysis, options, team, sim) {
       ev,
       lobby: lobbyInfo,
       pressure: pressure?.band ?? null,
+      // O gatilho da faixa de perigo (vida, estágio ou tendência), para o aviso dizer por quê.
+      pressureWhy: pressure?.why ?? null,
       floor: pressure?.floor ?? null,
       style: meta?.levelling || null,
       rerollLevel,
@@ -190,22 +193,20 @@ function decide(plan, analysis, options, team, sim) {
     reasons.push(
       `Rivais: nível médio ${lobbyInfo.foeLevel} (você ${level}) e ${lobbyInfo.foeStars} unidades 2★+ em média (você ${lob.myStars}).`,
     );
-  // Estágio não lido da tela: estimado pelo nível médio dos rivais (a vida em perigo tarde depende dele).
-  const stageSeen =
-    stage ??
-    (lob.foeLevel >= 8
-      ? { stage: 5, round: 1 }
-      : lob.foeLevel >= 7
-        ? { stage: 4, round: 1 }
-        : lob.foeLevel >= 5.5
-          ? { stage: 3, round: 1 }
-          : null);
+  // Estágio não lido da tela: estimado pelo nível médio dos rivais (a vida em perigo tarde depende dele). A mesma faixa
+  // que stage.mjs usa na loja (mesmas entradas).
+  const stageSeen = stageForPressure(stage, lob.foeLevel);
   pressure = pressureOf({
     hp,
     stage: stageSeen,
     weak: lob.weak,
     trend: options.trend ?? null,
+    gold,
   });
+  if (pressure.lossStreak && streak?.kind === "loss" && streak.length >= 2)
+    reasons.push(
+      `Sequência de derrotas com vida ${hp} e ${gold}g guardados no estágio ${stageSeen.stage}: é economia, não perigo.`,
+    );
   const levelGap = analysis.opponents?.length ? lob.foeLevel - level : 0;
   // Ganho esperado de cada uso do ouro: rolar pelo time inteiro (simulado com a pool real) contra subir de nível.
   const gain = sim?.gain ?? new Float64Array(1);
@@ -282,7 +283,7 @@ function decide(plan, analysis, options, team, sim) {
       before = cash - (lvlUp ? levelCost : 0),
       spend = commit(budget(Math.max(0, before + sold - floor)));
     reasons.push(
-      `Vida em risco: guardar ouro para juros não compensa perder mais ${hp <= POLICY.hp.critical ? "uma luta" : "lutas"}.`,
+      `Vida em risco (${pressure.why}): guardar ouro para juros não compensa perder mais ${hp <= POLICY.hp.critical ? "uma luta" : "lutas"}; estabilize com cópias e upgrades do plano.`,
     );
     if (spend < GAME.shopCost) {
       steps.push(
@@ -317,7 +318,7 @@ function decide(plan, analysis, options, team, sim) {
     mark(
       steps,
       "roll",
-      `Role cerca de ${spend}g (até ${shopsIn(spend)} lojas) buscando ${team.lookFor() || "2★ no time"}; pare em ${keep}g.`,
+      `Role cerca de ${spend}g (até ${shopsIn(spend)} lojas) buscando ${team.lookFor({ plan: true }) || "2★ no time"}; pare em ${keep}g.`,
     );
     // XP e venda junto da rolagem: os quadros de nível e do ouro mostram os três gastos.
     return out("ROLAR", `Estabilize agora: role até ${keep}g`, {
@@ -594,6 +595,29 @@ function settle(d, analysis, options, team, sim) {
     kinds = d[KIND] ?? new Map(),
     // Tira os passos/razões do tipo que a regra contradiz.
     drop = (list, kind) => list.filter((t) => kinds.get(t) !== kind);
+  // Vida em perigo e a rolagem não paga (chance de upgrade do plano ou ganho abaixo do mínimo): não "guarde" — suba
+  // de nível se a árvore já subia (abaixo da curva), senão estabilize com itens e posição. Sem venda do banco.
+  if (d.action === "ROLAR" && !v.go && danger) {
+    const up = d.levelUp ?? 0;
+    return {
+      ...d,
+      action: up ? "SUBIR NÍVEL" : "ECONOMIZAR",
+      headline: up
+        ? `Estabilize: suba para o nível ${options.level + 1}`
+        : "Estabilize com itens e posição",
+      steps: [
+        `Não role: ${v.reason}`,
+        ...drop(d.steps, "roll"),
+        "Equipe os itens e posicione para perder por pouco.",
+      ],
+      reasons: drop(d.reasons, "roll"),
+      spend: up,
+      sold: 0,
+      levelUp: 0,
+      keep: cash - up,
+      call: publicCall(v, "hold"),
+    };
+  }
   if (d.action === "ROLAR" && !v.go)
     return {
       ...d,
@@ -626,6 +650,35 @@ function settle(d, analysis, options, team, sim) {
     };
   }
   return { ...d, call: publicCall(v) };
+}
+
+/**
+ * Aviso de vida em perigo, em uma linha e coerente com a decisão: rolar por upgrades do plano, subir de nível ou
+ * estabilizar com itens e posição. `null` fora da faixa de perigo. `targets`: as peças do plano que a rolagem busca.
+ */
+function hpAlert(d, hp, team, level) {
+  if (d.pressure !== "danger" && d.pressure !== "critical") return null;
+  const head = `Vida ${hp}`,
+    rolling = d.action === "ROLAR" && (d.spend ?? 0) >= GAME.shopCost,
+    levelUp =
+      (d.levelUp ?? 0) > 0 ||
+      (d.action === "SUBIR NÍVEL" && (d.spend ?? 0) > 0),
+    targets = team.lookFor({ plan: true, only: true }),
+    roll = targets
+      ? "role por upgrades do plano até estabilizar"
+      : "role por 2★ do time até estabilizar";
+  const text = rolling
+    ? `${head}: ${levelUp ? `suba para o nível ${level + 1} e ` : ""}${roll}`
+    : levelUp
+      ? `${head}: suba para o nível ${level + 1} para estabilizar`
+      : `${head}: estabilize com itens e posição`;
+  return {
+    band: d.pressure,
+    hp,
+    why: d.pressureWhy ?? null,
+    text,
+    targets: rolling ? targets || null : null,
+  };
 }
 
 /** Devolve a ação de agora e os quadros de economia, nível e roll para a comp `plan` no estado atual. */
@@ -669,6 +722,8 @@ export function strategy(plan, analysis, options) {
     sold: d.sold ?? 0,
     floor: d.floor ?? null,
     pressure: d.pressure,
+    // Aviso de vida: só na faixa de perigo, uma linha que diz o que fazer pela decisão tomada (sem contradizer o plano).
+    alert: hpAlert(d, analysis.self.health, team, level),
     value: gold === null ? "–" : gold + "g",
     verdict:
       d.action === "ECONOMIZAR"

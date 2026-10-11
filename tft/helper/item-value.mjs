@@ -10,6 +10,7 @@
 //   misturam o nível da partida), então os valores são aditivos; o único rendimento decrescente é o limite de 3 itens.
 
 import { baseItemId, isPlanItem } from "./core/catalog/items.mjs";
+import { reserveItems } from "./core/items/builds.mjs";
 
 /** Partidas que valem metade do peso: o valor medido é multiplicado por n / (n + SHRINK_K). */
 export const SHRINK_K = 5000;
@@ -38,10 +39,8 @@ export function itemValueTable({
   metaBuilds = null,
   baseAvg = 4.466,
 } = {}) {
-  const builds = (champion) =>
-      (metaBuilds instanceof Map
-        ? metaBuilds.get(champion)
-        : metaBuilds?.[champion]) ?? [],
+  // Build geral do campeão: a reserva declarada do motor único de itens (core/items/builds.mjs).
+  const builds = (champion) => reserveItems(champion, metaBuilds),
     byChampion = new Map();
   for (const key of Object.keys(stats?.unitItem ?? {})) {
     const [champion, item] = key.split("|");

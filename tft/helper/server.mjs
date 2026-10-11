@@ -7,15 +7,28 @@ import { fileURLToPath } from "node:url";
 import { traitBook } from "./core/catalog/traits.mjs";
 import { sendStatic } from "./static-files.mjs";
 import { captureBoards } from "./capture.mjs";
-import { loadMeta, refreshMeta, metaIsStale } from "./meta-builds.mjs";
+import { metaIsStale } from "./meta-builds.mjs";
 import { KINDS as ITEM_KINDS, itemTiers } from "./item-tiers.mjs";
 import { isConsumable, kindOf } from "./core/catalog/items.mjs";
-import { loadComps, refreshComps, compsAreStale } from "./meta-comps.mjs";
+import { compsAreStale } from "./meta-comps.mjs";
 import { screenReader } from "./screen-reader.mjs";
 import { gameLog } from "./game-log.mjs";
 import { gepReader, wispCatalog } from "./gep-reader.mjs";
-import { createStateHub } from "./app/state.mjs";
+import { createStateHub, gepContextFor } from "./app/state.mjs";
 import { createOverlayFeed } from "./app/overlay-feed.mjs";
+import { createLiveSnapshots } from "./app/live-snapshot.mjs";
+import {
+  practiceOf,
+  practiceSignal,
+  withPracticeHealth,
+} from "./core/state/practice.mjs";
+import {
+  createSupervision,
+  failRequest,
+  loopLagProbe,
+} from "./app/supervision.mjs";
+import { threadWorker } from "./app/analysis-runner.mjs";
+import { carouselFeed } from "./app/carousel-view.mjs";
 import { createRecommender, stageTimer } from "./app/recommend.mjs";
 import { createAutoRefresh, createRecentResults } from "./app/auto-refresh.mjs";
 import { benchCandidates as buildBenchCandidates } from "./bench-candidates.mjs";
@@ -24,12 +37,9 @@ import { streakTracker } from "./streak.mjs";
 import { replaySnapshot } from "./replay.mjs";
 import { explorer } from "./evidence.mjs";
 import { loadProbe, yieldToLoop } from "./app/live-load.mjs";
-import { loadStats, refreshStats, statsAreStale } from "./meta-stats.mjs";
-import {
-  augmentStatsAreStale,
-  loadAugmentStats,
-  refreshAugmentStats,
-} from "./augment-stats.mjs";
+import { statsAreStale } from "./meta-stats.mjs";
+import { augmentStatsAreStale } from "./augment-stats.mjs";
+import { createMetaStore, defaultMetaDir } from "./meta-store.mjs";
 import { matchTracker } from "./match.mjs";
 import { planTracker } from "./plan-state.mjs";
 import { snapshotSignature } from "./core/state/snapshot-identity.mjs";
@@ -44,20 +54,41 @@ const diag = installDiagnostics(
   path.join(root, `server.${port}.run`),
   { port },
 );
+// Laços protegidos e batimento de cada fonte para GET /api/health (app/supervision.mjs).
+const { every, health: pulseHealth } = createSupervision({
+  log: (level, text) => diag.write(level, text),
+});
 // Porta antes de tudo: uma segunda instância sem a porta sai aqui, antes de criar captura, histórico, leitor de
 // tela e timers (viva sem servir, ela gravava tudo em dobro). As rotas entram no fim do módulo (`handle`).
 let handle = null;
+const failed = (req, res, e) =>
+  failRequest(req, res, e, (level, text) => diag.write(level, text));
 const server = http.createServer((req, res) => {
-  if (handle) return void handle(req, res);
-  res.writeHead(503, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Retry-After": "2",
-  });
-  res.end(
-    JSON.stringify({
-      error: "Servidor iniciando. Tente de novo em instantes.",
-    }),
-  );
+  try {
+    if (handle)
+      return void Promise.resolve(handle(req, res)).catch((e) =>
+        failed(req, res, e),
+      );
+    res.writeHead(503, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": "2",
+    });
+    res.end(
+      JSON.stringify({
+        error: "Servidor iniciando. Tente de novo em instantes.",
+      }),
+    );
+  } catch (e) {
+    failed(req, res, e);
+  }
+});
+// Requisição malformada: responde 400 e fecha só aquela conexão.
+server.on("clientError", (error, socket) => {
+  try {
+    if (socket.writable && !socket.destroyed)
+      socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    else socket.destroy();
+  } catch {}
 });
 server.on("error", (e) => {
   console.error(e.message);
@@ -87,9 +118,22 @@ const boardPath = path.join(
 const plannerCatalog = JSON.parse(
   await fs.readFile(path.join(root, "teamplanner-catalog.json"), "utf8"),
 ).data.TFTSet18;
-let meta = await loadMeta(root, "TFTSet18");
+// Extensão MetaTFT offline (meta-store.mjs): lê a cópia mais nova que passa na validação (local, anterior ou o snapshot
+// do repositório), renova em segundo plano e, sem rede, segue com o que tem. O atalho já sincroniza antes de subir o servidor.
+const metaStore = createMetaStore({
+  root,
+  dir: defaultMetaDir(root),
+  set: "TFTSet18",
+});
+// Falha de uma renovação vira exceção só para cair no mesmo `catch` com a mensagem de sempre.
+const renewed = async (name, ctx) => {
+  const r = await metaStore.refresh(name, ctx);
+  if (!r.ok) throw r.error;
+  return r.value;
+};
+let meta = (await metaStore.load("builds")).value;
 const updateMeta = () =>
-  refreshMeta(root, "TFTSet18")
+  renewed("builds")
     .then((m) => {
       meta = m;
       console.log("Builds de meta atualizadas: " + m.label);
@@ -98,16 +142,13 @@ const updateMeta = () =>
 // Cópia antiga ou sem o desempenho por item (tier de itens): baixa de novo.
 if (metaIsStale(meta) || !Object.keys(meta.items ?? {}).length)
   void updateMeta();
-setInterval(
-  () => {
-    if (metaIsStale(meta)) void updateMeta();
-  },
-  30 * 60 * 1000,
-).unref();
+every("meta builds", 30 * 60 * 1000, () => {
+  if (metaIsStale(meta)) void updateMeta();
+});
 // Estatísticas medidas de peça × estrela × itens (trunfos) e o explorer para medir tabuleiros inteiros.
-let boardStats = await loadStats(root, "TFTSet18");
+let boardStats = (await metaStore.load("stats")).value;
 const updateStats = () =>
-  refreshStats(root, "TFTSet18")
+  renewed("stats")
     .then((file) => {
       boardStats = file;
       recommender?.clear();
@@ -117,14 +158,13 @@ const updateStats = () =>
       console.log("Estatísticas de tabuleiro não atualizadas: " + e.message),
     );
 if (statsAreStale(boardStats)) void updateStats();
-setInterval(
-  () => statsAreStale(boardStats) && void updateStats(),
-  60 * 60 * 1000,
-).unref();
+every("meta estatísticas", 60 * 60 * 1000, () => {
+  if (statsAreStale(boardStats)) void updateStats();
+});
 // Aprimoramentos: colocação medida (NoxuTFT) e tier por comp (MetaTFT).
-let augmentStats = await loadAugmentStats(root);
+let augmentStats = (await metaStore.load("augments")).value;
 const updateAugmentStats = () =>
-  refreshAugmentStats(root)
+  renewed("augments")
     .then((file) => {
       augmentStats = file;
       recommender?.clear();
@@ -139,19 +179,27 @@ const updateAugmentStats = () =>
       ),
     );
 if (augmentStatsAreStale(augmentStats)) void updateAugmentStats();
-setInterval(
-  () => augmentStatsAreStale(augmentStats) && void updateAugmentStats(),
-  60 * 60 * 1000,
-).unref();
-const evidenceClient = explorer(path.join(root, "../data/evidence-cache.json"));
+every("meta aprimoramentos", 60 * 60 * 1000, () => {
+  if (augmentStatsAreStale(augmentStats)) void updateAugmentStats();
+});
+const evidenceFile = path.join(root, "../data/evidence-cache.json");
+// O explorer só é criado (e o cache de evidência lido do disco) se a análise rodar neste processo: com a thread de análise
+// ela é a única dona do arquivo.
+let explorerInstance = null;
+const evidenceClient = new Proxy(
+  {},
+  {
+    get: (_, name) => (explorerInstance ??= explorer(evidenceFile))[name],
+  },
+);
 // Teto de espera de rede (explorer) por análise nova; passado ele a análise segue com o que já chegou e o resto
 // entra no cache para a leitura seguinte (app/live-load.mjs). `TFT_EVIDENCE_BUDGET_MS` muda o teto; valor enorme = sem teto.
 const EVIDENCE_BUDGET_MS = Number(process.env.TFT_EVIDENCE_BUDGET_MS) || 15_000;
-let metaComps = await loadComps(root, "TFTSet18", catalog);
+let metaComps = (await metaStore.load("comps", { catalog })).value;
 const updateComps = () =>
-  refreshComps(root, "TFTSet18")
-    .then(async () => {
-      metaComps = await loadComps(root, "TFTSet18", catalog);
+  renewed("comps", { catalog })
+    .then((value) => {
+      metaComps = value;
       recommender?.clear({ base: false });
       console.log("Comps de meta atualizadas: " + metaComps.comps.length);
       // Telas abertas relêem a lista e refazem a análise sem esperar a próxima leitura.
@@ -159,16 +207,14 @@ const updateComps = () =>
         type: "meta",
         comps: metaComps.comps.length,
         fetchedAt: metaComps.fetchedAt,
+        freshness: metaStore.freshness("comps"),
       });
     })
     .catch((e) => console.log("Comps de meta não atualizadas: " + e.message));
 if (compsAreStale(metaComps)) void updateComps();
-setInterval(
-  () => {
-    if (compsAreStale(metaComps)) void updateComps();
-  },
-  15 * 60 * 1000,
-).unref();
+every("meta comps", 15 * 60 * 1000, () => {
+  if (compsAreStale(metaComps)) void updateComps();
+});
 const captures = captureBoards(
   boardPath,
   path.join(root, "../data/scouting-captures.jsonl"),
@@ -242,6 +288,7 @@ function itemsPayload() {
   return {
     source: meta.label,
     fetchedAt: meta.fetchedAt,
+    freshness: metaStore.freshness("builds"),
     games: meta.games,
     kinds: ITEM_KINDS,
     items: itemTiers(listed, stats).map((i) => ({
@@ -272,28 +319,7 @@ const gep = gepReader({
   augments: new Set(augmentList.map((a) => a.id)),
   wisps: wispCatalog(catalog.items, itemCatalog),
 });
-/** Partida em andamento para a fonte GEP: id, fase do cliente, set e o jogador local do tabuleiro. */
-const gepContext = (metadata, snapshot) => {
-  const hero = snapshot?.statsBlock?.players?.find(
-    (p) => String(p.playerId) === HERO_ID,
-  );
-  return {
-    gameId: metadata.gameId,
-    inMatch:
-      metadata.phase === "InProgress" || metadata.phase === "Reconnect"
-        ? true
-        : typeof metadata.phase === "string"
-          ? false
-          : null,
-    set: Number(/\d+/.exec(metadata.set ?? "")?.[0]) || null,
-    local: hero
-      ? {
-          name: hero.riotIdGameName ?? hero.summonerName,
-          tag: hero.riotIdTagLine,
-        }
-      : null,
-  };
-};
+const gepContext = gepContextFor(HERO_ID); // partida em andamento para a fonte GEP (app/state.mjs)
 // O estado da partida (app/state.mjs): tela + arquivos do jogo + GEP com uma fonte só por campo (core/state/precedence.mjs).
 const stateHub = createStateHub({
   screen,
@@ -308,14 +334,37 @@ const stateHub = createStateHub({
 const seenState = stateHub.seen;
 // Últimos corpos de /api/state e do POST /api/recommend ao vivo, só em memória, para o overlay (GET /api/overlay).
 const overlay = createOverlayFeed();
+// O carrossel do estado (app/carousel-view.mjs): detecção, peças lidas e o que pegar, sobre a última análise do feed.
+const carousel = carouselFeed({ overlay, emblems: traitRules.emblems });
 // Início e fim de partida: zera o que pertence à partida anterior e avisa as telas pelo SSE.
 // Tabuleiros finais dos 8 jogadores com a colocação oficial (validação do modelo de tabuleiro).
 const lobbies = lobbyRecorder(path.join(root, "../data/lobby-boards.jsonl"));
+// Modo treino (partida só do jogador, sem rivais) é detectado pelos dados (core/state/practice.mjs); `TFT_PRACTICE=1` o força
+// quando a detecção falha. Nele a partida só encerra quando o jogo realmente fecha (match.mjs).
+const PRACTICE_FORCED = process.env.TFT_PRACTICE === "1";
+// Último Ao vivo de cada partida, congelado quando ela encerra (app/live-snapshot.mjs) para a interface revê-lo.
+const liveSnapshots = createLiveSnapshots({
+  dir: path.join(root, "../data/match-live"),
+});
 const matches = matchTracker(
   path.join(root, "../data/match-history.jsonl"),
   HERO_ID,
   {
+    practice: PRACTICE_FORCED,
+    liveSnapshots,
     onChange({ kind, record }) {
+      // Congela o último Ao vivo desta partida: o quadro gravado até aqui, antes de qualquer leitura pós-fim.
+      if (kind === "end") {
+        const frozen = liveSnapshots.freeze(
+          matches.status().id,
+          overlay.liveFrame(),
+        );
+        if (!frozen)
+          diag.write(
+            "AVISO",
+            `partida ${matches.status().id} encerrada sem Ao vivo para guardar`,
+          );
+      }
       // Só partida nova zera; "resume" (encerrada por engano e reaberta) mantém plano, caches e leitor.
       if (kind === "start") {
         recommender?.clear();
@@ -337,25 +386,35 @@ const matches = matchTracker(
     },
   },
 );
-// Acompanha a partida mesmo sem nenhuma tela aberta, para o histórico não depender da interface.
-let watchingMatch = false;
+// Acompanha a partida mesmo sem nenhuma tela aberta, para o histórico não depender da interface. Laço protegido (`every`):
+// o erro de uma rodada vai ao log e a seguinte roda; uma leitura que nunca responde é abandonada em 30 s.
 async function watchMatch() {
-  if (watchingMatch) return;
-  watchingMatch = true;
-  try {
-    const [board, session] = await Promise.all([
-      readBoardSnapshot().catch(() => null),
-      lcu(),
-    ]);
-    matches.observe(board?.snapshot ?? null, board?.stat ?? null, session);
-    if (board?.snapshot) lobbies.observe(board.snapshot);
-  } catch (e) {
-    diag.write("AVISO", `acompanhamento da partida: ${e.stack ?? e.message}`);
-  } finally {
-    watchingMatch = false;
-  }
+  const [board, session] = await Promise.all([
+    readBoardSnapshot().catch(() => null),
+    lcu(),
+  ]);
+  matches.observe(
+    board?.snapshot ?? null,
+    board?.stat ?? null,
+    session,
+    gameSignals(),
+  );
+  // Partida de treino (um jogador só) não é lobby de 8: não entra nas colocações oficiais.
+  if (
+    board?.snapshot &&
+    practiceSignal(board.snapshot, { forced: PRACTICE_FORCED }) === null
+  )
+    lobbies.observe(board.snapshot);
 }
-setInterval(() => void watchMatch(), 2000).unref();
+// Rodada da partida aberta segundo os arquivos do jogo (só se o arquivo é dela): rodada avançando prova que o jogo segue
+// em andamento, para o treino não encerrar e para reabrir uma partida encerrada por engano (match.mjs).
+function gameSignals() {
+  const id = matches.status().id;
+  if (id == null) return {};
+  const game = gameFiles.status(id);
+  return { stage: game.available ? game.stage : null };
+}
+every("acompanhamento da partida", 2000, watchMatch, { stuckMs: 30_000 });
 let lcuCache = { at: 0, data: null };
 // Responde com o último valor e renova em segundo plano; só a primeira leitura espera o cliente do jogo.
 let lcuPending = null;
@@ -471,16 +530,20 @@ async function replayState(gameId) {
   };
 }
 async function current() {
-  const [{ snapshot, stat }, session] = await Promise.all([
+  const [{ snapshot: read, stat }, session] = await Promise.all([
     readBoardSnapshot(),
     lcu(),
   ]);
   const age = Math.max(0, (Date.now() - stat.mtimeMs) / 1000);
-  const sameGame = session?.gameId === snapshot.gameId;
-  const local = snapshot.statsBlock.players.find(
+  const sameGame = session?.gameId === read.gameId;
+  const local = read.statsBlock.players.find(
     (p) => String(p.playerId) === HERO_ID,
   );
-  const match = matches.observe(snapshot, stat, session);
+  const match = matches.observe(read, stat, session, gameSignals());
+  // Partida de treino (sem rivais): o arquivo traz vida -99/1 e colocação 1 com o jogo rodando. O rastreador de partidas
+  // já leu o arquivo cru acima; a análise recebe a vida do Hero normalizada e o valor lido fica em `practice.rawHealth`.
+  const practice = practiceOf(read, HERO_ID, { forced: PRACTICE_FORCED }),
+    snapshot = withPracticeHealth(read, HERO_ID, { forced: PRACTICE_FORCED });
   return {
     snapshot,
     metadata: {
@@ -493,7 +556,13 @@ async function current() {
       ageSeconds: Math.round(age),
       phase: session?.phase ?? null,
       sameGame: session ? sameGame : null,
-      actionable: sameGame && session.phase === "InProgress" && age < 120,
+      // Treino: o arquivo do tabuleiro só é regravado de tempos em tempos (capturas de 50 a 80 s entre si, sem rodada
+      // de rival); a idade dele sozinha não diz que a partida parou.
+      actionable:
+        sameGame &&
+        session.phase === "InProgress" &&
+        (age < 120 || practice.active),
+      practice,
       localPlayerId: local ? String(local.playerId) : null,
       // Peças em campo: ESTIMATIVA de último recurso, não leitura (jogar abaixo do nível, slot extra e invocações a
       // invalidam). Só entra na análise com levelEstimated = true; o nível lido/derivado vem de screen.level.
@@ -583,6 +652,7 @@ async function buildStateBody() {
         ?.boardPieces ?? [],
     ),
     streak: streaks.current(),
+    carousel: carousel(seenNow, metadata.gameId),
   };
   lastState = { at: Date.now(), body };
   return body;
@@ -590,7 +660,23 @@ async function buildStateBody() {
 // O pipeline da recomendação (app/recommend.mjs): o POST da interface e o laço automático o chamam e dividem os caches
 // (`results` guarda as análises recentes por chave de análise).
 const analysisResults = createRecentResults();
+// A análise pesada roda numa thread (analysis-worker.mjs): HTTP e SSE continuam respondendo enquanto ela calcula.
+// `TFT_ANALYSIS_WORKER=0` a desliga (a análise volta ao processo principal); `TFT_ANALYSIS_TIMEOUT_MS` muda o prazo de uma
+// análise na thread (60 s). Se a thread cair ou não iniciar, a análise segue no processo principal (app/analysis-runner.mjs).
+const analysisWorker =
+  process.env.TFT_ANALYSIS_WORKER === "0"
+    ? null
+    : threadWorker({
+        root,
+        evidenceFile,
+        budgetMs: EVIDENCE_BUDGET_MS,
+        heroId: HERO_ID,
+        timeoutMs: Number(process.env.TFT_ANALYSIS_TIMEOUT_MS) || 60_000,
+        log: (level, text) => diag.write(level, text),
+      });
 recommender = createRecommender({
+  analysisWorker,
+  log: (level, text) => diag.write(level, text),
   heroId: HERO_ID,
   catalog,
   itemIds,
@@ -669,7 +755,24 @@ const auto = createAutoRefresh({
 });
 // Resumo do laço no resumo por minuto do TEMPO (a linha de carga).
 const loadLine = () =>
-  `${loadMonitor.sample()}; ${evidenceClient.takeStats()}; ${auto.takeStats()}`;
+  `${loadMonitor.sample()}; ${explorerInstance?.takeStats() ?? "evidencia na thread de analise"}; ${auto.takeStats()}`;
+// GET /api/health: de pé, há quanto tempo, atraso do loop agora, onde a análise roda e a idade do último ciclo de cada fonte.
+const loopLag = loopLagProbe();
+const healthBody = () => ({
+  ok: true,
+  pid: process.pid,
+  port,
+  now: new Date().toISOString(),
+  uptimeS: Math.round(process.uptime()),
+  loopLagMs: loopLag(),
+  memoryMB: Math.round(process.memoryUsage().rss / 1048576),
+  analysis: recommender.analyzer.status(),
+  auto: auto.status(),
+  match: matches.status().status,
+  capture: captures.status(),
+  screenReader: { running: screen.status().running },
+  sources: pulseHealth(),
+});
 handle = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -691,7 +794,8 @@ handle = async (req, res) => {
       "Content-Type": "application/json; charset=utf-8",
     });
     const t0 = performance.now(),
-      body = JSON.stringify(data);
+      // `Uint8Array`/`Buffer`: JSON já serializado (a thread de análise o entrega pronto); nada de reserializar ~1 MB.
+      body = data instanceof Uint8Array ? data : JSON.stringify(data);
     res.jsonMs = performance.now() - t0;
     res.jsonBytes = body.length;
     res.end(body);
@@ -748,6 +852,7 @@ handle = async (req, res) => {
       return json(200, {
         source: metaComps.label,
         fetchedAt: metaComps.fetchedAt,
+        freshness: metaStore.freshness("comps"),
         comps: metaComps.comps.map((c) => ({
           id: c.id,
           title: c.title,
@@ -767,7 +872,23 @@ handle = async (req, res) => {
         })),
       });
     if (req.method === "GET" && url.pathname === "/api/history")
-      return json(200, { matches: matches.history() });
+      // `liveSnapshot` reflete o que existe agora (partida antiga cujo arquivo saiu do limite deixa de ter); registro sem ele
+      // (anterior a este recurso) mostra "sem dados ao vivo guardados".
+      return json(200, {
+        matches: matches.history().map(({ liveSnapshot, ...r }) => {
+          const held = liveSnapshots.info(r.gameId);
+          return held ? { ...r, liveSnapshot: held } : r;
+        }),
+      });
+    // O último Ao vivo guardado de uma partida encerrada: leitura pura (nada é calculado nem analisado). 404 se não há.
+    if (req.method === "GET" && url.pathname === "/api/match-live") {
+      const id = url.searchParams.get("id") ?? "";
+      if (!/^\d+$/.test(id)) return json(400, { error: "Partida inválida." });
+      const held = liveSnapshots.read(id);
+      return held
+        ? json(200, held)
+        : json(404, { error: "Esta partida não tem dados ao vivo guardados." });
+    }
     if (req.method === "GET" && url.pathname === "/api/items")
       return json(200, itemsPayload());
     if (req.method === "GET" && url.pathname === "/api/state")
@@ -777,8 +898,11 @@ handle = async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/overlay")
       return json(
         200,
-        overlay.snapshot({ since: url.searchParams.get("since") }),
+        overlay.snapshotJson({ since: url.searchParams.get("since") }),
       );
+    // Saúde: o servidor está de pé e cada fonte de acompanhamento ainda gira? (idade do último ciclo de cada uma)
+    if (req.method === "GET" && url.pathname === "/api/health")
+      return json(200, healthBody());
     if (req.method === "POST" && url.pathname === "/api/screen-capture") {
       if (
         req.headers.origin &&
@@ -809,8 +933,9 @@ handle = async (req, res) => {
         source: "ui",
         stages,
       });
-      await yieldToLoop(); // o JSON.stringify da resposta (~1 MB) é a maior etapa síncrona que sobra
-      return json(done.status, done.data);
+      // Da thread de análise vem o JSON pronto (`bytes`); no processo principal, o objeto (serializar cede o loop antes).
+      if (!done.bytes) await yieldToLoop();
+      return json(done.status, done.bytes ?? done.data);
     }
     if (
       req.method === "GET" &&
@@ -873,10 +998,16 @@ handle = async (req, res) => {
   }
 };
 // Rotas prontas: o servidor passa a conduzir a análise sozinho durante a partida (sem a interface aberta).
-if (process.env.TFT_ANALYSIS_WORKER === "1")
+if (analysisWorker) {
+  recommender.analyzer.start(); // aquece a thread (carrega o motor e o catálogo) antes do primeiro pedido
   diag.write(
-    "AVISO",
-    "TFT_ANALYSIS_WORKER=1: a thread de análise (analysis-worker.mjs) ainda não está ligada ao pipeline; a análise segue no processo principal (ARQUITETURA.md, M10b).",
+    "INFO",
+    "análise pesada na thread de análise (TFT_ANALYSIS_WORKER=0 a desliga)",
+  );
+} else
+  diag.write(
+    "INFO",
+    "TFT_ANALYSIS_WORKER=0: a análise roda no processo principal (o servidor não responde enquanto ela calcula)",
   );
 if (process.env.TFT_AUTO_REFRESH === "0")
   diag.write(

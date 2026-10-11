@@ -1,4 +1,4 @@
-// Carga do servidor ao vivo (correção pontual de pesquisa/lentidao-ao-vivo.md; a versão completa é o M10b).
+// Carga do servidor ao vivo (correção pontual de planos/feitos/lentidao-ao-vivo.md; a versão completa é o M10b).
 // Quatro ferramentas pequenas, sem regra de jogo: ceder o event loop, ordenar as análises, limitar a espera de rede
 // da evidência e medir o atraso do loop. O servidor (transporte) só as liga.
 import { monitorEventLoopDelay } from "node:perf_hooks";
