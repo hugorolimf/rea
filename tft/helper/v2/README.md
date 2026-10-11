@@ -9,16 +9,17 @@ ficam no histórico do git). Consome `/api/state`, `/api/recommend`, `/api/catal
 
 ## Estrutura
 
-| Arquivo         | Papel                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| `js/math.js`    | Molas amortecidas (viram `linear()`), hexágonos, arcos Bézier, binomial, interpolação monótona. Puro. |
-| `js/model.js`   | `buildModel`: resposta da API → modelo de visão (HUD, formação, trocas, trilha, painel). Puro.        |
-| `js/api.js`     | Rede e chave de cache da análise.                                                                     |
-| `js/comps.js`   | Seleção de comp: estilo de nível, filtros, ordenação e comp fixada por partida. Puro.                 |
-| `js/history.js` | Resumo, sinergias ativas e ordenação dos registros do histórico. Puro.                                |
-| `js/dom.js`     | `el`/`svg`, reconciliação por chave, FLIP com mola, publicação das molas como custom properties.      |
-| `js/ui/*`       | Componentes com DOM estável: `hud`, `board` (SVG), `steps`, `panel`.                                  |
-| `css/*`         | `@layer`, tokens OKLCH, CSS nesting, container queries, `@property`, `@starting-style`.               |
+| Arquivo         | Papel                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| `js/math.js`    | Molas amortecidas (viram `linear()`), hexágonos, arcos Bézier, binomial, interpolação monótona. Puro.      |
+| `js/model.js`   | `buildModel`: resposta da API → modelo de visão (HUD, formação, trocas, trilha, painel). Puro.             |
+| `js/api.js`     | Rede e chave de cache da análise.                                                                          |
+| `js/comps.js`   | Seleção de comp: estilo de nível, filtros, ordenação e comp fixada por partida. Puro.                      |
+| `js/suggest.js` | Lista do modal "Escolher comp" do HUD: sugestões do motor, onde abrir, navegação e estado escolhida. Puro. |
+| `js/history.js` | Resumo, sinergias ativas e ordenação dos registros do histórico. Puro.                                     |
+| `js/dom.js`     | `el`/`svg`, reconciliação por chave, FLIP com mola, publicação das molas como custom properties.           |
+| `js/ui/*`       | Componentes com DOM estável: `hud`, `board` (SVG), `steps`, `panel`.                                       |
+| `css/*`         | `@layer`, tokens OKLCH, CSS nesting, container queries, `@property`, `@starting-style`.                    |
 
 ## Decisões
 

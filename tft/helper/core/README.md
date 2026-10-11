@@ -5,8 +5,19 @@ dados) dentro de `core/`. Nenhum outro módulo recalcula, reinterpreta ou "arred
 produz: ele o **lê**.
 
 Esta pasta nasceu vazia (M1 de `../ARQUITETURA.md`). Cada passo da migração move uma regra para cá e apaga a
-exceção correspondente em `../tests/architecture.test.mjs`. Já moram aqui: `catalog/traits.mjs` (traços, patamares, solo e
-emblemas; M3). O servidor serve esta pasta ao navegador em `/core/*` (só `.mjs`/`.js`/`.html`/`.css`/`.svg`); a interface
+exceção correspondente em `../tests/architecture.test.mjs`. Já moram aqui: `state/` (M7: relógio "S-R", nível e XP, `Field`, precedência GEP x tela com histerese, `GameState` e as entradas da análise; M10b: `analysis-key.mjs`, a chave de análise e as decisões do usuário que cliente e servidor calculam igual; M8b: `snapshot-identity.mjs`, o que a análise lê do snapshot do jogo, que é a chave da entrada `snapshot` do grafo e a assinatura do `/api/state`; a memória entre leituras fica em `../app/state.mjs`), `catalog/traits.mjs` (traços, patamares, solo e
+emblemas; M3), `catalog/items.mjs` e `catalog/champions.mjs` (papel, tipo, receita, consumível, radiante e cobertura de item; papel e
+Avatar de campeão; M2) e `graph/` (grafo de fatos derivados com memoização por entradas declaradas; M8a, em uso desde o M8b: os fatos da
+recomendação estão em `../app/recommend-facts.mjs` e a simulação de rolagem em `../roll-sim.mjs`; quem precisar de cache por
+chave usa `graph/index.mjs` em vez de um `Map` com chave montada à mão; uma entrada grande pode declarar `identity`, a projeção
+que dá a chave dela) e `pool/` (M4: `tables.mjs` com
+`POOL`, `ODDS`, `SHOP` e `BUYABLE_ODDS`; `copies.mjs` com cópias por estrela e pool livre fracionária; `shop.mjs` com a chance
+por slot e por loja; `curve.mjs` com a chance acumulada por ouro) e `economy/` (M5b: `policy.mjs` com `POLICY`, todos os limiares de
+ouro e de vida; `tables.mjs` com a renda, os juros e o HP máximo; `gold.mjs` com juros, renda, projeção e as lojas ao alcance; `pressure.mjs`
+com a faixa de vida e a tendência; `rounds.mjs` com o calendário que a projeção usa) e `items/` (M6: a posse de itens. `stock.mjs`
+gasta uma cópia uma vez; `holdings.mjs` diz onde está cada item, na Formação e comp a comp; `bank.mjs` reparte o banco entre as
+builds da aba Comps; `moves.mjs` lê os passes de "Passar itens"; `owned.mjs` tem as contas sem localização. O valor de cada
+situação é política do motor e fica em `../item-holdings.mjs`). O servidor serve esta pasta ao navegador em `/core/*` (só `.mjs`/`.js`/`.html`/`.css`/`.svg`); a interface
 importa por caminho relativo (`../../core/...` a partir de `v2/js/`), que resolve igual no Node e no navegador.
 
 ## O que pode morar aqui
@@ -22,6 +33,7 @@ importa por caminho relativo (`../../core/...` a partir de `v2/js/`), que resolv
 ```
 engines/   consomem fatos e produzem decisões (comps, plan, roll, items, augments, contest)
 facts/     fatos derivados, funções puras de entradas nomeadas (economia, pool, loja, itens, traços, força)
+graph/     o mecanismo dos fatos: defineFact, createGraph, memoização, invalidação mínima (transversal; sem regra de jogo)
 state/     GameState: valor + fonte + confiança + idade por campo
 rules/     tabelas do patch e política (limiares) com fonte e data de verificação
 catalog/   índices do catálogo: itens (papel, receita, radiante), campeões, traços
