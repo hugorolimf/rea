@@ -66,7 +66,7 @@ test("receita com a mesma peça duas vezes: falta uma só", () => {
   assert.deepEqual(states(r), ["Recurve Bow:missing", "Recurve Bow:bank"]);
 });
 
-test("servidor sem a informação: o banco lido da tela decide; sem banco, a situação é desconhecida", () => {
+test("servidor sem a informação: o banco de itens lido decide; sem banco, a situação é desconhecida", () => {
   const item = { id: SUN, name: "Sunfire Cape" };
   assert.deepEqual(
     states(
@@ -212,7 +212,7 @@ test("linha 'Próximo item' sem receita não desenha componentes", () => {
   assert.equal(html.match(/<img /g).length, 2);
 });
 
-test("modelo: a linha 'Próximo item' leva o item do servidor e o banco lido da tela", () => {
+test("modelo: a linha 'Próximo item' leva o item do servidor e o banco de itens lido", () => {
   const base = JSON.parse(
     readFileSync(new URL("../../live-mock-base.json", import.meta.url), "utf8"),
   );
@@ -220,7 +220,6 @@ test("modelo: a linha 'Próximo item' leva o item do servidor e o banco lido da 
     rec = structuredClone(base.rec),
     plan = rec.recommendations[0];
   state.screen = {
-    running: true,
     stage: "4-2",
     gold: 30,
     level: 8,

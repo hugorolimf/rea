@@ -167,28 +167,60 @@ test("saúde: GEP ativo, em reserva e sem informação (com o chip da barra como
   assert.equal(viaBar.ok, true);
 });
 
-test("saúde: leitor de tela com erro, em uso, em reserva e sem informação", () => {
+test("saúde: dados do jogador sem fonte, pelo GEP e sem informação", () => {
   const of = (sources) =>
     healthOf({ status: "ready", notices: [], sources })[2];
-  assert.equal(of({ reader: "janela do jogo oculta" }).ok, false);
-  assert.match(
-    of({ reader: "janela do jogo oculta" }).text,
-    /janela do jogo oculta/,
+  const GEP_OFF = {
+    state: "off",
+    short: "GEP off · sem fonte",
+    label: "GEP off",
+  };
+  // GEP desligado: os campos sem fonte aparecem pelo nome, com o motivo no título (sem leitura de tela).
+  const none = of({
+    gep: GEP_OFF,
+    missing: ["ouro", "nível", "loja"],
+    shopSource: null,
+    goldSource: null,
+    levelSource: null,
+  });
+  assert.deepEqual(
+    [none.id, none.ok, none.text],
+    ["data", false, "Sem fonte: ouro, nível, loja"],
   );
+  assert.match(none.title, /GEP/);
+  assert.match(none.title, /TFTAcademy/);
+  assert.match(none.title, /não lê a tela/);
+  // Mesmo com algum campo declarado, um campo sem fonte já é problema.
   assert.equal(
-    of({ reader: null, shopSource: "screen", goldSource: "gep" }).text,
-    "Leitura de tela em uso",
+    of({ gep: GEP_ON, missing: ["loja"], goldSource: "gep" }).ok,
+    false,
   );
-  const standby = of({
-    reader: null,
+  // Tudo do GEP: ok.
+  const gep = of({
+    gep: GEP_ON,
+    missing: [],
     shopSource: "gep",
     goldSource: "gep",
     levelSource: "gep",
   });
-  assert.equal(standby.ok, true);
-  assert.match(standby.text, /reserva/);
-  assert.equal(of({ reader: null }).ok, null);
-  assert.equal(of(null).ok, null);
+  assert.deepEqual(
+    [gep.id, gep.ok, gep.text],
+    ["data", true, "Dados do jogador pelo GEP"],
+  );
+  assert.equal(of({ gep: GEP_ON, missing: [] }).ok, true, "chip do GEP ativo");
+  // Sem informação: nada declarado, ou GEP fora do ar sem a lista do servidor (não se afirma que vem do GEP).
+  const unknown = of(null);
+  assert.deepEqual(
+    [unknown.id, unknown.ok, unknown.text],
+    ["data", null, "Dados do jogador: sem informação"],
+  );
+  assert.equal(of({ gep: null, missing: [] }).ok, null);
+  assert.equal(of({ gep: GEP_OFF, missing: [] }).ok, null);
+  assert.equal(
+    of({ gep: null, missing: [], goldSource: "derived" }).ok,
+    null,
+    "o piso derivado não prova a fonte",
+  );
 });
 
 test("saúde: janela do TFT não acompanhada, ausente, em tela cheia exclusiva e detectada", () => {
@@ -210,7 +242,7 @@ test("saúde: janela do TFT não acompanhada, ausente, em tela cheia exclusiva e
   const all = healthOf(view, { game: { found: true, width: 1, height: 1 } });
   assert.deepEqual(
     all.map((h) => h.id),
-    ["server", "gep", "screen", "game"],
+    ["server", "gep", "data", "game"],
   );
   assert.equal(worstOk([{ ok: true }, { ok: null }]), null);
   assert.equal(worstOk([{ ok: true }, { ok: false }, { ok: null }]), false);

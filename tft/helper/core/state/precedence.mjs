@@ -1,21 +1,23 @@
-// Precedência por campo entre o GEP e o resto (leitura de tela + arquivos do jogo), com histerese e divergência.
+// Precedência por campo entre o GEP e os arquivos do jogo, com histerese e divergência.
 // ESM puro: recebe a memória anterior e devolve a nova (nada de relógio, de E/S nem de estado escondido).
 //
-// Regras (decisões do usuário, ARQUITETURA.md "Decisões do usuário" 7):
-//  1. UM valor por campo na saída: GEP fresco e consistente > leitura de tela (ou arquivo do jogo) > estimativa (esta é
-//     feita fora, sempre marcada). GEP e tela nunca saem discordando; a tela vira verificação cruzada do GEP.
+// Regras (decisões do usuário, ARQUITETURA.md "Decisões do usuário" 7, revista em 2026-10-11: sem leitura de tela):
+//  1. UM valor por campo na saída. Ouro, nível, XP, loja e banco de itens só o GEP observa: vale o GEP fresco (o nível,
+//     só se consistente com o estágio e com o nível já aceito); sem ele o campo fica desconhecido (o piso derivado do
+//     nível é feito fora, sempre marcado). O estágio tem duas fontes: o arquivo do jogo (Sentry) vale mais que o GEP.
 //  2. Histerese: a fonte de um campo só troca para outra de menor ou maior prioridade depois de `readings` leituras
-//     seguidas em que a outra é a preferida. Se a fonte ativa perde o valor (GEP velho, tela fechada), a troca é
+//     seguidas em que a outra é a preferida. Se a fonte ativa perde o valor (GEP velho, arquivo ausente), a troca é
 //     imediata: não se segura um campo sem valor. O valor da fonte ativa continua atualizando a cada leitura.
-//  3. Divergência: quando o GEP e a tela têm valor e discordam por `readings` leituras seguidas, conta-se UMA divergência
-//     (por episódio, não por leitura: a tela atrasa o GEP por frações de segundo e isso não é divergência) e devolve-se
-//     o evento para o chamador registrar (log). Os contadores ficam na memória e vão ao /api/state.
+//  3. Divergência: quando o GEP e o arquivo do jogo têm valor e discordam por `readings` leituras seguidas, conta-se UMA
+//     divergência (por episódio, não por leitura: uma fonte atrasa a outra por instantes e isso não é divergência) e
+//     devolve-se o evento para o chamador registrar (log). Os contadores ficam na memória e vão ao /api/state.
 import { levelConsistent } from "./level.mjs";
 
 /** Leituras seguidas para trocar de fonte e para contar uma divergência. */
 export const HYSTERESIS_READINGS = 3;
 
-/** Campos com mais de uma fonte. O XP acompanha o nível (a barra de XP é do nível mostrado); a reserva só existe no GEP. */
+/** Campos que passam pela precedência. O XP acompanha o nível (a barra de XP é do nível mostrado); a reserva só existe no
+ * GEP. Só o estágio tem duas fontes (arquivo do jogo e GEP); nos outros o candidato único é o GEP. */
 export const PRECEDENCE_FIELDS = ["gold", "level", "stage", "shop", "items"];
 
 /** Memória inicial: nenhuma partida, nenhum campo escolhido, nenhuma divergência. */
@@ -33,17 +35,19 @@ const shopKey = (cards) => (cards ?? []).map((c) => c?.id ?? c ?? "").join("|");
 const bagKey = (ids) => [...(ids ?? [])].sort().join("|");
 
 /**
- * Candidatos de cada campo, em ordem de prioridade. `seen` = estado mesclado sem o GEP (tela + arquivos do jogo, com o
- * nível já validado); `gepFields` = `fields` do GEP ativo (ou null). `held` = maior nível já aceito do GEP nesta partida.
+ * Candidatos de cada campo, em ordem de prioridade. `seen` = estado dos arquivos do jogo, sem o GEP (o estágio do
+ * Sentry); `gepFields` = `fields` do GEP ativo (ou null). `held` = maior nível já aceito do GEP nesta partida.
  * Cada candidato é `{ source: "gep"|"base", value, key }` (`value` null = sem valor; `key` compara os dois lados).
+ * Ouro, nível, loja e itens só têm o candidato do GEP: nenhuma outra fonte permitida os observa.
  */
 export function candidatesFor(seen, gepFields, held) {
   const f = gepFields ?? {},
     has = (x) => !!x && known(x.value),
-    pair = (name, gep, base, order = ["gep", "base"]) => {
-      const byName = { gep, base };
-      return [name, order.map((s) => ({ source: s, ...byName[s] }))];
-    },
+    one = (value, key = value) => ({
+      value: known(value) ? value : null,
+      key: String(key),
+    }),
+    gepOnly = (name, cand) => [name, [{ source: "gep", ...cand }]],
     stage = seen.stage ?? (has(f.stage) ? f.stage.value : null),
     gepLevel =
       has(f.level) &&
@@ -54,39 +58,37 @@ export function candidatesFor(seen, gepFields, held) {
         held,
       })
         ? f.level.value
-        : null,
-    one = (value, key = value) => ({
-      value: known(value) ? value : null,
-      key: String(key),
-    });
+        : null;
+  const stageGep = {
+      source: "gep",
+      ...one(has(f.stage) ? f.stage.value : null),
+    },
+    stageBase = { source: "base", ...one(seen.stage) };
   return Object.fromEntries([
-    pair("gold", one(has(f.gold) ? f.gold.value : null), one(seen.gold)),
-    pair("level", one(gepLevel), one(seen.level)),
-    // O estágio do arquivo do jogo (Sentry) é observado pelo próprio jogo: vale mais que o GEP e a tela.
-    pair(
+    gepOnly("gold", one(has(f.gold) ? f.gold.value : null)),
+    gepOnly("level", one(gepLevel)),
+    // O estágio do arquivo do jogo (Sentry) é observado pelo próprio jogo: vale mais que o GEP.
+    [
       "stage",
-      one(has(f.stage) ? f.stage.value : null),
-      one(seen.stage),
-      seen.sources?.stage === "game-log" ? ["base", "gep"] : ["gep", "base"],
-    ),
-    pair(
+      seen.sources?.stage === "game-log"
+        ? [stageBase, stageGep]
+        : [stageGep, stageBase],
+    ],
+    // Loja escondida (shop_visible falso) não vale: as cartas de antes não provam a loja de agora.
+    gepOnly(
       "shop",
       has(f.shop) && f.shop.visible !== false
         ? one(f.shop.value, shopKey(f.shop.value))
         : one(null),
-      Array.isArray(seen.shop) ? one(seen.shop, shopKey(seen.shop)) : one(null),
     ),
-    pair(
+    gepOnly(
       "items",
       has(f.items) ? one(f.items.value, bagKey(f.items.value)) : one(null),
-      Array.isArray(seen.items)
-        ? one(seen.items, bagKey(seen.items))
-        : one(null),
     ),
   ]);
 }
 
-/** Escolhe a fonte ativa de um campo (histerese) e confere GEP x tela (divergência). Puro. */
+/** Escolhe a fonte ativa de um campo (histerese) e confere GEP x arquivo do jogo (divergência). Puro. */
 function step(mem, list, readings) {
   const usable = list.filter((c) => known(c.value)),
     preferred = usable[0] ?? null;

@@ -1,7 +1,7 @@
 // Rastreador SOMENTE-LEITURA da janela do TFT: um PowerShell persistente que, a cada ~750 ms (120 ms enquanto a janela está
 // mudando; ver `trackerScript`), imprime a área cliente
-// da janela do jogo em pixels físicos. Mesma identificação do leitor de tela (`Tft.Client()` em screen-reader.ps1):
-// classe `UnrealWindow`, título começando por "TFT", visível e não minimizada.
+// da janela do jogo em pixels físicos. A janela do TFT é identificada por: classe `UnrealWindow`, título começando
+// por "TFT", visível e não minimizada.
 // Só consulta posição (EnumWindows, GetClientRect, ClientToScreen). Não lê memória, não injeta, não captura tela e
 // não envia entrada nenhuma ao jogo ou ao Windows. Linhas de saída: `R x y largura altura` ou `N` (sem janela).
 import { spawn as nodeSpawn } from "node:child_process";

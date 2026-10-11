@@ -153,20 +153,24 @@ const GEP_REASONS = {
 /** Instrução quando o TFTAcademy não grava os eventos (configuração `record_games` desligada). */
 const GEP_RECORD_HINT =
   'Ligue "gravar partidas" nas configurações do TFTAcademy para o helper receber os eventos do jogo.';
-/** Campos que a tela lê sozinha quando o GEP não vale, com o nome mostrado ao usuário. */
-const SCREEN_FIELDS = [
+/** Campos do jogador que só o GEP entrega, com o nome mostrado ao usuário (na ordem do aviso). */
+const PLAYER_FIELDS = [
   ["gold", "ouro"],
   ["level", "nível"],
   ["xp", "XP"],
   ["shop", "loja"],
   ["items", "itens"],
+  ["augments", "aprimoramentos"],
 ];
+/** Dica quando falta algum campo do jogador e a fonte GEP não está ativa (sem a instrução de gravação). */
+const GEP_OPEN_HINT =
+  "Abra o Overwolf com o TFTAcademy (gravação de partidas ligada) para o helper receber esses dados.";
 /**
- * Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. `sources` (opcional) é o
- * `screen.sources` do servidor: com o GEP fora, o chip e a dica dizem que a leitura de tela assumiu e quais campos ela
- * está lendo (`screen`), em vez de só "GEP off".
+ * Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. `noSource` (opcional) é o
+ * `screen.noSource` do servidor (motivo de cada campo do jogador sem valor): com o GEP fora, o chip e a dica dizem quais
+ * campos estão sem fonte (`missing`), em vez de só "GEP off". Nada é lido de outro lugar: sem GEP, ficam desconhecidos.
  */
-export function gepNote(g, sources = null) {
+export function gepNote(g, noSource = null) {
   if (!g || typeof g.state !== "string") return null;
   const age = num(g.lastEventAgeMs),
     why = GEP_REASONS[g.reason] ?? g.reason ?? "",
@@ -177,25 +181,24 @@ export function gepNote(g, sources = null) {
     g.state === "ativo"
       ? `GEP ativo${age !== null ? ` · último evento há ${Math.round(age / 1000)}s` : ""}`
       : g.state === "obsoleto"
-        ? `GEP obsoleto: ${why}${age !== null ? ` (${Math.round(age / 1000)}s)` : ""}; usando a leitura de tela`
+        ? `GEP obsoleto: ${why}${age !== null ? ` (${Math.round(age / 1000)}s)` : ""}`
         : g.state === "esquema-desconhecido"
-          ? `GEP: esquema do banco desconhecido${g.detail ? ` (${g.detail})` : ""}; usando a leitura de tela`
-          : `GEP ausente${why ? `: ${why}` : ""}; usando a leitura de tela`;
-  // Sem GEP, a tela é a fonte: quais campos ela entrega agora (só quando o servidor informa as origens).
-  const reading =
-      sources && g.state !== "ativo"
-        ? SCREEN_FIELDS.filter(([key]) => sources[key] === "screen").map(
+          ? `GEP: esquema do banco desconhecido${g.detail ? ` (${g.detail})` : ""}`
+          : `GEP ausente${why ? `: ${why}` : ""}`;
+  // Sem GEP, os campos do jogador ficam sem fonte: quais estão sem valor agora (só quando o servidor informa os motivos).
+  const missing =
+      noSource && typeof noSource === "object" && g.state !== "ativo"
+        ? PLAYER_FIELDS.filter(([key]) => noSource[key] != null).map(
             ([, name]) => name,
           )
         : null,
-    screenNote =
-      reading === null
-        ? ""
-        : reading.length
-          ? `. Lendo da tela: ${reading.join(", ")}`
-          : ". Nada lido da tela agora";
-  const label = hint ? `${base}${screenNote}. ${hint}` : `${base}${screenNote}`;
-  // Texto curto do chip visível no HUD: ativo mostra a idade do último evento; os demais dizem que caiu para a tela.
+    missingNote = missing?.length ? `. Sem fonte: ${missing.join(", ")}` : "";
+  const label = hint
+    ? `${base}${missingNote}. ${hint}`
+    : missing?.length
+      ? `${base}${missingNote}. ${GEP_OPEN_HINT}`
+      : base;
+  // Texto curto do chip visível no HUD: ativo mostra a idade do último evento; os demais dizem que a fonte caiu.
   const short =
     g.state === "ativo"
       ? `GEP ativo${age !== null ? ` · ${Math.round(age / 1000)}s` : ""}`
@@ -206,14 +209,14 @@ export function gepNote(g, sources = null) {
           : g.state === "esquema-desconhecido"
             ? "GEP ?"
             : "GEP off";
-  // O suffixo " · tela" vale quando a tela está lendo; a instrução de gravação (mais urgente) fica sozinha.
-  const chip = reading?.length && !hint ? `${short} · tela` : short;
+  // O sufixo " · sem fonte" vale quando falta algum campo; a instrução de gravação (mais urgente) fica sozinha.
+  const chip = missing?.length && !hint ? `${short} · sem fonte` : short;
   return {
     state: g.state,
     label,
     short: chip,
     ...(hint ? { hint } : {}),
-    ...(reading ? { screen: reading } : {}),
+    ...(missing ? { missing } : {}),
   };
 }
 
@@ -256,9 +259,6 @@ export function buildModel({ state, rec }, { review = null } = {}) {
         : screen.sources?.level === "derived"
           ? "derivado"
           : "lido",
-    // Leitura velha (HUD coberto há mais de 15 s) ou número e XP em conflito: vale, mas a interface avisa.
-    levelStale:
-      screen.stale?.level === true || screen.levelInfo?.conflict === true,
     // Nível que a análise usou (pode estar uma leitura atrás do mostrado até a próxima análise).
     levelUsed: num(rec?.currentLevel),
     xp: parseXp(screen.xp),
@@ -266,8 +266,6 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     // Origem GEP (banco do TFTAcademy, observada): a interface só avisa de leve no tooltip.
     levelFrom: screen.sources?.level === "gep" ? "gep" : null,
     goldFrom: screen.sources?.gold === "gep" ? "gep" : null,
-    // Ouro mantido da última leitura (HUD coberto há mais de 15 s): a interface o mostra esmaecido.
-    goldStale: screen.stale?.gold === true,
     stage: parseStage(screen.stage),
     phase: rec?.metadata?.phase ?? null,
   };
@@ -297,15 +295,8 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     sameGame: rec?.metadata?.sameGame ?? null,
     gameId: rec?.metadata?.gameId ?? null,
     // Estado da fonte GEP (ativo, obsoleto, ausente, esquema-desconhecido) para o tooltip do indicador ao vivo.
-    // Na revisão a fonte e o leitor são os de quando a partida acabou, não os de agora: sem chip nem aviso deles.
-    gep: review ? null : gepNote(state?.gepStatus, screen.sources ?? null),
-    // Erro aparece mesmo com o leitor parado (spawn falhou ou processo morreu).
-    reader: review
-      ? null
-      : (screen.error ??
-        (screen.running && screen.window === false
-          ? "janela do jogo oculta"
-          : null)),
+    // Na revisão a fonte é a de quando a partida acabou, não a de agora: sem chip nem aviso dela.
+    gep: review ? null : gepNote(state?.gepStatus, screen.noSource ?? null),
   };
   if (!plan) return { hero, status, plan: null };
 
@@ -524,7 +515,7 @@ export function buildModel({ state, rec }, { review = null } = {}) {
         kind: "next",
         unit: u,
         item: u.nextItem,
-        // Banco lido da tela: a interface só o usa para mostrar os componentes quando o servidor não disse o que falta.
+        // Banco de itens lido (GEP): a interface só o usa para mostrar os componentes quando o servidor não disse o que falta.
         bank: Array.isArray(screen.items) ? screen.items : null,
       })),
   );

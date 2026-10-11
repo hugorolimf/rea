@@ -1,4 +1,4 @@
-# Para o TFT Helper por completo: servidor(es) nas portas do helper e o leitor de tela.
+# Para o TFT Helper por completo: supervisor, servidor(es) nas portas do helper e overlay.
 $ErrorActionPreference = 'SilentlyContinue'
 $stopped = @()
 # O supervisor primeiro (senão ele sobe o servidor de novo): arquivo de parada e encerramento.
@@ -11,9 +11,6 @@ foreach ($connection in Get-NetTCPConnection -State Listen -LocalPort 3218, 3219
   $process = Get-Process -Id $connection.OwningProcess
   if ($process -and $process.ProcessName -eq 'node') { Stop-Process -Id $process.Id -Force; $stopped += "servidor na porta $($connection.LocalPort) (PID $($process.Id))" }
 }
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-  Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'screen-reader\.ps1' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $stopped += "leitor de tela (PID $($_.ProcessId))" }
 $electron = Join-Path $PSScriptRoot 'overlay\node_modules\electron\dist\electron.exe'
 Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
   Where-Object { $_.ExecutablePath -eq $electron } |

@@ -22,7 +22,6 @@ const live = ({ shop, gold = 54, tweak } = {}) => {
   const s = structuredClone(state),
     r = structuredClone(rec);
   s.screen = {
-    running: true,
     stage: "4-2",
     gold,
     level: 8,

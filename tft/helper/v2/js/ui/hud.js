@@ -244,8 +244,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
               ? `~${hero.level}`
               : String(hero.level),
       );
-      lvlWrap.dataset.stale =
-        hero.levelStale || hero.levelSource !== "lido" ? "1" : "0";
+      lvlWrap.dataset.stale = hero.levelSource !== "lido" ? "1" : "0";
       const xp = hero.xp,
         cost = plan?.panel?.level?.cost,
         next = plan?.panel?.level?.go;
@@ -267,7 +266,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
                 derivado: "mínimo derivado do XP passivo: não foi lido",
                 estimado: "estimado pelo tabuleiro: não foi lido",
               }[hero.levelSource] ?? hero.levelSource)
-        }${hero.levelStale ? "; leitura velha ou em conflito com o XP" : ""}${
+        }${
           hero.levelUsed != null && hero.levelUsed !== hero.level
             ? `; a análise usou o nível ${hero.levelUsed}`
             : ""
@@ -279,7 +278,6 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
         goldSr,
         hero.gold == null ? "Ouro não lido" : `Ouro ${hero.gold}`,
       );
-      goldWrap.dataset.stale = hero.goldStale ? "1" : "0";
       setVars(goldGauge, {
         "--p": hero.gold == null ? 0 : clamp(hero.gold / maxInterestGold()),
       });
@@ -301,15 +299,12 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
       // O piso da decisão também aparece em texto (a marca no anel é só um ponto).
       setText(keepText, keep != null ? `piso ${keep}g` : "");
       keepText.hidden = keep == null;
-      /* Título único: motivo do esmaecimento + piso da decisão */
+      /* Título único: origem do ouro + piso da decisão */
       setTitle(
         goldWrap,
         [
           hero.goldFrom === "gep"
             ? "Ouro observado pelo GEP (TFTAcademy)"
-            : null,
-          hero.goldStale
-            ? "Última leitura do ouro; a tela está coberta agora"
             : null,
           keep != null ? `Piso desta decisão: ${keep}g` : null,
         ]

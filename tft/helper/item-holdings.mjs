@@ -61,9 +61,9 @@ export const holdValue = (list = []) =>
   Math.round(list.reduce((n, e) => n + (e.value ?? 0), 0) * 100) / 100;
 
 /**
- * Inventário que o motor recebe: o banco lido da tela agora (já sem consumíveis, `seen.items`) vale mais que o
- * enviado pelo cliente (que pode ser de uma leitura anterior). Sem leitura (tela fechada, partida revista), segue o
- * enviado. Ids fora do catálogo ficam de fora (o servidor valida a entrada; a leitura não passa por essa validação).
+ * Inventário que o motor recebe: o banco de itens observado agora (do GEP, já sem consumíveis, `seen.items`) vale mais
+ * que o enviado pelo cliente (que pode ser de uma leitura anterior). Sem observação (GEP fora, partida revista), segue
+ * o enviado. Ids fora do catálogo ficam de fora (o servidor valida a entrada; a leitura não passa por essa validação).
  */
 export function recommendInventory(requested, seen, isKnown = () => true) {
   return Array.isArray(seen?.items)

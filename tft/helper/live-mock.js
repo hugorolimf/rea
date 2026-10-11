@@ -184,7 +184,7 @@
       ],
       priority: 4,
       now: true,
-      method: "removedor lido na tela",
+      method: "removedor",
     },
     {
       from: { ...VI, stars: 2 },
@@ -356,7 +356,7 @@
           : o.streak;
     const rolling = action === "ROLAR" && o.spend >= 2,
       lvl = action === "SUBIR NÍVEL",
-      shopSpend = gold != null && o.screen !== false ? 1 : 0, // a loja do mock compra Varus (1g)
+      shopSpend = gold != null && o.gep !== false ? 1 : 0, // a loja do mock compra Varus (1g)
       cash = gold == null ? null : gold - shopSpend,
       spend = rolling ? o.spend : lvl ? 4 : 0,
       // All-in: o que passa do ouro em mãos vem da venda do banco.
@@ -540,7 +540,7 @@
                 : "",
           text:
             gold == null
-              ? "Ouro não lido da tela."
+              ? "Ouro sem fonte (GEP off)."
               : `Juros atuais: +${E.interestOf(gold)}g por rodada.`,
         },
         leveling: {
@@ -644,7 +644,7 @@
       action: "ECONOMIZAR",
       spend: 30,
       keep: 24,
-      screen: true,
+      gep: true,
       ...o,
     };
     patchMeta(c, {
@@ -656,12 +656,14 @@
     setPlayers(c, x.hp);
     c.state.estimatedLevel = x.level;
     c.rec.currentLevel = x.level;
-    c.rec.levelEstimated = !x.screen;
-    c.state.screen = x.screen
+    c.rec.levelEstimated = !x.gep;
+    // O GEP (TFTAcademy) é a única fonte de ouro, nível, XP, loja, itens e aprimoramentos. Sem ele esses campos ficam
+    // desconhecidos (null) e `noSource` diz o motivo; o estágio continua vindo do arquivo do jogo.
+    c.state.gepStatus = x.gep
+      ? { state: "ativo", reason: null, lastEventAgeMs: 2000 }
+      : { state: "ausente", reason: "banco-ausente" };
+    c.state.screen = x.gep
       ? {
-          running: true,
-          error: null,
-          window: true,
           stage: x.stage,
           gold: x.gold,
           level: x.level,
@@ -673,18 +675,54 @@
             "DA_Component_BFSword",
           ],
           unknownItems: 0,
-          shop: shopCards().map((s) => s.id),
+          shop: shopCards().map((s) => ({ id: s.id, text: s.name })),
           removers: 1,
           augments: null,
+          sources: {
+            stage: "game-log",
+            gold: "gep",
+            level: "gep",
+            xp: "gep",
+            shop: "gep",
+            items: "gep",
+          },
+          // O mock não simula reserva, Wisps nem aprimoramentos do GEP: começo de partida, ainda sem esses eventos.
+          noSource: {
+            bench: "aguardando-gep",
+            wisps: "aguardando-gep",
+            augments: "aguardando-gep",
+          },
         }
-      : { ...c.state.screen, running: false };
+      : {
+          ...c.state.screen,
+          stage: x.stage,
+          gold: null,
+          level: null,
+          xp: null,
+          items: null,
+          shop: null,
+          augments: null,
+          sources: { stage: "game-log" },
+          noSource: Object.fromEntries(
+            [
+              "gold",
+              "level",
+              "xp",
+              "shop",
+              "items",
+              "bench",
+              "wisps",
+              "augments",
+            ].map((k) => [k, "banco-ausente"]),
+          ),
+        };
     c.plan.strategy = strategyFor(x.action, x);
     c.plan.stage = {
       level: x.level,
       board: stageBoard(),
       bankItems: bankItems(),
-      shop: x.screen ? shopCards() : [],
-      shopRead: x.screen,
+      shop: x.gep ? shopCards() : [],
+      shopRead: x.gep,
       buyNow: buyNow(),
       bridges: [],
       hold: [],
@@ -741,7 +779,7 @@
     action: "Ação da rodada",
     field: "Campo e volume",
     rows: "Linhas isoladas",
-    screen: "Leitura da tela",
+    source: "Fonte GEP",
     alert: "Alertas e decisões",
   };
 
@@ -1128,50 +1166,57 @@
   );
 
   add(
-    G.screen,
-    "leitura-completa",
-    "Tela lida",
-    "Estágio, XP, ouro e nível vindos da tela (barra lateral completa).",
+    G.source,
+    "gep-ativo",
+    "GEP ativo",
+    "Estágio do arquivo do jogo; ouro, nível, XP, loja e itens do GEP (TFTAcademy).",
     (c) => live(c, { stage: "5-1", xp: "51/68", gold: 73 }),
   );
   add(
-    G.screen,
-    "janela-oculta",
-    "Janela oculta",
-    "Leitor ativo mas a janela do jogo não está visível: ouro/XP sem leitura.",
+    G.source,
+    "gep-off",
+    "GEP off · sem fonte",
+    "Banco do TFTAcademy ausente: ouro, nível, XP, loja, itens e aprimoramentos ficam desconhecidos, com o motivo.",
+    (c) => live(c, { gep: false, gold: null }),
+  );
+  add(
+    G.source,
+    "gep-parado",
+    "GEP parado",
+    "O GEP parou de mandar eventos: os campos do jogador ficam sem fonte até ele voltar.",
     (c) => {
-      live(c, { screen: false });
-      Object.assign(c.state.screen, {
-        running: true,
-        window: false,
-        gold: null,
-        level: null,
-        xp: null,
-        stage: null,
-        items: null,
-      });
+      live(c, { gep: false, gold: null });
+      c.state.gepStatus = {
+        state: "obsoleto",
+        reason: "sem-eventos-recentes",
+        lastEventAgeMs: 95000,
+      };
+      for (const k of Object.keys(c.state.screen.noSource))
+        c.state.screen.noSource[k] = "sem-eventos-recentes";
     },
   );
   add(
-    G.screen,
-    "leitura-erro",
-    "Erro do leitor",
-    "O leitor de tela devolve erro textual.",
+    G.source,
+    "gep-gravacao",
+    "Gravação desligada",
+    "O TFTAcademy está aberto, mas com a gravação de partidas desligada: o chip pede para ligá-la.",
     (c) => {
-      live(c, { screen: false });
-      Object.assign(c.state.screen, {
-        running: true,
-        window: true,
-        error: "Não foi possível ler o ouro (confiança baixa).",
-      });
+      live(c, { gep: false, gold: null });
+      c.state.gepStatus = {
+        state: "ausente",
+        reason: "gravacao-desligada",
+        recordGames: false,
+      };
+      for (const k of Object.keys(c.state.screen.noSource))
+        c.state.screen.noSource[k] = "gravacao-desligada";
     },
   );
   add(
-    G.screen,
+    G.source,
     "manual",
     "Valores manuais",
     "Desliga a estimativa automática e informa ouro à mão.",
-    (c) => live(c, { screen: false }),
+    (c) => live(c, { gep: false }),
     {
       after: () => {
         const $ = (id) => document.getElementById(id);

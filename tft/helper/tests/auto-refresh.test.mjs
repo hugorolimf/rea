@@ -1,7 +1,7 @@
 // Rodar com: node --test "tft/helper/tests/auto-refresh.test.mjs"
 // O laço do servidor (app/auto-refresh.mjs, M10b): conduz a análise sozinho durante a partida. Relógio, estado, fontes e
 // pipeline são falsos; o que se prova é a política: chave igual não reanalisa, chave nova analisa (com intervalo mínimo e
-// a janela de 120 s), as decisões do usuário são lembradas, o leitor de tela para ao fim da partida, e o resultado fica
+// a janela de 120 s), as decisões do usuário são lembradas, o laço volta a só sondar ao fim da partida, e o resultado fica
 // no cache que o POST da interface consulta.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -54,7 +54,6 @@ function harness({ status = 200, refresh } = {}) {
     probes: 0,
     reads: 0,
     refreshed: [],
-    sync: [],
     logs: [],
     reports: [],
     results: createRecentResults(),
@@ -82,7 +81,6 @@ function harness({ status = 200, refresh } = {}) {
         return { status: 200 };
       }),
     results: h.results,
-    sources: { sync: (active) => h.sync.push(active) },
     now: () => clock.t,
     intervalMs: 3000,
     minGapMs: 3000,
@@ -92,7 +90,7 @@ function harness({ status = 200, refresh } = {}) {
   return h;
 }
 
-test("sem partida o tick só sonda: nenhuma leitura de estado, nenhuma análise, leitor de tela intocado", async () => {
+test("sem partida o tick só sonda: nenhuma leitura de estado, nenhuma análise", async () => {
   const h = harness();
   h.inMatch = false;
   for (let i = 0; i < 3; i++) {
@@ -102,7 +100,6 @@ test("sem partida o tick só sonda: nenhuma leitura de estado, nenhuma análise,
   assert.equal(h.probes, 3);
   assert.equal(h.reads, 0);
   assert.equal(h.refreshed.length, 0);
-  assert.deepEqual(h.sync, []);
   assert.equal(h.loop.status().active, false);
 });
 
@@ -200,27 +197,21 @@ test("o POST seguinte com a mesma chave responde do cache (e o que está em cál
   assert.equal((await running).via, "novo");
 });
 
-test("ao fim da partida o leitor de tela para e o laço volta a só sondar; uma partida nova recomeça na hora", async () => {
+test("ao fim da partida o laço volta a só sondar; uma partida nova recomeça na hora", async () => {
   const h = harness();
   await h.loop.tick();
   assert.equal(h.loop.status().active, true);
-  assert.equal(h.sync.at(-1), true);
   h.inMatch = false;
   h.clock.t += 3000;
   assert.equal((await h.loop.tick()).action, "idle");
   assert.equal(h.loop.status().active, false);
-  assert.equal(h.sync.at(-1), false);
-  assert.equal(h.sync.filter((x) => x === false).length, 1);
-  assert.ok(h.logs.some(([, text]) => /terminou/.test(text)));
+  const ended = () => h.logs.filter(([, text]) => /terminou/.test(text)).length;
+  assert.equal(ended(), 1);
   const reads = h.reads;
   h.clock.t += 3000;
   await h.loop.tick();
   assert.equal(h.reads, reads, "parado: nenhuma leitura de estado");
-  assert.equal(
-    h.sync.filter((x) => x === false).length,
-    1,
-    "não repete o desligar",
-  );
+  assert.equal(ended(), 1, "não repete o fim da partida");
   // Outra partida: analisa na primeira leitura, sem esperar o intervalo da anterior.
   h.inMatch = true;
   h.state = makeState({
@@ -231,7 +222,7 @@ test("ao fim da partida o leitor de tela para e o laço volta a só sondar; uma 
   h.clock.t += 500;
   assert.equal((await h.loop.tick()).action, "run");
   assert.equal(h.refreshed.length, 2);
-  assert.equal(h.sync.at(-1), true);
+  assert.equal(h.loop.status().active, true);
 });
 
 test("guardas da interface: partida nova sem tabuleiro próprio e sem o jogador local não analisam", async () => {
@@ -309,7 +300,7 @@ test("um tick não começa enquanto o anterior roda", async () => {
   assert.equal((await first).action, "run");
 });
 
-test("start agenda o primeiro tick, repete a cada intervalo e stop desliga o laço e o leitor de tela", async () => {
+test("start agenda o primeiro tick, repete a cada intervalo e stop desliga o laço", async () => {
   const queue = [];
   const cleared = [];
   const h = harness();
@@ -318,7 +309,6 @@ test("start agenda o primeiro tick, repete a cada intervalo e stop desliga o la�
     readState: async () => h.state,
     refresh: async () => ({ status: 200 }),
     results: h.results,
-    sources: { sync: (active) => h.sync.push(active) },
     now: () => h.clock.t,
     timers: {
       setTimeout: (fn, ms) => {
@@ -344,7 +334,6 @@ test("start agenda o primeiro tick, repete a cada intervalo e stop desliga o la�
   assert.equal(cleared.at(-1), queue[1]);
   assert.equal(loop.status().running, false);
   assert.equal(loop.status().active, false);
-  assert.equal(h.sync.at(-1), false);
 });
 
 test("o tempo do laço é registrado (tick barato e análise) e o resumo de contadores zera a cada leitura", async () => {

@@ -1,6 +1,7 @@
 // Rodar com: node --test tft/helper/tests/core-state.test.mjs
-// Camada de estado (M7): relógio, nível, `Field`, precedência com histerese e divergência GEP x tela, `GameState`, entradas
-// da análise e o montador do servidor (app/state.mjs) com fontes falsas.
+// Camada de estado (M7): relógio, nível, `Field`, precedência com histerese e divergência GEP x arquivo do jogo,
+// `GameState`, entradas da análise e o montador do servidor (app/state.mjs) com fontes falsas. Não há leitura de tela:
+// ouro, nível, XP, loja e itens só vêm do GEP.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseStage, stageText } from "../core/state/clock.mjs";
@@ -46,7 +47,7 @@ test("a tabela de XP é uma só: GAME (rules.mjs) usa os mesmos objetos de core/
 
 test("Field: valor ausente é desconhecido (sem origem); com valor leva fonte, confiança e idade", () => {
   assert.deepEqual(field(undefined, "gep", "observed"), unknownField());
-  assert.deepEqual(field(null, "screen", "read"), unknownField());
+  assert.deepEqual(field(null, "gep", "observed"), unknownField());
   const f = field(7, "gep", "observed", { ageMs: 250, now: 10_000 });
   assert.equal(f.value, 7);
   assert.equal(f.source, "gep");
@@ -54,13 +55,13 @@ test("Field: valor ausente é desconhecido (sem origem); com valor leva fonte, c
   assert.equal(f.ageMs, 250);
   assert.equal(f.at, 9_750);
   assert.equal(
-    field(0, "screen", "read").value,
+    field(0, "gep", "observed").value,
     0,
     "zero é um valor, não ausência",
   );
   assert.equal(confidenceOf("gep"), "observed");
-  assert.equal(confidenceOf("screen"), "read");
   assert.equal(confidenceOf("derived"), "derived");
+  assert.equal(confidenceOf("screen"), null, "não há mais origem de tela");
   assert.equal(confidenceOf("nada"), null);
 });
 
@@ -69,8 +70,7 @@ test("nível: reduceLevel (puro) dá o mesmo resultado que o rastreador e não m
     stage: "3-2",
     level: 6,
     xp: "10/36",
-    stale: {},
-    sources: { level: "screen" },
+    sources: { level: "gep", xp: "gep" },
   };
   const frozen = structuredClone(seen),
     pure = reduceLevel({ game: null, anchor: null }, seen, "g1"),
@@ -78,10 +78,31 @@ test("nível: reduceLevel (puro) dá o mesmo resultado que o rastreador e não m
   assert.deepEqual(seen, frozen);
   assert.deepEqual(pure.seen, tracked);
   assert.equal(pure.memory.anchor.level, 6);
-  // Outra partida zera a âncora: a leitura baixa deixa de ser comparada com a partida anterior.
-  const next = reduceLevel(pure.memory, { ...seen, level: 2, xp: null }, "g2");
+  assert.deepEqual(pure.seen.levelInfo, {
+    source: "gep",
+    minimum: false,
+    read: 6,
+  });
+  // Sem observação: piso a partir do último observado (6 em 3-2, com 10/36 de XP).
+  const later = reduceLevel(
+    pure.memory,
+    { stage: "4-1", level: null, sources: {} },
+    "g1",
+  );
+  assert.equal(
+    later.seen.level,
+    levelFloor("4-1", { level: 6, xp: "10/36", stage: "3-2" }),
+  );
+  assert.equal(later.seen.sources.level, "derived");
+  assert.equal(later.seen.levelInfo.minimum, true);
+  // Outra partida zera a âncora: só o piso global do estágio.
+  const next = reduceLevel(
+    pure.memory,
+    { stage: "4-1", level: null, sources: {} },
+    "g2",
+  );
   assert.equal(next.memory.game, "g2");
-  assert.ok(next.seen.levelInfo.rejected?.reason.includes("mínimo"));
+  assert.equal(next.seen.level, levelFloor("4-1"));
 });
 
 test("nível consistente (GEP): faixa, nunca cair, piso do XP passivo e total do XP", () => {
@@ -109,15 +130,10 @@ test("nível consistente (GEP): faixa, nunca cair, piso do XP passivo e total do
   assert.equal(levelConsistent({ level: 7, xp: "3/68" }), false);
 });
 
-const screenSeen = (extra = {}) => ({
-  gold: 12,
-  level: 5,
-  xp: "3/20",
-  stage: "2-5",
-  shop: null,
-  items: null,
-  sources: { stage: "screen" },
-  ...extra,
+/** Estado dos arquivos do jogo (só o estágio do Sentry), como `gameFilesState` o monta. */
+const filesSeen = (stage = "2-5") => ({
+  stage,
+  sources: { stage: stage ? "game-log" : null },
 });
 const gepNow = (fields = {}) => ({
   available: true,
@@ -138,7 +154,7 @@ const run = (steps, readings = HYSTERESIS_READINGS) => {
   for (const step of steps) {
     const r = reduceSources(memory, {
       gameId: step.gameId ?? "g1",
-      seen: step.seen ?? screenSeen(),
+      seen: step.seen ?? filesSeen(),
       gep: step.gep ?? null,
       readings,
     });
@@ -147,87 +163,68 @@ const run = (steps, readings = HYSTERESIS_READINGS) => {
   }
   return out;
 };
+const stageGep = (value) => gepNow({ stage: { value, ageMs: 10 } });
 
-test("precedência: GEP fresco e consistente vence a tela; sem GEP vale a tela; um valor só por campo", () => {
+test("precedência: ouro, nível, XP, loja e itens só têm o GEP; sem ele não há fonte", () => {
   const [first] = run([{ gep: gepNow() }]);
   assert.equal(first.picks.gold, "gep");
   assert.equal(first.picks.level, "gep");
   assert.equal(first.picks.xp, "gep", "o XP acompanha o nível");
   const [alone] = run([{}]);
-  assert.equal(alone.picks.gold, "base");
-  assert.equal(alone.picks.shop, null, "nenhuma fonte tem a loja");
+  for (const name of ["gold", "level", "xp", "shop", "items"])
+    assert.equal(alone.picks[name], null, name);
   const [off] = run([{ gep: { ...gepNow(), available: false } }]);
-  assert.equal(off.picks.gold, "base", "GEP indisponível não vale");
-  // GEP sem o ouro (campo ausente): o ouro cai para a tela, o resto continua do GEP.
+  assert.equal(off.picks.gold, null, "GEP indisponível não vale");
+  // GEP sem o ouro (campo ausente): o ouro fica sem fonte, o resto continua do GEP.
   const [partial] = run([{ gep: gepNow({ gold: null }) }]);
-  assert.equal(partial.picks.gold, "base");
+  assert.equal(partial.picks.gold, null);
   assert.equal(partial.picks.level, "gep");
+  const c = candidatesFor(filesSeen(), gepNow().fields, null);
+  for (const name of ["gold", "level", "shop", "items"])
+    assert.deepEqual(
+      c[name].map((x) => x.source),
+      ["gep"],
+      `${name}: candidato único`,
+    );
 });
 
-test("precedência: o estágio do arquivo do jogo vale mais que o GEP; sem ele, o GEP vale mais que a tela", () => {
-  const gep = gepNow({ stage: { value: "2-6", ageMs: 10 } });
-  const [withLog] = run([
-    { seen: screenSeen({ stage: "2-5", sources: { stage: "game-log" } }), gep },
-  ]);
+test("precedência: o estágio do arquivo do jogo vale mais que o GEP; sem ele, o GEP", () => {
+  const [withLog] = run([{ gep: stageGep("2-6") }]);
   assert.equal(withLog.picks.stage, "base");
-  const [noLog] = run([{ gep }]);
+  const [noLog] = run([{ seen: filesSeen(null), gep: stageGep("2-6") }]);
   assert.equal(noLog.picks.stage, "gep");
 });
 
-test("histerese: a tela segura o campo até o GEP ser o preferido por N leituras seguidas", () => {
-  const steps = [
-    {},
-    {},
-    { gep: gepNow() },
-    { gep: gepNow() },
-    { gep: gepNow() },
-  ];
-  const picks = run(steps).map((r) => r.picks.gold);
-  assert.deepEqual(picks, ["base", "base", "base", "base", "gep"]);
-  // Uma leitura sem GEP no meio zera a contagem: o novo desafiante recomeça.
-  const flap = run([
-    {},
-    { gep: gepNow() },
-    { gep: gepNow() },
-    {},
-    { gep: gepNow() },
-    { gep: gepNow() },
-  ]).map((r) => r.picks.gold);
-  assert.deepEqual(flap, ["base", "base", "base", "base", "base", "base"]);
-});
-
-test("histerese: a fonte ativa que perde o valor cede na hora (não se segura campo sem valor)", () => {
+test("histerese no estágio: o arquivo do jogo que volta só reassume depois de N leituras; a fonte que perde o valor cede na hora", () => {
   const picks = run([
-    { gep: gepNow() },
-    { gep: gepNow() },
-    { gep: { ...gepNow(), available: false } },
-  ]).map((r) => r.picks.gold);
-  assert.deepEqual(picks, ["gep", "gep", "base"]);
-  // O contrário também: sem tela, o GEP assume na hora.
-  const [toGep] = run([
-    { seen: screenSeen({ gold: null, level: null }), gep: gepNow() },
-  ]);
-  assert.equal(toGep.picks.gold, "gep");
-  assert.equal(toGep.picks.level, "gep");
+    { gep: stageGep("2-5") },
+    { seen: filesSeen(null), gep: stageGep("2-5") },
+    { gep: stageGep("2-5") },
+    { gep: stageGep("2-5") },
+    { gep: stageGep("2-5") },
+  ]).map((r) => r.picks.stage);
+  assert.deepEqual(picks, ["base", "gep", "gep", "gep", "base"]);
 });
 
-test("divergência: conta um episódio (não cada leitura), registra o evento e some quando concordam", () => {
-  const diverging = { gep: gepNow() }; // ouro 15 (GEP) x 12 (tela)
-  const agreeing = { gep: gepNow({ gold: { value: 12, ageMs: 5 } }) };
+test("divergência: GEP x arquivo do jogo no estágio conta um episódio, registra o evento e some quando concordam", () => {
+  const diverging = { gep: stageGep("2-6") }, // GEP uma rodada à frente do Sentry (2-5)
+    agreeing = { gep: stageGep("2-5") };
   const out = run([diverging, diverging, diverging, diverging, diverging]);
   assert.deepEqual(
     out.map((r) => r.events.length),
     [0, 0, 1, 0, 0],
     "um único evento, na N-ésima leitura",
   );
-  assert.equal(out[2].events[0].field, "gold");
-  assert.equal(out[2].events[0].gep, 15);
-  assert.equal(out[2].events[0].base, 12);
-  assert.equal(out[2].events[0].active, "gep", "o valor que vale é o do GEP");
-  assert.deepEqual(out[4].divergence.current, ["gold"]);
+  assert.deepEqual(out[2].events[0], {
+    field: "stage",
+    gep: "2-6",
+    base: "2-5",
+    active: "base",
+  });
+  assert.deepEqual(out[4].divergence.current, ["stage"]);
   assert.equal(out[4].divergence.total, 1);
-  assert.equal(out[4].divergence.byField.gold, 1);
-  // Atraso passageiro da tela (1 ou 2 leituras) não é divergência.
+  assert.equal(out[4].divergence.byField.stage, 1);
+  // Atraso passageiro (1 ou 2 leituras) não é divergência.
   const transient = run([
     diverging,
     diverging,
@@ -248,42 +245,35 @@ test("divergência: conta um episódio (não cada leitura), registra o evento e 
     diverging,
   ]);
   assert.equal(again.at(-1).divergence.total, 2);
-  assert.deepEqual(
-    again[3].divergence.current,
-    [],
-    "concordando, não há divergência atual",
-  );
+  assert.deepEqual(again[3].divergence.current, []);
+  // Ouro, nível, loja e itens não têm com quem divergir.
+  assert.equal(run([{ gep: gepNow() }])[0].divergence.total, 0);
 });
 
-test("divergência: loja e itens comparam o conteúdo (ids, itens sem ordem), não a referência", () => {
-  const shopGep = [{ id: "A" }, null, { id: "B" }],
-    shopScreen = [{ id: "A" }, null, { id: "B" }];
+test("loja escondida segundo o GEP não vale; loja e itens comparam o conteúdo, não a referência", () => {
+  const shop = [{ id: "A" }, null, { id: "B" }];
   const c = candidatesFor(
-    screenSeen({ shop: shopScreen, items: ["x", "y", "x"] }),
+    filesSeen(),
     {
-      shop: { value: shopGep, visible: true },
+      shop: { value: shop, visible: true },
       items: { value: ["x", "x", "y"] },
     },
     null,
   );
-  assert.equal(c.shop[0].key, c.shop[1].key);
-  assert.equal(c.items[0].key, c.items[1].key);
+  assert.equal(c.shop[0].key, "A||B");
+  assert.equal(c.items[0].key, "x|x|y");
   const hidden = candidatesFor(
-    screenSeen({ shop: shopScreen }),
-    { shop: { value: shopGep, visible: false } },
+    filesSeen(),
+    { shop: { value: shop, visible: false } },
     null,
   );
-  assert.equal(
-    hidden.shop[0].value,
-    null,
-    "loja escondida segundo o GEP não vale",
-  );
+  assert.equal(hidden.shop[0].value, null, "loja escondida não vale");
 });
 
 test("nível do GEP inconsistente não vale: abaixo do que o XP passivo garante ou do último nível aceito", () => {
-  const seen = screenSeen({ level: 7, xp: "20/56", stage: "4-1" });
+  const seen = filesSeen("4-1");
   const low = run([{ seen, gep: gepNow({ level: { value: 3 }, xp: null }) }]);
-  assert.equal(low[0].picks.level, "base", "3 está abaixo do piso de 4-1");
+  assert.equal(low[0].picks.level, null, "3 está abaixo do piso de 4-1");
   assert.equal(
     low[0].divergence.current.includes("level"),
     false,
@@ -297,7 +287,7 @@ test("nível do GEP inconsistente não vale: abaixo do que o XP passivo garante 
   ]);
   assert.equal(held[0].picks.level, "gep");
   assert.equal(held[0].memory.held, 7);
-  assert.equal(held[1].picks.level, "base", "6 < 7 aceito antes");
+  assert.equal(held[1].picks.level, null, "6 < 7 aceito antes");
   assert.equal(
     held[2].picks.level,
     "gep",
@@ -307,7 +297,7 @@ test("nível do GEP inconsistente não vale: abaixo do que o XP passivo garante 
 });
 
 test("outra partida zera a escolha de fonte mas mantém os contadores de divergência", () => {
-  const d = { gep: gepNow() };
+  const d = { gep: stageGep("2-6") };
   const out = run([d, d, d, { ...d, gameId: "g2" }]);
   assert.equal(out[2].divergence.total, 1);
   assert.equal(out[3].divergence.total, 1);
@@ -330,15 +320,14 @@ test("GameState: cada campo com valor, fonte, confiança e idade; reserva sem GE
     items: ["DA_Component_BFSword"],
     removers: 0,
     gepBench: undefined,
-    stale: { level: false },
     sources: {
       gold: "gep",
       level: "derived",
-      xp: "screen",
+      xp: "gep",
       stage: "game-log",
       phase: "game-log",
-      items: "screen",
-      shop: "screen",
+      items: "gep",
+      shop: "gep",
       bench: null,
     },
     sourcesDetail: { gold: { source: "gep", ageMs: 400 } },
@@ -351,9 +340,9 @@ test("GameState: cada campo com valor, fonte, confiança e idade; reserva sem GE
   assert.equal(state.me.gold.at, 99_600);
   assert.equal(state.me.level.source, "derived");
   assert.equal(state.me.level.confidence, "derived");
-  assert.equal(state.me.xp.confidence, "read");
+  assert.equal(state.me.xp.confidence, "observed");
   assert.equal(state.clock.stage.source, "sentry");
-  assert.equal(state.me.itemBank.source, "screen");
+  assert.equal(state.me.itemBank.source, "gep");
   assert.deepEqual(state.me.bench, unknownField());
   const brief = summarizeState(state);
   assert.equal(brief.me.shop.count, 2);
@@ -374,7 +363,7 @@ test("entradas da análise: ouro, nível, XP, estágio e loja saem do estado do 
     shop: [{ id: "DA_18_Elise" }, null],
     removers: 0,
     augments: ["AUG_A", "AUG_B"],
-    sources: { level: "screen" },
+    sources: { level: "gep" },
   };
   const live = analysisInputs(seen, { augments: [], estimatedLevel: 5 });
   assert.equal(live.level, 8);
@@ -415,7 +404,7 @@ test("entradas da análise: o payload do cliente não decide (D6) e a partida re
       levelEstimated: true,
       levelSource: "estimado",
     },
-    server = { gold: 12, level: 7, stage: "3-1", sources: { level: "screen" } };
+    server = { gold: 12, level: 7, stage: "3-1", sources: { level: "gep" } };
   const merged = { ...stale, ...analysisInputs(server, { estimatedLevel: 4 }) };
   assert.equal(merged.level, 7);
   assert.equal(merged.gold, 12);
@@ -428,29 +417,19 @@ test("entradas da análise: o payload do cliente não decide (D6) e a partida re
   assert.deepEqual({ ...stale, ...replay }.level, 3);
 });
 
-/** Fontes falsas para o montador do servidor. */
+/** Fontes falsas para o montador do servidor: o arquivo do jogo (Sentry) e o GEP. */
 function rig({ readings } = {}) {
   const r = {
-    screenNow: {
-      running: true,
+    gameNow: {
+      available: true,
       stage: "3-2",
-      gold: 12,
-      level: 6,
-      levelSource: "ocr+xp",
-      xp: "10/36",
-      stale: {},
-      items: null,
-      bank: null,
-      shop: null,
-      removers: null,
+      phase: "Planning",
+      phaseKind: "planning",
     },
-    gameNow: { available: false, stage: null },
     gepNow: null,
-    calls: [],
     events: [],
   };
   r.hub = createStateHub({
-    screen: { status: () => r.screenNow },
     gameFiles: { status: () => r.gameNow },
     gep: { status: () => r.gepNow },
     now: () => 1_000_000,
@@ -460,34 +439,40 @@ function rig({ readings } = {}) {
   r.seen = (gepCtx = {}) => r.hub.seen("g1", gepCtx);
   return r;
 }
-const gepStatus = (gold, level = 6) => ({
+const gepStatus = (gold, level = 6, stage = null) => ({
   available: true,
   state: "ativo",
   fields: {
     gold: { value: gold, ageMs: 50 },
     level: { value: level, ageMs: 50 },
     xp: { value: "10/36", ageMs: 50 },
-    stage: null,
+    stage: stage ? { value: stage, ageMs: 50 } : null,
     shop: null,
     items: null,
     bench: null,
   },
 });
 
-test("montador: GEP e tela nunca saem discordando; a divergência é registrada e contada", () => {
+test("montador: o GEP preenche os campos do jogador; o estágio do arquivo do jogo vale e a divergência é contada", () => {
   const t = rig();
-  t.gepNow = gepStatus(15);
+  t.gepNow = gepStatus(15, 6, "3-3");
   const seen = [t.seen(), t.seen(), t.seen(), t.seen()];
   for (const s of seen) {
-    assert.equal(s.gold, 15, "sempre o valor do GEP");
+    assert.equal(s.gold, 15);
     assert.equal(s.sources.gold, "gep");
     assert.equal(s.sourcesDetail.gold.confidence, "observed");
+    assert.equal(s.stage, "3-2", "o Sentry vale mais que o GEP");
+    assert.equal(s.sources.stage, "game-log");
   }
   assert.equal(t.events.length, 1, "um evento por episódio");
-  assert.equal(t.events[0].field, "gold");
+  assert.deepEqual(t.events[0], {
+    field: "stage",
+    gep: "3-3",
+    base: "3-2",
+    active: "base",
+  });
   assert.equal(t.hub.divergence().total, 1);
-  assert.equal(t.hub.divergence().byField.gold, 1);
-  assert.deepEqual(t.hub.divergence().current, ["gold"]);
+  assert.deepEqual(t.hub.divergence().current, ["stage"]);
   const gs = t.hub.gameState(seen[3], "g1");
   assert.equal(gs.me.gold.value, 15);
   assert.equal(gs.me.gold.source, "gep");
@@ -499,31 +484,58 @@ test("montador: GEP e tela nunca saem discordando; a divergência é registrada 
   );
 });
 
-test("montador: GEP some -> a tela assume na hora; GEP volta -> só depois de N leituras", () => {
+test("montador: GEP some -> campos do jogador desconhecidos na hora (com o motivo) e o nível vira piso do último observado; GEP volta -> vale na hora", () => {
   const t = rig();
-  t.gepNow = gepStatus(15);
-  assert.equal(t.seen().gold, 15);
-  t.gepNow = { available: false, state: "obsoleto" };
-  const fallback = t.seen();
-  assert.equal(fallback.gold, 12);
-  assert.equal(fallback.sources.gold, "screen");
-  assert.equal(fallback.gepStatus.state, "obsoleto");
-  t.gepNow = gepStatus(15);
-  const back = [t.seen().gold, t.seen().gold, t.seen().gold];
-  assert.deepEqual(
-    back,
-    [12, 12, 15],
-    "histerese: a tela segura até a 3ª leitura",
+  t.gepNow = gepStatus(15, 6);
+  const on = t.seen();
+  assert.equal(on.gold, 15);
+  assert.equal(on.level, 6);
+  t.gameNow = { ...t.gameNow, stage: "4-1" };
+  t.gepNow = {
+    available: false,
+    state: "obsoleto",
+    reason: "sem-eventos-recentes",
+  };
+  const off = t.seen();
+  assert.equal(off.gold, null, "nada de ouro inventado");
+  assert.equal(off.xp, null);
+  assert.equal(off.sources.gold, null);
+  assert.equal(off.noSource.gold, "sem-eventos-recentes");
+  assert.equal(off.noSource.shop, "sem-eventos-recentes");
+  assert.equal(off.noSource.level, undefined, "o piso derivado é um valor");
+  assert.equal(
+    off.level,
+    levelFloor("4-1", { level: 6, xp: "10/36", stage: "3-2" }),
   );
+  assert.equal(off.sources.level, "derived");
+  assert.equal(off.levelInfo.minimum, true);
+  assert.equal(off.gepStatus.state, "obsoleto");
+  t.gepNow = gepStatus(15, 6);
+  const back = t.seen();
+  assert.equal(
+    back.gold,
+    15,
+    "sem outra fonte para segurar o campo, o GEP vale na hora",
+  );
+  assert.equal(back.level, 6);
+  assert.equal(back.sources.level, "gep");
+  // O GEP falso não traz a identidade local: o banco de itens diz isso, e não "vazio".
+  assert.deepEqual(back.noSource, {
+    shop: "aguardando-gep",
+    items: "identidade-desconhecida",
+    bench: "aguardando-gep",
+    wisps: "aguardando-gep",
+    augments: "aguardando-gep",
+  });
 });
 
-test("montador: nível do GEP que contradiz o estágio não vale; a tela fica", () => {
+test("montador: nível do GEP que contradiz o estágio não vale; fica o piso derivado", () => {
   const t = rig();
-  t.screenNow = { ...t.screenNow, stage: "4-1", level: 7, xp: "20/56" };
+  t.gameNow = { ...t.gameNow, stage: "4-1" };
   t.gepNow = gepStatus(15, 3);
   const s = t.seen();
-  assert.equal(s.level, 7);
-  assert.equal(s.sources.level, "screen");
+  assert.equal(s.level, levelFloor("4-1"));
+  assert.equal(s.sources.level, "derived");
   assert.equal(s.gold, 15, "o ouro do mesmo GEP continua valendo");
 });
 

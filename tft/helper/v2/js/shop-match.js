@@ -2,11 +2,11 @@
  * Cruzamento "peças que o plano quer" x "loja de agora": função pura (sem DOM) compartilhada pela lista Comprar
  * (steps.js, via model.js) e pelo painel Roll ("Na loja"). Quem desenha só lê o resultado; as regras ficam aqui.
  *
- * Fonte da loja (`screen.sources.shop`, preenchida pelo servidor):
- *   - "gep"    : evento do jogo (`store.shop_pieces`) do TFTAcademy, observado e fresco -> confiança "confiavel";
- *   - "screen" : leitura de tela (pode atrasar ou errar a carta)                          -> confiança "provavel";
- *   - sem leitura (`screen.shop` ausente, janela oculta, nenhuma carta lida) -> `known: false`: nenhum aviso, nem de
- *     "na loja" nem de "fora da loja".
+ * Fonte da loja (`screen.sources.shop`, preenchida pelo servidor): só o GEP a entrega.
+ *   - "gep" : evento do jogo (`store.shop_pieces`) do TFTAcademy, observado e fresco -> confiança "confiavel"; com a
+ *     fonte GEP fora do estado "ativo" (`gepStatus`), a mesma loja vale só como "provavel";
+ *   - sem fonte (`sources.shop` diferente de "gep", `screen.shop` ausente, loja escondida) -> `known: false`: nenhum
+ *     aviso, nem de "na loja" nem de "fora da loja".
  * Wisps (fogos-fátuos) chegam com `id: null` (e `wisp: true`) e nunca são campeões: ficam de fora do cruzamento.
  */
 
@@ -17,7 +17,7 @@ const CONFIDENCE_TEXT = {
   confiavel:
     "Loja lida do GEP (evento do jogo, observada): confiável, pode comprar.",
   provavel:
-    "Provável: loja lida da tela, pode estar atrasada ou ter errado a carta; confira no jogo antes de comprar.",
+    "Provável: loja do GEP com a fonte parada, pode estar atrasada; confira no jogo antes de comprar.",
 };
 
 const wantOf = (n) => {
@@ -28,7 +28,7 @@ const wantOf = (n) => {
 /**
  * Loja de agora a partir de `state.screen`: `{ known, source, confidence, slots: [{ slot, id }], unreadable }`.
  * `slot` vai de 1 a 5; `unreadable` conta cartas com texto mas sem campeão reconhecido (não Wisp). `gepStatus`
- * (`state.gepStatus`) rebaixa um GEP que não está "ativo" para "provável".
+ * (`state.gepStatus`) rebaixa um GEP que não está "ativo" para "provável". Sem a loja do GEP, `known: false`.
  */
 export function shopView(screen, { gepStatus = null } = {}) {
   const none = {
@@ -39,37 +39,26 @@ export function shopView(screen, { gepStatus = null } = {}) {
     unreadable: 0,
   };
   const raw = screen?.shop;
-  if (!Array.isArray(raw)) return none;
+  // Só o GEP entrega a loja: sem ela (outra origem ou nenhuma), a loja é desconhecida, nunca vazia.
+  if (!Array.isArray(raw) || screen.sources?.shop !== "gep") return none;
   const wispSlots = new Set(
     (Array.isArray(screen.wisps) ? screen.wisps : [])
       .map((w) => w?.slot)
       .filter(Number.isInteger),
   );
   const slots = [];
-  let filled = 0,
-    unreadable = 0;
+  let unreadable = 0;
   raw.slice(0, SHOP_SLOTS).forEach((card, i) => {
     if (!card || typeof card !== "object") return;
-    filled++;
     if (card.wisp || wispSlots.has(i + 1)) return;
     if (card.id) slots.push({ slot: i + 1, id: card.id });
     else if (card.text) unreadable++;
   });
-  const source =
-    screen.sources?.shop === "gep"
-      ? "gep"
-      : screen.sources?.shop === "screen"
-        ? "screen"
-        : null;
-  // Leitura de tela sem nenhuma carta (janela coberta, leitura falha) não prova loja vazia; no GEP, tudo "Sold" é loja vazia.
-  if (source !== "gep" && filled === 0) return none;
-  const gepFresh =
-    source === "gep" &&
-    (gepStatus?.state == null || gepStatus.state === "ativo") &&
-    screen.stale?.shop !== true;
+  // No GEP, tudo "Sold" (nenhuma carta) é loja vazia conhecida.
+  const gepFresh = gepStatus?.state == null || gepStatus.state === "ativo";
   return {
     known: true,
-    source,
+    source: "gep",
     confidence: gepFresh ? "confiavel" : "provavel",
     slots,
     unreadable,

@@ -1,12 +1,9 @@
 // Rodar com: node --test tft/helper/tests/overlay-geometry.test.mjs
-// Geometria e layout do overlay integrado (overlay/hud/geometry.mjs, layout.mjs): os números do HUD batem com o leitor de
-// tela (guarda contra divergência), o retângulo 16:9 do HUD em várias janelas, os retângulos das âncoras com e sem
+// Geometria e layout do overlay integrado (overlay/hud/geometry.mjs, layout.mjs): os valores fixos das regiões do HUD,
+// o retângulo 16:9 do HUD em várias janelas (com a tolerância de 1%), os retângulos das âncoras com e sem
 // calibração, a resolução de âncoras, a posição das etiquetas e o layout dos elementos.
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { root } from "./architecture/scan.mjs";
 import {
   ANCHOR_SIDE,
   BANK_PAD,
@@ -59,63 +56,42 @@ const inside = (r, outer, msg = "") => {
   );
 };
 
-/* ---------- (a) guarda contra divergência com o leitor de tela ---------- */
+/* ---------- (a) valores fixos das regiões do HUD ---------- */
 
-const ps1 = fs.readFileSync(path.join(root, "screen-reader.ps1"), "utf8");
-
-/** Tabela `$NOME = @{ X = 0.1; Y = ... }` do leitor, com as chaves em minúsculas (tolerante a espaços e a comentários). */
-function psTable(name) {
-  const m = new RegExp(`^\\$${name}\\s*=\\s*@\\{([^}]*)\\}`, "m").exec(ps1);
-  assert.ok(m, `$${name} não encontrada em screen-reader.ps1`);
-  const table = {};
-  for (const part of m[1].split(";")) {
-    if (!part.trim()) continue;
-    const kv = /^\s*(\w+)\s*=\s*(-?[0-9]*\.?[0-9]+)\s*$/.exec(part);
-    assert.ok(kv, `$${name}: trecho ilegível "${part}"`);
-    table[kv[1].toLowerCase()] = Number(kv[2]);
-  }
-  return table;
-}
-
-test("geometria: HUD_REGIONS bate com os números do leitor (screen-reader.ps1)", () => {
-  const pairs = [
-    ["GOLD", HUD_REGIONS.gold],
-    ["LEVEL", HUD_REGIONS.level],
-    ["XP", HUD_REGIONS.xp],
-    ["STAGE", HUD_REGIONS.stage],
-    ["SLOT", HUD_REGIONS.bankSlot],
-    ["SHOP", HUD_REGIONS.shopName],
-  ];
-  for (const [name, region] of pairs) {
-    const table = psTable(name);
-    assert.deepEqual(
-      Object.keys(table).sort(),
-      Object.keys(region).sort(),
-      `$${name}: o leitor e HUD_REGIONS têm chaves diferentes`,
-    );
-    for (const [key, value] of Object.entries(table))
-      assert.equal(
-        region[key],
-        value,
-        `$${name}.${key}: leitor ${value}, geometry.mjs ${region[key]}`,
-      );
-  }
-  assert.equal(HUD_REGIONS.bankSlot.count, 10);
-  assert.equal(HUD_REGIONS.shopName.count, 5);
+// Os números de HUD_REGIONS (frações do HUD 16:9, medidas numa captura 2044x1149) ficam escritos aqui para que mudar a
+// geometria seja deliberado: este teste acompanha a mudança junto com geometry.mjs.
+test("geometria: HUD_REGIONS tem os valores medidos do HUD 16:9", () => {
+  assert.deepEqual(HUD_REGIONS, {
+    gold: { x: 0.5316, y: 0.8191, w: 0.0235, h: 0.0261 },
+    level: { x: 0.2009, y: 0.8174, w: 0.0196, h: 0.0244 },
+    xp: { x: 0.242, y: 0.8174, w: 0.0284, h: 0.0244 },
+    stage: { x: 0.3982, y: 0.007, w: 0.0201, h: 0.0226 },
+    bankSlot: {
+      x: 0.00709,
+      y: 0.24374,
+      w: 0.02055,
+      h: 0.0383,
+      pitch: 0.04875,
+      count: 10,
+    },
+    shopName: {
+      x: 0.2896,
+      y: 0.9661,
+      w: 0.0783,
+      h: 0.0244,
+      pitch: 0.105,
+      count: 5,
+    },
+  });
 });
 
-test("geometria: as tabelas são congeladas e a tolerância de 16:9 do leitor continua 1%", () => {
+test("geometria: as tabelas são congeladas", () => {
   assert.ok(Object.isFrozen(HUD_REGIONS));
   for (const r of Object.values(HUD_REGIONS)) assert.ok(Object.isFrozen(r));
   assert.ok(
     Object.isFrozen(SHOP_CARD) &&
       Object.isFrozen(BANK_PAD) &&
       Object.isFrozen(LEVEL_XP_PAD),
-  );
-  // Hud-Rect do leitor: a diferença |w*9 - h*16| tolerada é 1% de h*16.
-  assert.match(
-    ps1,
-    /\[Math\]::Abs\(\$w \* 9 - \$h \* 16\) -le \$h \* 16 \* 0\.01/,
   );
 });
 
@@ -214,7 +190,7 @@ test("hudRect: tolerância de 1% (1938 é 16:9; 1940 não) e arredondamento do .
     width: 1920,
     height: 1080,
   });
-  // 8x10: altura do HUD = 4,5 -> [Math]::Round do leitor dá 4 (par), não 5.
+  // 8x10: altura do HUD = 4,5 -> arredondamento para o par (roundHalfEven) dá 4, não 5.
   assert.deepEqual(hudRect({ x: 0, y: 0, width: 8, height: 10 }, "bottom"), {
     x: 0,
     y: 6,
@@ -233,7 +209,7 @@ test("hudRect: entrada inválida não lança", () => {
 
 /* ---------- (c) anchorRects e calibração ---------- */
 
-test("anchorRects 1920x1080: regiões do leitor, loja com 5 cartões e banco com 10 espaços", () => {
+test("anchorRects 1920x1080: regiões medidas, loja com 5 cartões e banco com 10 espaços", () => {
   const r = anchorRects({ width: 1920, height: 1080 });
   assert.deepEqual(r.hud, { x: 0, y: 0, width: 1920, height: 1080 });
   assert.deepEqual(r.hudTop, r.hud);
@@ -320,7 +296,7 @@ test("anchorRects 2560x1351: o HUD fica centralizado, a coluna do banco na borda
   for (const [i, card] of r.shopCards.entries())
     inside(card, r.hud, `cartão ${i + 1}`);
   assert.equal(r.bankSlots.length, 10);
-  // O leitor acha a coluna na borda esquerda da janela (79 px à esquerda do que o HUD centralizado diria).
+  // A coluna do banco fica na borda esquerda da janela (79 px à esquerda do que o HUD centralizado diria).
   close(r.bankSlots[0].x, 2402 * 0.00709, 0.02, "x do 1º espaço");
   assert.ok(
     r.bankSlots[0].x < r.hud.x,

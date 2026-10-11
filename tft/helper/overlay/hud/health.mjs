@@ -3,11 +3,8 @@
  * só reorganiza o que o modelo de tela (`view.mjs`) e o host já informam. Nada é medido aqui.
  *
  * Cada item: `{ id, ok, text, title }`. `ok`: true (funcionando), false (com problema) ou null (sem informação
- * ou sem dado ainda). `id`: "server" | "gep" | "screen" | "game".
+ * ou sem dado ainda). `id`: "server" | "gep" | "data" | "game".
  */
-
-/** Origem que conta como leitura de tela (a do servidor). O piso derivado do nível ("derived") é regra, não leitura. */
-const SCREEN_SOURCES = new Set(["screen"]);
 
 const sourcesOf = (view) =>
   view?.sources && typeof view.sources === "object" ? view.sources : null;
@@ -75,39 +72,40 @@ function gepHealth(view) {
   };
 }
 
-/** Leitor de tela: erro do leitor, em uso, em reserva (o GEP cobre os dados) ou sem informação. */
-function screenHealth(view) {
+/**
+ * Dados do jogador (ouro, nível, XP, loja, itens): o servidor diz quais campos ficaram sem fonte (`sources.missing`, os
+ * nomes para o usuário). O helper não lê a tela; sem o GEP esses campos ficam desconhecidos.
+ */
+function dataHealth(view) {
   const src = sourcesOf(view);
-  if (src?.reader)
+  const missing = Array.isArray(src?.missing)
+    ? src.missing.filter((m) => typeof m === "string" && m)
+    : [];
+  if (missing.length)
     return {
-      id: "screen",
+      id: "data",
       ok: false,
-      text: `Leitor de tela: ${src.reader}`,
-      title: `O leitor de tela relatou: ${src.reader}`,
+      text: `Sem fonte: ${missing.join(", ")}`,
+      title:
+        "Sem o GEP (Overwolf com o TFTAcademy aberto e gravando a partida), estes dados do jogador ficam desconhecidos: o helper não lê a tela. Abra o TFTAcademy para que voltem.",
     };
-  const used = [src?.shopSource, src?.goldSource, src?.levelSource].filter(
-    Boolean,
-  );
-  if (!src || !used.length)
+  // Só afirma "pelo GEP" com evidência: algum campo declarado como "gep" ou o chip do GEP ativo.
+  const fromGep =
+    [src?.shopSource, src?.goldSource, src?.levelSource].includes("gep") ||
+    src?.gep?.state === "ativo";
+  if (!fromGep)
     return {
-      id: "screen",
+      id: "data",
       ok: null,
-      text: "Leitor de tela: sem informação",
-      title: "O servidor ainda não informou a origem dos dados lidos.",
-    };
-  if (used.some((s) => SCREEN_SOURCES.has(s)))
-    return {
-      id: "screen",
-      ok: true,
-      text: "Leitura de tela em uso",
-      title: "Parte dos dados (loja, ouro ou nível) vem da leitura de tela.",
+      text: "Dados do jogador: sem informação",
+      title: "O servidor ainda não informou de onde vêm os dados do jogador.",
     };
   return {
-    id: "screen",
+    id: "data",
     ok: true,
-    text: "Leitor de tela em reserva",
+    text: "Dados do jogador pelo GEP",
     title:
-      "Os dados vêm da fonte GEP; a leitura de tela só entra se ela falhar.",
+      "Ouro, nível, XP, loja e itens do jogador vêm da fonte GEP (TFTAcademy).",
   };
 }
 
@@ -156,7 +154,7 @@ export function healthOf(view, { offline = false, game = null } = {}) {
   return [
     serverHealth(view, offline === true),
     gepHealth(view),
-    screenHealth(view),
+    dataHealth(view),
     gameHealth(game),
   ];
 }

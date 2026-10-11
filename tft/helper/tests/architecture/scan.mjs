@@ -10,6 +10,8 @@ export const root = path.resolve(
 );
 
 const SKIP_DIRS = new Set([
+  // Arquivo histórico fora do sistema (a leitura de tela removida em 2026-10-11): não é código do helper.
+  ".old",
   "node_modules",
   "pesquisa",
   "assets",

@@ -7,8 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   applyLogEvent,
+  gameFilesState,
   gameLog,
-  mergeSources,
   parseLogLine,
   parseSentryEvent,
   phaseKind,
@@ -292,43 +292,42 @@ test("leitor: sem o jogo instalado/aberto devolve indisponível com o motivo, se
   }
 });
 
-test("fusão: rodada do jogo vale mais que a da tela; demais campos seguem da tela com a origem registrada", () => {
-  const screen = {
-    gold: 34,
-    level: 7,
-    xp: "2/32",
-    stage: "2-4",
-    bank: ["DA_Component_BFSword"],
-    shop: null,
-    items: ["DA_Component_BFSword"],
-  };
+test("estado de base: rodada e fase do arquivo do jogo; ouro, nível, XP, itens e loja ficam sem fonte (só o GEP os dá)", () => {
   const game = {
     available: true,
     stage: "2-6",
     phase: "Planning",
     phaseKind: "planning",
   };
-  const merged = mergeSources(screen, game);
-  assert.equal(merged.stage, "2-6");
-  assert.equal(merged.gold, 34);
-  assert.deepEqual(merged.sources, {
+  const base = gameFilesState(game);
+  assert.equal(base.stage, "2-6");
+  assert.equal(base.phase, "Planning");
+  assert.equal(base.phaseKind, "planning");
+  for (const key of [
+    "gold",
+    "level",
+    "xp",
+    "items",
+    "bank",
+    "shop",
+    "removers",
+  ])
+    assert.equal(base[key], null, key);
+  assert.deepEqual(base.sources, {
     stage: "game-log",
     phase: "game-log",
-    gold: "screen",
-    level: "screen",
-    xp: "screen",
-    items: "screen",
+    gold: null,
+    level: null,
+    xp: null,
+    items: null,
     shop: null,
     bench: null,
   });
-  // Arquivo do jogo indisponível: a tela continua valendo.
-  const fallback = mergeSources(screen, { available: false, stage: null });
+  // Arquivo do jogo indisponível: nem a rodada tem fonte.
+  const off = gameFilesState({ available: false, stage: null });
   assert.deepEqual(
-    [fallback.stage, fallback.sources.stage, fallback.phase],
-    ["2-4", "screen", null],
+    [off.stage, off.sources.stage, off.phase],
+    [null, null, null],
   );
-  assert.equal(
-    mergeSources({ ...screen, stage: null }, null).sources.stage,
-    null,
-  );
+  assert.equal(gameFilesState(null).sources.stage, null);
 });

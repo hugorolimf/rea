@@ -1,6 +1,6 @@
 /**
  * Aprimoramentos: o caminho escolhido na partida (2-1, 3-2, 4-2), a oferta aberta e o registro local de correções.
- * Oferta e escolhidos vêm do GEP (Overwolf, lido pelo servidor; sem OCR): o servidor manda `screen.augmentOffer`,
+ * Oferta e escolhidos vêm do GEP (Overwolf, lido pelo servidor; única fonte): o servidor manda `screen.augmentOffer`,
  * `screen.augmentSource` e, na análise, `chosenAugments` (source "gep"). A marcação à mão só corrige (desmarcar).
  */
 export const AUG_STAGES = ["2-1", "3-2", "4-2"];
@@ -43,7 +43,7 @@ export function augOfferView(screen, advice = null) {
       ? {
           state: "sem-fonte",
           text: "aprimoramentos: sem fonte",
-          title: `Sem o GEP (${GEP_REASON[src.reason] ?? src.reason ?? "motivo desconhecido"}): oferta e escolhidos não são lidos, e o helper não lê os cards da tela (sem OCR).${src.held ? " Os escolhidos já lidos nesta partida continuam valendo." : ""}`,
+          title: `Sem o GEP (${GEP_REASON[src.reason] ?? src.reason ?? "motivo desconhecido"}): oferta e escolhidos ficam sem fonte (só o GEP os entrega).${src.held ? " Os escolhidos já lidos nesta partida continuam valendo." : ""}`,
         }
       : src.state === "aguardando"
         ? {

@@ -61,7 +61,7 @@ test("parseTrackerLine: R x y w h, N e ruído", () => {
 
 // --- script ---
 
-test("trackerScript: sem aspas duplas, sem chamadas de entrada e com a mesma identificação do leitor de tela", () => {
+test("trackerScript: sem aspas duplas, sem chamadas de entrada e com a identificação da janela do TFT", () => {
   const script = trackerScript({ parentPid: 4242, intervalMs: 750 });
   assert.ok(!script.includes('"'), "o script não pode conter aspas duplas");
   // Somente leitura da posição: nenhuma API de entrada, captura, memória ou injeção.
@@ -83,7 +83,7 @@ test("trackerScript: sem aspas duplas, sem chamadas de entrada e com a mesma ide
     "SendKeys",
   ])
     assert.ok(!script.includes(forbidden), forbidden);
-  // Mesma identificação de Tft.Client() em screen-reader.ps1.
+  // Identificação da janela do TFT: classe UnrealWindow, título "TFT...", visível e não minimizada.
   for (const needle of [
     "UnrealWindow",
     "TFT",

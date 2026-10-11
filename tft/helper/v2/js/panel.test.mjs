@@ -104,7 +104,6 @@ const panelFor = (opts, tweak) => {
     });
   tweak?.(s);
   state.screen = {
-    running: true,
     stage: "4-2",
     gold: s.options.gold,
     level: 8,

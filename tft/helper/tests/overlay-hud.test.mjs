@@ -61,7 +61,6 @@ function liveInput() {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
   state.screen = {
-    running: true,
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -345,6 +344,15 @@ test("leitura do estado velha: nada vale como ao vivo (sem veredito de rolagem)"
 });
 
 test("nível: '≥' derivado do XP, '~' estimado pelo tabuleiro e o chip do GEP", () => {
+  // Nível observado: firme, sem marca de leitura velha; o ouro não tem mais estado "velho" próprio.
+  const read = liveInput();
+  read.state.screen.sources = { level: "gep", gold: "gep" };
+  read.state.gepStatus = { state: "ativo", lastEventAgeMs: 3000 };
+  const r = viewOf(feedOf(read));
+  assert.equal(r.bar.level.text, "8");
+  assert.equal(r.bar.level.uncertain, false);
+  assert.doesNotMatch(r.bar.level.title, /leitura velha|conflito/);
+  assert.ok(!("stale" in r.bar.gold));
   const derived = liveInput();
   derived.state.screen.sources = { level: "derived" };
   derived.state.gepStatus = { state: "ativo", lastEventAgeMs: 3000 };

@@ -1,7 +1,7 @@
 // Rodar com: node --test tft/helper/tests/no-screen.test.mjs
-// Caracterização do estado só com o GEP (plano PLANO-REMOVER-OCR.md, P0 e P1): uma partida gravada passa pelo montador de
-// estado (app/state.mjs) sem nenhuma leitura de tela, e o GEP ausente ou obsoleto deixa cada campo desconhecido. Fixa
-// também a chave de análise (core/state/analysis-key.mjs) desses estados contra uma cópia congelada da regra.
+// O estado só com o GEP (plano PLANO-REMOVER-OCR.md, P0 a P2/P4): uma partida gravada passa pelo montador de estado
+// (app/state.mjs), que não tem leitura de tela, e o GEP ausente ou obsoleto deixa cada campo desconhecido, com o motivo.
+// Fixa também a chave de análise (core/state/analysis-key.mjs) desses estados contra uma cópia congelada da regra.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -39,25 +39,6 @@ const SCHEMA = `
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "no-screen-"));
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-/** Leitor de tela que nunca leu nada: o estado depende só do GEP e dos arquivos do jogo. */
-const NULL_SCREEN = {
-  status: () => ({
-    running: false,
-    error: null,
-    window: null,
-    stage: null,
-    gold: null,
-    level: null,
-    xp: null,
-    stale: {},
-    items: null,
-    bank: null,
-    unknownItems: 0,
-    shop: null,
-    removers: null,
-    augments: null,
-  }),
-};
 const noGameFiles = { status: () => ({ available: false, stage: null }) };
 const sentryAt = (stage) => ({
   status: () => ({
@@ -105,7 +86,7 @@ function recordedMatch() {
 }
 
 const hubWith = ({ gep, gameFiles = noGameFiles }) =>
-  createStateHub({ screen: NULL_SCREEN, gameFiles, gep });
+  createStateHub({ gameFiles, gep });
 
 /** O que importa de cada leitura: valores, a origem de cada campo e a do `GameState`. */
 const brief = (hub, s) => ({
@@ -468,7 +449,7 @@ test("lacunas do GEP sem tela: loja escondida, banco sem identidade local e GEP 
   assert.equal(hub.gameState(off, GAME_ID).me.gold.reason, "banco-ausente");
 });
 
-test("GEP ausente, sem tela: o chip da interface diz 'GEP off' e que nada foi lido da tela (comportamento atual)", () => {
+test("GEP ausente: o chip da interface diz 'GEP off · sem fonte' e lista o que ficou desconhecido", () => {
   const seen = hubWith({
       gep: {
         status: () => ({
@@ -484,8 +465,21 @@ test("GEP ausente, sem tela: o chip da interface diz 'GEP off' e que nada foi li
       rec: null,
     });
   assert.equal(status.gep.state, "ausente");
-  assert.equal(status.gep.short, "GEP off");
-  assert.match(status.gep.label, /Nada lido da tela agora/);
+  assert.equal(status.gep.short, "GEP off · sem fonte");
+  // O nível tem o piso derivado do estágio (3-2): não está na lista.
+  assert.deepEqual(status.gep.missing, [
+    "ouro",
+    "XP",
+    "loja",
+    "itens",
+    "aprimoramentos",
+  ]);
+  assert.match(
+    status.gep.label,
+    /Sem fonte: ouro, XP, loja, itens, aprimoramentos/,
+  );
+  assert.match(status.gep.label, /Overwolf com o TFTAcademy/);
+  assert.doesNotMatch(status.gep.label, /tela/);
 });
 
 /* ---------- Chave de análise: cópia congelada da regra de core/state/analysis-key.mjs em 2026-10-11 ---------- */

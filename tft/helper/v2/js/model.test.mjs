@@ -22,7 +22,6 @@ const live = () => {
   const s = structuredClone(state),
     r = structuredClone(rec);
   s.screen = {
-    running: true,
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -34,7 +33,7 @@ const live = () => {
   return { state: s, rec: r };
 };
 
-test("modelo ao vivo: números do HUD vêm da tela e a fase é interpretada", () => {
+test("modelo ao vivo: números do HUD vêm do estado do servidor e a fase é interpretada", () => {
   const m = buildModel(live());
   assert.equal(m.status.live, true);
   assert.deepEqual(m.hero.stage, { stage: 4, round: 2 });
@@ -417,13 +416,12 @@ test("nível: lido, derivado (piso) e estimado pelo tabuleiro são distinguidos"
   const m = buildModel(estimated);
   assert.equal(m.hero.level, 6);
   assert.equal(m.hero.levelSource, "estimado");
-  // Leitura em conflito com o XP ou velha avisa; o nível usado pela análise aparece à parte.
-  const stale = live();
-  stale.state.screen.stale = { level: true };
-  stale.rec.currentLevel = 7;
-  const s = buildModel(stale);
-  assert.equal(s.hero.levelStale, true);
+  // O nível usado pela análise aparece à parte (pode estar uma análise atrás do mostrado).
+  const behind = live();
+  behind.rec.currentLevel = 7;
+  const s = buildModel(behind);
   assert.equal(s.hero.levelUsed, 7);
+  assert.equal(s.hero.level, 8);
 });
 
 test("plano ao vivo: score e chance vêm do ranking de comps (melhor comp) ou do próprio plano", () => {
@@ -541,33 +539,37 @@ test("fonte GEP: o modelo traz a origem de ouro/nível e o estado da fonte para 
   assert.equal(hero.levelFrom, "gep");
   assert.equal(hero.levelSource, "lido");
   assert.equal(status.gep.label, "GEP ativo · último evento há 4s");
-  s.screen.sources = { gold: "screen", level: "screen" };
-  assert.equal(buildModel({ state: s, rec: null }).hero.goldFrom, null);
+  // Nível derivado (piso do XP passivo) não é observado pelo GEP; sem origem, nenhum dos dois.
+  s.screen.sources = { gold: null, level: "derived" };
+  const other = buildModel({ state: s, rec: null }).hero;
+  assert.equal(other.goldFrom, null);
+  assert.equal(other.levelFrom, null);
+  assert.equal(other.levelSource, "derivado");
   assert.equal(
     buildModel({ state: { ...s, gepStatus: undefined }, rec: null }).status.gep,
     null,
   );
 });
 
-test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assumiu", () => {
-  assert.match(
-    gepNote({
-      state: "obsoleto",
-      reason: "sem-eventos-recentes",
-      lastEventAgeMs: 90000,
-    }).label,
-    /obsoleto.*90s.*leitura de tela/,
-  );
-  assert.match(
-    gepNote({ state: "ausente", reason: "banco-ausente" }).label,
-    /ausente: banco do TFTAcademy não encontrado.*leitura de tela/,
-  );
-  assert.match(
-    gepNote({ state: "esquema-desconhecido", detail: "events: key" }).label,
-    /esquema.*events: key/,
-  );
+test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem o motivo, sem prometer outra fonte", () => {
+  const stale = gepNote({
+    state: "obsoleto",
+    reason: "sem-eventos-recentes",
+    lastEventAgeMs: 90000,
+  }).label;
+  assert.match(stale, /obsoleto: sem eventos recentes.*\(90s\)/);
+  const absent = gepNote({ state: "ausente", reason: "banco-ausente" }).label;
+  assert.match(absent, /ausente: banco do TFTAcademy não encontrado/);
+  const schema = gepNote({
+    state: "esquema-desconhecido",
+    detail: "events: key",
+  }).label;
+  assert.match(schema, /esquema.*events: key/);
+  // Não há leitura de tela: nenhum texto diz que outra fonte assumiu.
+  for (const label of [stale, absent, schema])
+    assert.doesNotMatch(label, /tela/);
   assert.equal(gepNote(null), null);
-  // Chip curto do HUD: ativo mostra a idade; os demais avisam que caiu para a leitura de tela.
+  // Chip curto do HUD: ativo mostra a idade; os demais dizem que a fonte caiu.
   assert.equal(
     gepNote({ state: "ativo", lastEventAgeMs: 4200 }).short,
     "GEP ativo · 4s",
@@ -584,45 +586,66 @@ test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assum
   assert.equal(gepNote({ state: "esquema-desconhecido" }).short, "GEP ?");
 });
 
-test("fonte GEP: sem GEP o chip diz que a tela assumiu e a dica lista os campos que ela lê", () => {
-  const sources = {
-    gold: "screen",
-    level: "screen",
-    xp: "screen",
-    shop: "screen",
-    items: "screen",
-    bench: null,
+test("fonte GEP: sem GEP o chip diz 'sem fonte' e a dica lista os campos do jogador sem valor (noSource)", () => {
+  // Formato do servidor: motivo de cada campo do jogador sem valor (bench e Wisps não têm nome no aviso).
+  const noSource = {
+    gold: "banco-ausente",
+    level: "banco-ausente",
+    xp: "banco-ausente",
+    shop: "banco-ausente",
+    items: "banco-ausente",
+    bench: "banco-ausente",
+    wisps: "banco-ausente",
+    augments: "banco-ausente",
   };
-  const off = gepNote({ state: "ausente", reason: "banco-ausente" }, sources);
-  assert.equal(off.short, "GEP off · tela");
-  assert.match(off.label, /Lendo da tela: ouro, nível, XP, loja, itens/);
-  assert.deepEqual(off.screen, ["ouro", "nível", "XP", "loja", "itens"]);
-  // Parte dos campos vindo do arquivo do jogo ou do GEP: só os da tela entram.
+  const off = gepNote({ state: "ausente", reason: "banco-ausente" }, noSource);
+  assert.equal(off.short, "GEP off · sem fonte");
+  assert.match(
+    off.label,
+    /Sem fonte: ouro, nível, XP, loja, itens, aprimoramentos/,
+  );
+  assert.match(off.label, /Abra o Overwolf com o TFTAcademy/);
+  assert.deepEqual(off.missing, [
+    "ouro",
+    "nível",
+    "XP",
+    "loja",
+    "itens",
+    "aprimoramentos",
+  ]);
+  assert.equal(off.screen, undefined);
+  // Só os campos presentes em noSource entram (o nível derivado "≥N" tem valor e não aparece), na ordem do aviso.
   const part = gepNote(
     { state: "obsoleto", reason: "sem-eventos-recentes" },
-    { ...sources, gold: "gep", items: "screen", shop: null, xp: null },
+    { items: "sem-eventos-recentes", gold: "sem-eventos-recentes" },
   );
-  assert.equal(part.short, "GEP parado · tela");
-  assert.deepEqual(part.screen, ["nível", "itens"]);
-  // A tela também não leu nada (janela fechada): o aviso é honesto e o chip não promete leitura.
-  const none = gepNote({ state: "ausente", reason: "sem-partida" }, {});
+  assert.equal(part.short, "GEP parado · sem fonte");
+  assert.deepEqual(part.missing, ["ouro", "itens"]);
+  const schema = gepNote({ state: "esquema-desconhecido" }, { shop: "x" });
+  assert.equal(schema.short, "GEP ? · sem fonte");
+  // Nada faltando (fora de partida, sem campo do jogador): o chip não acrescenta nada e não há dica.
+  const none = gepNote({ state: "ausente", reason: "fora-de-partida" }, {});
   assert.equal(none.short, "GEP off");
-  assert.match(none.label, /Nada lido da tela agora/);
-  // GEP ativo: nada muda; sem as origens do servidor, o texto é o de antes.
-  assert.equal(gepNote({ state: "ativo" }, sources).short, "GEP ativo");
-  assert.equal(gepNote({ state: "ativo" }, sources).screen, undefined);
+  assert.deepEqual(none.missing, []);
+  assert.doesNotMatch(none.label, /Sem fonte|Overwolf/);
+  // GEP ativo: nada muda (os motivos "aguardando-gep" etc. não viram aviso de fonte caída).
+  const active = gepNote({ state: "ativo" }, { gold: "aguardando-gep" });
+  assert.equal(active.short, "GEP ativo");
+  assert.equal(active.missing, undefined);
+  assert.doesNotMatch(active.label, /Sem fonte/);
+  // Sem os motivos do servidor, o texto é o de antes.
   assert.equal(
-    gepNote({ state: "ausente", reason: "banco-ausente" }).screen,
+    gepNote({ state: "ausente", reason: "banco-ausente" }).missing,
     undefined,
   );
-  // O modelo repassa as origens da tela ao chip.
+  // O modelo repassa `screen.noSource` ao chip.
   const s = structuredClone(state);
-  s.screen = { stage: "2-1", gold: 3, level: 2, sources };
+  s.screen = { stage: "2-1", sources: { stage: "game-log" }, noSource };
   s.gepStatus = { state: "ausente", reason: "banco-ausente" };
-  assert.equal(
-    buildModel({ state: s, rec: null }).status.gep.short,
-    "GEP off · tela",
-  );
+  const m = buildModel({ state: s, rec: null });
+  assert.equal(m.status.gep.short, "GEP off · sem fonte");
+  assert.equal(m.hero.gold, null);
+  assert.equal(m.status.reader, undefined);
 });
 
 test("fonte GEP: gravação desligada no TFTAcademy diz como ligar, no chip e na dica", () => {
@@ -640,8 +663,20 @@ test("fonte GEP: gravação desligada no TFTAcademy diz como ligar, no chip e na
     off.label,
     /Ligue "gravar partidas" nas configurações do TFTAcademy/,
   );
-  assert.match(off.label, /leitura de tela/);
+  assert.doesNotMatch(off.label, /tela/);
   assert.equal(off.short, "GEP off · ligar gravação");
+  // Com campos sem fonte, a instrução de gravação continua sozinha no chip; a dica lista os campos e só ela instrui.
+  const missing = gepNote(
+    { state: "ausente", reason: "gravacao-desligada", recordGames: false },
+    { gold: "gravacao-desligada", shop: "gravacao-desligada" },
+  );
+  assert.equal(missing.short, "GEP off · ligar gravação");
+  assert.deepEqual(missing.missing, ["ouro", "loja"]);
+  assert.match(
+    missing.label,
+    /Sem fonte: ouro, loja\. Ligue "gravar partidas"/,
+  );
+  assert.doesNotMatch(missing.label, /Abra o Overwolf/);
   assert.match(off.hint, /gravar partidas/);
   // Fora de partida (motivo próprio) com a gravação desligada: o motivo fica, a instrução também.
   const outside = gepNote({

@@ -105,13 +105,13 @@ function barOf(model, stateStale) {
         : {
             text: `${prefix}${lv}`,
             source: hero.levelSource,
-            // "≥" e "~" não são leituras; leitura velha ou em conflito com o XP também esmaece.
-            uncertain: hero.levelStale || hero.levelSource !== "lido",
+            // "≥" e "~" não são leituras: só o nível observado ("lido") fica firme.
+            uncertain: hero.levelSource !== "lido",
             title: `Nível ${lv} (${
               hero.levelFrom === "gep"
                 ? "observado pelo GEP (TFTAcademy)"
                 : (LEVEL_SOURCE[hero.levelSource] ?? hero.levelSource)
-            }${hero.levelStale ? "; leitura velha ou em conflito com o XP" : ""}${
+            }${
               hero.levelUsed != null && hero.levelUsed !== lv
                 ? `; a análise usou o nível ${hero.levelUsed}`
                 : ""
@@ -123,15 +123,11 @@ function barOf(model, stateStale) {
         ? null
         : {
             value: hero.gold,
-            stale: hero.goldStale,
             interest: gain,
             title:
               [
                 hero.goldFrom === "gep"
                   ? "Ouro observado pelo GEP (TFTAcademy)"
-                  : null,
-                hero.goldStale
-                  ? "Última leitura do ouro; a tela está coberta agora"
                   : null,
                 keep != null ? `Piso desta decisão: ${keep}g` : null,
               ]
@@ -513,16 +509,20 @@ function levelOf(model) {
   };
 }
 
-/** Origem declarada de uma leitura (`screen.sources.<chave>`): "gep", "screen", "derived"...; null se não informada. */
+/** Origem declarada de um dado (`screen.sources.<chave>`): "gep", "game-log", "derived" ou null se não informada. */
 const sourceOf = (screen, key) => str(screen?.sources?.[key]);
 
-/** De onde vêm os dados (chip do GEP, leitor de tela, origem da loja, do ouro e do nível), para o indicador de saúde. */
+/**
+ * De onde vêm os dados (chip do GEP, campos sem fonte, origem da loja, do ouro e do nível), para o indicador de saúde.
+ * `missing`: nomes para o usuário dos campos do jogador sem fonte (`status.gep.missing`), ou [] se nenhum.
+ */
 function sourcesOf(model, screen, bar) {
   const shop = sourceOf(screen, "shop");
+  const missing = model.status.gep?.missing;
   return {
     gep: bar?.gep ?? null,
-    reader: model.status.reader ?? null,
-    shopSource: shop === "gep" || shop === "screen" ? shop : null,
+    missing: Array.isArray(missing) ? missing : [],
+    shopSource: shop === "gep" ? shop : null,
     goldSource: sourceOf(screen, "gold"),
     levelSource: sourceOf(screen, "level"),
   };
@@ -546,7 +546,8 @@ function sourcesOf(model, screen, bar) {
  * - `wisps`: `[]` ou o resultado de `deps.wispsView` (só ao vivo);
  * - `economy` e `level`: `{ gold, interest, next, keep, after, pressure, text, alert, alertWhy }` e `{ level, go, cost, passive,
  *   finalLevel, verdict, text }` do plano exibido, ou null;
- * - `sources`: `{ gep, reader, shopSource, goldSource, levelSource }` (de onde vem cada leitura);
+ * - `sources`: `{ gep, missing, shopSource, goldSource, levelSource }` (de onde vem cada dado do jogador; `missing` =
+ *   campos sem fonte, como "ouro" e "loja", quando o GEP não está ativo);
  * - `carousel`: o cartão do carrossel enquanto o servidor diz que estamos nele (ver `carouselOf`), ou null;
  * - `augments`: o cartão dos aprimoramentos enquanto a escolha está aberta no jogo (ou "sem fonte" na rodada dela; ver
  *   `augmentsOf`), ou null.

@@ -138,7 +138,7 @@ export function assembleStep(ctx, run, step) {
       ...step.metadata,
     };
   const options = clientInput(step.client);
-  // Partida revista: a leitura de tela é da partida de agora e não vale para ela (server.mjs).
+  // Partida revista: o estado lido agora é da partida de agora e não vale para ela (server.mjs).
   // Ao vivo, ouro e nível saem do estado do servidor (M7). Os cenários os declaram em `client` (herança do payload antigo,
   // em que o cliente os mandava); aqui viram a leitura do servidor, que dá a mesma entrada para a análise.
   const seen = options.replayGameId

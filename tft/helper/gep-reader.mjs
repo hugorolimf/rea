@@ -93,7 +93,8 @@ export function defaultGepDb() {
 
 /**
  * Banco da ponte própria (`overwolf-bridge/`, app ow-electron do próprio helper): mesmo esquema do TFTAcademy, outro arquivo.
- * `TFT_BRIDGE_DB` troca o caminho. Precedência entre fontes de eventos: própria > TFTAcademy (e, abaixo delas, a tela).
+ * `TFT_BRIDGE_DB` troca o caminho. Precedência entre fontes de eventos: própria > TFTAcademy (sem nenhuma, os campos do
+ * jogador ficam desconhecidos).
  */
 export function ownGepDb() {
   if (process.env.TFT_BRIDGE_DB) return process.env.TFT_BRIDGE_DB;
@@ -475,8 +476,8 @@ const same = (a, b) =>
 /**
  * `bench.item_bench`: array com a linha de CADA jogador (`summoner`, `tag_line`, `bench_items: [{name, count}]`) em ordem
  * instável. Só a linha da identidade local é lida. `found` é false sem identidade ou sem uma única linha dela
- * (desconhecido: nunca vira "banco vazio"). `bank` repete o item `count` vezes, como o leitor de tela; `items` tira os
- * consumíveis; `removers` soma os removedores; `unknown` conta os nomes fora do catálogo.
+ * (desconhecido: nunca vira "banco vazio"). `bank` repete o item `count` vezes (o banco inteiro, como no jogo); `items`
+ * tira os consumíveis; `removers` soma os removedores; `unknown` conta os nomes fora do catálogo.
  */
 export function parseItemBench(data, identity, isItem = () => true) {
   const v = parseJson(data);
@@ -877,7 +878,7 @@ function evaluateCore(snap, ctx, now, staleMs) {
     ...out,
     state: "ativo",
     available: true,
-    // O que o GEP entregou de aprimoramentos e Wisps agora (contagens; os valores ficam em `screen`).
+    // O que o GEP entregou de aprimoramentos e Wisps agora (contagens; os valores ficam no estado visto).
     coverage: {
       augmentOffer: fields.augmentOffer?.count ?? null,
       augmentPicked: fields.augmentPicked?.count ?? null,
@@ -1182,10 +1183,11 @@ export function gepSummary(gep) {
 }
 
 /**
- * Precedência por campo: GEP fresco > leitor de tela > estimativa. `seen` é o estado já mesclado (tela + arquivos do
- * jogo + nível validado). Com a fonte ativa troca ouro, nível, XP, banco de itens e loja pelos do GEP; o estágio do
- * arquivo do jogo continua valendo (GEP só preenche se faltar). Sem GEP fresco devolve `seen` com `gepStatus` apenas.
- * `sources.<campo>` = origem ("gep", "screen", "game-log", "derived"|null); `sourcesDetail.<campo>` traz
+ * O GEP sobre o estado dos arquivos do jogo (`seen`: estágio e fase do Sentry; `gameFilesState`). Com a fonte ativa
+ * preenche ouro, nível, XP, banco de itens e loja, que nenhuma outra fonte permitida observa; o estágio do arquivo do
+ * jogo continua valendo (o GEP só preenche se faltar). Sem GEP fresco devolve `seen` com `gepStatus` apenas: os campos
+ * do jogador ficam desconhecidos, nunca inventados.
+ * `sources.<campo>` = origem ("gep", "game-log", "derived"|null); `sourcesDetail.<campo>` traz
  * `{source, ageMs, confidence}`. `gepBench` (reserva do GEP) só existe com a fonte ativa; o servidor o usa no motor.
  * Também só com a fonte ativa: `wisps` (`[{slot, id, name, known}]`, da loja do GEP; o Wisp nunca entra como campeão em
  * `shop`) e `pickedAugments` (`[{id, stage}]`). Aprimoramentos vêm SÓ do GEP, com ou sem ele: `augments` (ids da oferta
@@ -1209,7 +1211,6 @@ export function mergeGep(seen, gep, pick = () => true) {
     out = { ...seen, gepStatus },
     sources = { ...seen.sources },
     detail = {},
-    stale = { ...seen.stale },
     // `forced`: campos que só o GEP observa (ou em que ele vence sempre) não passam pela precedência com histerese.
     take = (name, field, apply, forced = false) => {
       if (!field || field.value === null || field.value === undefined) return;
@@ -1225,33 +1226,13 @@ export function mergeGep(seen, gep, pick = () => true) {
     };
   take("gold", f.gold, (v) => {
     out.gold = v;
-    stale.gold = false;
   });
   take("level", f.level, (v) => {
     out.level = v;
-    out.levelSource = "gep";
-    out.levelConflict = false;
-    out.levelAmbiguous = false;
-    out.levelInfo = {
-      source: "gep",
-      minimum: false,
-      stale: false,
-      rejected: null,
-      conflict: false,
-      ambiguous: false,
-      read: v,
-    };
-    stale.level = false;
   });
   take("xp", f.xp, (v) => {
     out.xp = v;
-    stale.xp = false;
   });
-  // Sem XP no GEP (nível máximo): a barra antiga da tela seria de outro momento.
-  if (f.level && !f.xp && out.xp != null && pick("level")) {
-    out.xp = null;
-    sources.xp = null;
-  }
   if (seen.sources?.stage !== "game-log")
     take("stage", f.stage, (v) => {
       out.stage = v;
@@ -1277,7 +1258,7 @@ export function mergeGep(seen, gep, pick = () => true) {
         }),
       true,
     );
-  // Loja escondida (shop_visible false) não sobrescreve: o que a tela vê continua valendo.
+  // Loja escondida (shop_visible false) não vale: fica desconhecida (`noSource.shop` = "loja-escondida").
   if (f.shop && f.shop.visible !== false) {
     let shopTaken = false;
     take("shop", f.shop, (v) => {
@@ -1302,7 +1283,7 @@ export function mergeGep(seen, gep, pick = () => true) {
       out.gepBench = v;
     });
   else sources.bench = seen.sources?.bench ?? null;
-  // Aprimoramentos: SÓ o GEP (nada de OCR; a oferta que o leitor de tela lia dos cards é descartada). `augments` = ids da
+  // Aprimoramentos: só o GEP. `augments` = ids da
   // oferta aberta (cartas fora do catálogo ficam de fora e nomeadas em `augmentOffer.unresolved`), `[]` = escolha fechada,
   // null = nenhum evento de aprimoramento nesta partida ainda. Os escolhidos (`pickedAugments: [{id, stage}]`) o servidor
   // usa quando o usuário não corrigiu nada à mão. `augmentSource` diz à tela de onde vêm (ou que não há fonte).
@@ -1338,7 +1319,6 @@ export function mergeGep(seen, gep, pick = () => true) {
   };
   const merged = {
     ...out,
-    stale,
     sources,
     sourcesDetail: { ...seen.sourcesDetail, ...detail },
   };
@@ -1384,8 +1364,8 @@ export function noSourceOf(seen, gep, gepStatus = gepSummary(gep)) {
 }
 
 /**
- * Sem GEP fresco não há fonte de aprimoramentos: a oferta lida da tela (OCR dos cards) é descartada em vez de usada, e
- * `augmentSource.state` = "sem-fonte" com o motivo do GEP (a tela mostra "aprimoramentos: sem fonte"). Os escolhidos já
+ * Sem GEP fresco não há fonte de aprimoramentos: a oferta fica desconhecida (null) e `augmentSource.state` =
+ * "sem-fonte" com o motivo do GEP (a interface mostra "aprimoramentos: sem fonte"). Os escolhidos já
  * observados nesta partida o servidor mantém à parte (app/state.mjs).
  */
 function augmentsWithoutSource(seen, gepStatus) {

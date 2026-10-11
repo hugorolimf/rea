@@ -55,7 +55,6 @@ function liveInput() {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
   state.screen = {
-    running: true,
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -144,7 +143,7 @@ const SHOP = [
   card("DA_18_Aphelios", "Aphelios"),
   card("DA_18_Aphelios", "Aphelios"),
 ];
-/** Põe uma loja lida no estado: GEP ativo (confiável) ou leitura de tela (só provável). */
+/** Põe uma loja no estado, com a origem declarada (GEP ativo por padrão: confiável). */
 function withShop(input, cards = SHOP, source = "gep") {
   input.state.screen.shop = cards;
   input.state.screen.sources = { ...input.state.screen.sources, shop: source };
@@ -261,25 +260,49 @@ test("view: roll ganha o nível em que o servidor manda rolar (veredito 'esperar
   assert.equal(v.roll.spend, null);
 });
 
-test("view: sources resume de onde vem cada leitura (GEP, leitor, loja, ouro, nível)", () => {
+test("view: sources resume de onde vem cada dado (GEP, campos sem fonte, loja, ouro, nível)", () => {
   const input = withShop(liveInput());
   input.state.screen.sources.gold = "gep";
-  input.state.screen.sources.level = "screen";
+  input.state.screen.sources.level = "derived";
   const v = viewOf(feedOf(input));
   assert.deepEqual(v.sources.gep, v.bar.gep);
   assert.equal(v.sources.gep.state, "ativo");
-  assert.equal(v.sources.reader, null);
+  assert.ok(!("reader" in v.sources), "sources não tem mais o campo reader");
+  assert.deepEqual(v.sources.missing, []);
   assert.equal(v.sources.shopSource, "gep");
   assert.equal(v.sources.goldSource, "gep");
-  assert.equal(v.sources.levelSource, "screen");
-  input.state.screen.error = "leitor parou";
-  assert.equal(viewOf(feedOf(input)).sources.reader, "leitor parou");
-  // Sem plano (só o estado) a origem das leituras continua disponível; sem nada no cache não há o que resumir.
+  assert.equal(v.sources.levelSource, "derived");
+  // Origem de loja fora do contrato não vira fonte.
+  const odd = withShop(liveInput(), SHOP, "outra");
+  assert.equal(viewOf(feedOf(odd)).sources.shopSource, null);
+  // Sem plano (só o estado) a origem dos dados continua disponível; sem nada no cache não há o que resumir.
   const idle = viewOf(feedOf({ state: input.state }));
   assert.equal(idle.status, "idle");
   assert.equal(idle.sources.shopSource, "gep");
   assert.equal(viewOf(null).sources, null);
   assert.equal(viewOf(feedOf({})).sources, null);
+});
+
+test("view: sem o GEP, sources.missing lista os campos do jogador sem fonte (status.gep.missing)", () => {
+  const input = liveInput();
+  input.state.gepStatus = { state: "ausente", reason: "sem-banco" };
+  input.state.screen.gold = null;
+  input.state.screen.sources = {
+    gold: null,
+    level: null,
+    xp: null,
+    shop: null,
+  };
+  input.state.screen.noSource = {
+    gold: "GEP ausente",
+    shop: "GEP ausente",
+  };
+  const v = viewOf(feedOf(input));
+  assert.deepEqual(v.sources.missing, ["ouro", "loja"]);
+  assert.equal(v.sources.shopSource, null);
+  assert.equal(v.sources.goldSource, null);
+  assert.match(v.sources.gep.short, /sem fonte/);
+  assert.equal(v.bar.gold, null, "ouro sem fonte fica vazio, não estimado");
 });
 
 test("view: wisps usam deps.wispsView/deps.catalog só ao vivo e toleram a ausência ou a falha deles", () => {
@@ -361,11 +384,16 @@ test("dicas: a compra fica ancorada nos espaços certos da loja (só as cópias 
   assert.equal(r.hidden, 6);
 });
 
-test("dicas: loja só provável (leitura de tela) sai tracejada; sem ouro vira âmbar, sem pulso", () => {
-  const screenShop = buildHints(
-    viewOf(feedOf(withShop(liveInput(), SHOP, "screen"))),
-  );
-  for (const h of screenShop.hints.filter((x) => x.category === "buy"))
+test("dicas: loja só provável (GEP fora do estado ativo) sai tracejada; sem ouro vira âmbar, sem pulso", () => {
+  const staleGep = withShop(liveInput());
+  staleGep.state.gepStatus = {
+    state: "obsoleto",
+    reason: "sem-eventos-recentes",
+    lastEventAgeMs: 90_000,
+  };
+  const probableShop = buildHints(viewOf(feedOf(staleGep)));
+  assert.ok(probableShop.hints.some((x) => x.category === "buy"));
+  for (const h of probableShop.hints.filter((x) => x.category === "buy"))
     assert.equal(h.probable, true, h.id);
   const input = withShop(liveInput());
   planOf(input).stage.buyNow.find((u) => u.id === "DA_18_Aphelios").affordable =

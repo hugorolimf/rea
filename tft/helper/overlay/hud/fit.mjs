@@ -74,7 +74,7 @@ export function aspectLabel(width, height) {
 }
 
 /**
- * Quadro do palco: o HUD 16:9 (ancorado embaixo, como o leitor), a classe da janela e as faixas livres.
+ * Quadro do palco: o HUD 16:9 (ancorado embaixo, como em `hudRect`), a classe da janela e as faixas livres.
  * `kind`: "16:9" (HUD = palco), "wide" (barras nas laterais), "tall" (faixa livre em cima) ou "unknown" (tamanho inválido).
  * @param {{width:number,height:number}} stage
  */

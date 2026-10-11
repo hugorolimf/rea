@@ -29,9 +29,7 @@ export const GAME = {
 // Nível, XP e rodada moram em core/state/level.mjs (M7); aqui só são reexportados para quem importa de rules.mjs.
 export {
   levelFloor,
-  levelFromXp,
   levelsForXp,
   passiveXpBetween,
-  reconcileLevel,
   roundNumber,
 } from "./core/state/level.mjs";

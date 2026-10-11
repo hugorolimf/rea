@@ -1055,7 +1055,7 @@ test("fit.mjs e follow.mjs são puros: sem DOM, sem node:*, sem entrada ao jogo"
   );
   assert.ok(
     hudFit.includes("hudRect"),
-    "usa o hudRect do leitor como referência",
+    "usa o hudRect de geometry.mjs como referência",
   );
 });
 

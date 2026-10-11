@@ -1,16 +1,16 @@
 // Geometria do HUD do jogo para o overlay integrado (puro: sem DOM, sem node:*; roda no navegador e no Node).
 //
-// Fonte única dos números: os MESMOS do leitor de tela (screen-reader.ps1: $GOLD $LEVEL $XP $STAGE $SLOT $SHOP e a função
-// Hud-Rect). Um teste (tests/overlay-geometry.test.mjs) lê o .ps1 e confere que cada número aqui bate; se o leitor for
-// recalibrado, o teste falha até este arquivo acompanhar. O .ps1 não é editado.
+// Fonte única dos números do overlay: posições dos elementos do HUD do jogo (ouro, nível, XP, estágio, banco de itens e
+// loja) e o retângulo 16:9 que serve de referência. São só onde o overlay DESENHA as âncoras; nada é lido da tela.
+// tests/overlay-geometry.test.mjs fixa os valores literais de HUD_REGIONS para que uma mudança aqui seja deliberada.
 //
 // As regiões são FRAÇÕES do retângulo 16:9 do HUD (não da área cliente), medidas numa captura 2044x1149 (HUD padrão).
-// Convenção: as larguras e posições x são frações da LARGURA do HUD; y e h, da ALTURA (como o `Grab` do leitor).
+// Convenção: as larguras e posições x são frações da LARGURA do HUD; y e h, da ALTURA.
 //
-// O que NÃO vem do leitor (o leitor só lê o texto, não precisa da forma inteira) está marcado [ESTIMADO] e é corrigido na
+// As formas que não foram medidas diretamente (só a faixa do texto foi) estão marcadas [ESTIMADO] e são corrigidas na
 // prática pelo modo calibrar da página (deslocamento e escala da grade inteira, sem captura de tela).
 
-/** Regiões lidas pelo leitor (valores idênticos a screen-reader.ps1). */
+/** Regiões medidas do HUD 16:9 do jogo (frações; ver a convenção no topo). */
 export const HUD_REGIONS = Object.freeze({
   gold: Object.freeze({ x: 0.5316, y: 0.8191, w: 0.0235, h: 0.0261 }),
   /** Só o número depois de "Nv.". */
@@ -39,7 +39,7 @@ export const HUD_REGIONS = Object.freeze({
 });
 
 /**
- * [ESTIMADO] Cartão inteiro da loja, derivado da faixa do nome (o leitor só lê a faixa). `padX` = folga de cada lado em
+ * [ESTIMADO] Cartão inteiro da loja, derivado da faixa do nome (só a faixa foi medida). `padX` = folga de cada lado em
  * fração da LARGURA do HUD; `above`/`below` = quanto o cartão se estende acima/abaixo da faixa, em fração da ALTURA. Valores
  * olhados no HUD padrão 1920x1080 (cartão ~190 x ~176 px, dentro do passo de 0.105); o desvio é corrigido no modo calibrar.
  */
@@ -80,7 +80,7 @@ function roundHalfEven(n) {
 }
 
 /**
- * Retângulo 16:9 do HUD dentro da área cliente (porte exato de `Hud-Rect` do leitor). O HUD do jogo é 16:9 e escalado sem
+ * Retângulo 16:9 do HUD dentro da área cliente (regra do overlay para o HUD do jogo). O HUD do jogo é 16:9 e escalado sem
  * esticar: numa janela mais larga ocupa a altura toda, centralizado; numa mais alta ocupa a largura toda e fica colado
  * embaixo (`anchor` "bottom") ou em cima ("top", usado pelo estágio). Janela a até 1% de 16:9 conta como 16:9.
  * @param {{x:number,y:number,width:number,height:number}} client área cliente
@@ -165,7 +165,7 @@ export function applyCalibration(rect, cal, hud) {
   };
 }
 
-/** Região em fração do retângulo de referência -> px (como o `Grab` do leitor). `x`, `y`, `w`, `h` sobrescrevem a região. */
+/** Região em fração do retângulo de referência -> px (x e w pela largura, y e h pela altura). `x`, `y`, `w`, `h` sobrescrevem a região. */
 function inRect(
   ref,
   region,
@@ -189,13 +189,13 @@ const rounded = (r) => ({
 /**
  * Retângulos (px da área cliente, origem 0,0) de tudo que o HUD do jogo tem de ancorável, já calibrados.
  *
- * Referências (como no leitor): ouro, nível, XP e loja usam o HUD ancorado embaixo; o estágio, o ancorado em cima; o banco
- * usa a coluna da borda ESQUERDA da janela (largura = a do HUD 16:9, altura/âncora do HUD de baixo), como o leitor
- * a localiza: numa janela ultrawide a coluna não vai para o centro com o HUD. `hud` e `hudTop` voltam SEM calibração
+ * Referências: ouro, nível, XP e loja usam o HUD ancorado embaixo; o estágio, o ancorado em cima; o banco usa a coluna
+ * da borda ESQUERDA da janela (largura = a do HUD 16:9, altura/âncora do HUD de baixo), que é onde o jogo a desenha:
+ * numa janela ultrawide a coluna não vai para o centro com o HUD. `hud` e `hudTop` voltam SEM calibração
  * (são a referência do cálculo e o quadro 16:9 que o modo calibrar desenha). A calibração de cada região escala em torno
  * do centro da própria referência.
  *
- * [ESTIMADO] `shopCards` (SHOP_CARD), `bank` (BANK_PAD) e `levelXp` (LEVEL_XP_PAD) não existem no leitor; são derivados.
+ * [ESTIMADO] `shopCards` (SHOP_CARD), `bank` (BANK_PAD) e `levelXp` (LEVEL_XP_PAD) não foram medidos; são derivados.
  * @param {{width:number,height:number}} stage área cliente do jogo (origem 0,0)
  * @param {{dx:number,dy:number,scale:number}} [calibration]
  */
@@ -209,7 +209,7 @@ export function anchorRects(stage, calibration = DEFAULT_CALIBRATION) {
   const R = HUD_REGIONS;
   const cooked = (raw, ref) => rounded(applyCalibration(raw, cal, ref));
 
-  // Coluna do banco: ancorada na borda esquerda, com a largura do HUD 16:9 (rect do leitor: x do quadro, y/altura do HUD).
+  // Coluna do banco: ancorada na borda esquerda, com a largura do HUD 16:9 (x do quadro, y/altura do HUD).
   const bankFrame = {
     x: client.x,
     y: hud.y,

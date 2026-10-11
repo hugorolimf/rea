@@ -18,13 +18,10 @@ const gepScreen = (shop, extra = {}) => ({
   sources: { shop: "gep" },
   ...extra,
 });
-const tela = (shop, extra = {}) => ({
-  shop,
-  sources: { shop: "screen" },
-  ...extra,
-});
+// Fonte GEP fora do estado "ativo" (parou de mandar eventos): a mesma loja vale só como provável.
+const PARADO = { gepStatus: { state: "obsoleto" } };
 
-test("shopView: GEP fresco é confiável; leitura de tela é provável; sem leitura não sabe", () => {
+test("shopView: GEP fresco é confiável; GEP parado é provável; sem a loja do GEP não sabe", () => {
   const shop = [card("A"), null, card("B"), null, null];
   const gep = shopView(gepScreen(shop), { gepStatus: { state: "ativo" } });
   assert.equal(gep.known, true);
@@ -34,15 +31,18 @@ test("shopView: GEP fresco é confiável; leitura de tela é provável; sem leit
     { slot: 1, id: "A" },
     { slot: 3, id: "B" },
   ]);
-  assert.equal(shopView(tela(shop)).confidence, "provavel");
   // GEP que deixou de estar ativo não vale como confiável.
-  assert.equal(
-    shopView(gepScreen(shop), { gepStatus: { state: "obsoleto" } }).confidence,
-    "provavel",
-  );
+  const parado = shopView(gepScreen(shop), PARADO);
+  assert.equal(parado.known, true);
+  assert.equal(parado.source, "gep");
+  assert.equal(parado.confidence, "provavel");
   assert.equal(shopView(undefined).known, false);
   assert.equal(shopView({ shop: null }).known, false);
   assert.equal(shopView({ shop: [], sources: {} }).known, false);
+  // Só o GEP entrega a loja: cartas sem `sources.shop === "gep"` (sem origem ou outra origem) não viram loja conhecida.
+  assert.equal(shopView({ shop }).known, false);
+  assert.equal(shopView({ shop, sources: { shop: null } }).known, false);
+  assert.equal(shopView({ shop, sources: { shop: "screen" } }).known, false);
 });
 
 test("shopView: Wisps (id nulo) ficam de fora; cartas sem campeão são contadas como não reconhecidas", () => {
@@ -65,7 +65,7 @@ test("shopView: Wisps (id nulo) ficam de fora; cartas sem campeão são contadas
   assert.equal(view.unreadable, 1);
   // `screen.wisps` com o espaço também tira a carta, mesmo que ela traga um id.
   const viaList = shopView(
-    tela([card("A"), card("B")], { wisps: [{ slot: 2, id: "W" }] }),
+    gepScreen([card("A"), card("B")], { wisps: [{ slot: 2, id: "W" }] }),
   );
   assert.deepEqual(
     viaList.slots.map((s) => s.id),
@@ -73,8 +73,17 @@ test("shopView: Wisps (id nulo) ficam de fora; cartas sem campeão são contadas
   );
 });
 
-test("shopView: leitura de tela sem nenhuma carta não prova loja vazia; GEP com tudo vendido é loja vazia conhecida", () => {
-  assert.equal(shopView(tela([null, null, null, null, null])).known, false);
+test("shopView: loja sem fonte (escondida, GEP off) não prova loja vazia; GEP com tudo vendido é loja vazia conhecida", () => {
+  assert.equal(
+    shopView({ shop: null, sources: {}, noSource: { shop: "loja-escondida" } })
+      .known,
+    false,
+  );
+  assert.equal(
+    shopView({ shop: null, sources: {}, noSource: { shop: "banco-ausente" } })
+      .known,
+    false,
+  );
   const vendida = shopView(gepScreen([null, null, null, null, null]));
   assert.equal(vendida.known, true);
   assert.deepEqual(vendida.slots, []);
@@ -115,7 +124,7 @@ test("describeMatch: selo, texto de compra e a diferença confiável x provável
   const prov = describeMatch(
     matchWanted(
       { id: "A", name: "Ahri", want: 1 },
-      shopView(tela([card("A"), card("A"), null, null, null])),
+      shopView(gepScreen([card("A"), card("A"), null, null, null]), PARADO),
     ),
   );
   assert.equal(prov.badge, "NA LOJA?");
@@ -197,7 +206,8 @@ test("crossShop: nada na loja deixa a lista como está e avisa de leve; loja nã
 
 test("shopStatus: espaço não reconhecido não vira afirmação de 'nenhuma peça'; provável marca o '?'", () => {
   const view = shopView(
-    tela([card("Z"), { text: "Borrão", id: null }, null, null, null]),
+    gepScreen([card("Z"), { text: "Borrão", id: null }, null, null, null]),
+    PARADO,
   );
   const s = shopStatus(view, 0);
   assert.equal(s.text, "nenhuma peça do plano reconhecida na loja agora");
@@ -213,7 +223,7 @@ test("refineShopHits: espaços e confiança vêm da loja lida; peça que saiu da
   ];
   const out = refineShopHits(
     server,
-    shopView(tela([null, null, card("A"), null, null])),
+    shopView(gepScreen([null, null, card("A"), null, null]), PARADO),
   );
   assert.equal(out.length, 1);
   assert.deepEqual(out[0].slots, [3]);
@@ -237,7 +247,6 @@ function live(screenExtra, buyNow) {
   const s = structuredClone(state),
     r = structuredClone(rec);
   s.screen = {
-    running: true,
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -267,7 +276,7 @@ test("modelo: peça do Comprar na loja do GEP sobe, ganha selo e mantém a chave
     live(
       {
         shop: [card("X"), null, card("B"), null, null],
-        sources: { shop: "gep", level: "screen" },
+        sources: { shop: "gep", level: "gep" },
       },
       [buy("A"), buy("B"), buy("X")],
     ),
@@ -287,17 +296,40 @@ test("modelo: peça do Comprar na loja do GEP sobe, ganha selo e mantém a chave
   assert.equal(step.note.state, "hit");
 });
 
-test("modelo: loja da tela é só provável; sem loja lida não há nota nem selo; nada na loja avisa de leve", () => {
-  const prov = buildModel(
+test("modelo: loja do GEP parado é só provável; sem a loja do GEP não há nota nem selo; nada na loja avisa de leve", () => {
+  const parado = live(
+    { shop: [card("A"), null, null, null, null], sources: { shop: "gep" } },
+    [buy("A")],
+  );
+  parado.state.gepStatus = {
+    state: "obsoleto",
+    reason: "sem-eventos-recentes",
+  };
+  assert.equal(buyStep(buildModel(parado)).rows[0].shop.badge, "NA LOJA?");
+
+  // GEP off: sem loja (null, com o motivo) não há selo nem nota de "nada na loja".
+  const off = live(
+    {
+      shop: null,
+      sources: {},
+      noSource: { shop: "banco-ausente" },
+    },
+    [buy("A")],
+  );
+  off.state.gepStatus = { state: "ausente", reason: "banco-ausente" };
+  const offModel = buildModel(off);
+  assert.equal(buyStep(offModel).rows[0].shop, null);
+  assert.equal(buyStep(offModel).note, undefined);
+
+  // Cartas sem a origem GEP não valem como loja.
+  const semGep = buildModel(
     live(
-      {
-        shop: [card("A"), null, null, null, null],
-        sources: { shop: "screen" },
-      },
+      { shop: [card("A"), null, null, null, null], sources: { shop: null } },
       [buy("A")],
     ),
   );
-  assert.equal(buyStep(prov).rows[0].shop.badge, "NA LOJA?");
+  assert.equal(buyStep(semGep).rows[0].shop, null);
+  assert.equal(buyStep(semGep).note, undefined);
 
   const sem = buildModel(live({}, [buy("A")]));
   assert.equal(buyStep(sem).rows[0].shop, null);

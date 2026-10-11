@@ -739,7 +739,7 @@
     box-shadow: 0 0 0 2px var(--go);
   }
 
-  /* ============================================================ Inventário lido da tela */
+  /* ============================================================ Inventário lido (banco de itens do GEP) */
   /* Banco, o que montar agora e o que está a um componente. */
   .inventory {
     display: grid;

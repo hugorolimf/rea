@@ -111,7 +111,7 @@ export function buildsRow(r) {
 /**
  * Peça da lista Comprar. Se ela está na loja agora (`r.shop`, de shop-match.js): contorno de ação, selo "NA LOJA" sobre
  * a borda do retrato (sobreposto: não ocupa espaço, a linha não muda de altura) e, no lugar da chance, o que fazer
- * ("comprar 1 · #3"). Só provável (loja lida da tela): selo "NA LOJA?" tracejado e a dica diz isso.
+ * ("comprar 1 · #3"). Só provável (loja do GEP com a fonte parada): selo "NA LOJA?" tracejado e a dica diz isso.
  */
 function buyTile(r) {
   const s = r.shop,

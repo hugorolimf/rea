@@ -37,7 +37,7 @@ const isSupport = (f) =>
   f.startsWith("tests/") ||
   f.startsWith("scripts/") ||
   f === "v2/js/catalog-fixture.mjs" ||
-  /^(build-.*|download-assets|bench-candidates)\.mjs$/.test(f);
+  /^(build-.*|download-assets)\.mjs$/.test(f);
 const PRODUCT = ALL.filter((f) => !isSupport(f));
 const inCore = (f) => f.startsWith("core/");
 
@@ -1095,5 +1095,87 @@ test("D4 (M5b): um só piso de reroll rápido; as regras de ouro e de vida só e
     redefined,
     [],
     "regra de ouro/vida reimplementada fora de core/economy: chame a função do núcleo.",
+  );
+});
+
+/* ---------- Sem leitura de tela (decisão do usuário de 2026-10-11) ---------- */
+// O OCR, os glifos, os templates de ícone, a calibração e as ferramentas de medição da leitura de tela foram arquivados
+// fora do sistema (pasta .old/ na raiz do helper). A fonte de ouro, nível, XP, loja e itens é o GEP; sem ele, desconhecido
+// explícito. Nenhum arquivo do sistema pode importar ou citar o arquivo histórico, nem voltar a ler a tela.
+
+/** Todos os arquivos de código, script, página, estilo e dados fora do arquivo histórico, de dependências e da pesquisa. */
+function systemFiles(dir = root, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (![".old", ".git", "node_modules", "pesquisa"].includes(e.name))
+        systemFiles(full, out);
+    } else if (/\.(mjs|js|cjs|ps1|psm1|cmd|bat|html|css|json)$/.test(e.name))
+      out.push(path.relative(root, full).replace(/\\/g, "/"));
+  }
+  return out;
+}
+const SELF = "tests/architecture.test.mjs";
+/** Regras para o código do sistema (os testes podem citar os nomes proibidos para provar que não estão lá). */
+const NO_SCREEN = [
+  [/screen-?reader/i, "usa o leitor de tela"],
+  [/Windows\.Media\.Ocr|\bOcrEngine\b/, "usa o OCR do Windows"],
+  [
+    /CopyFromScreen|\bBitBlt\b|\bPrintWindow\b|desktopCapturer|capturePage|getDisplayMedia|captureScreenshot/,
+    "captura a tela",
+  ],
+  [
+    /screen-glyphs|bench-?candidates|item-icon-candidates|screen-calibration|\/api\/screen-capture|Hud-Rect/i,
+    "usa glifos, templates de ícone ou a calibração da leitura de tela",
+  ],
+  [/TFT_SCREEN_READER/, "liga um leitor de tela por configuração"],
+];
+
+test("sem leitura de tela: nenhum arquivo fora de .old/ importa ou cita o arquivo histórico", () => {
+  const bad = [];
+  for (const f of systemFiles()) {
+    if (f === SELF) continue;
+    const text = read(f);
+    if (/(^|[^\w.-])\.old[\\/]/.test(text)) bad.push(f);
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    "o sistema não depende de .old/ (é só arquivo histórico)",
+  );
+});
+
+test("sem leitura de tela: o sistema não usa leitor de tela, OCR, captura de tela nem templates de ícone", () => {
+  const bad = [];
+  for (const f of systemFiles()) {
+    if (f.startsWith("tests/") || f.endsWith(".test.mjs")) continue;
+    const text = read(f);
+    for (const [rule, what] of NO_SCREEN)
+      if (rule.test(text)) bad.push(`${f}: ${what}`);
+  }
+  assert.deepEqual(bad, []);
+});
+
+test("sem leitura de tela: servidor e scripts não iniciam leitor nenhum e os globs de teste não entram em .old/", () => {
+  const server = read("server.mjs"),
+    scripts = systemFiles().filter((f) => /\.(ps1|cmd|bat)$/.test(f));
+  assert.doesNotMatch(
+    server,
+    /powershell(\.exe)?["'`]/i,
+    "o servidor não lança PowerShell",
+  );
+  for (const f of scripts)
+    assert.doesNotMatch(read(f), /-File\s+\S*screen/i, f);
+  // A suíte roda `tests/*.test.mjs`, `v2/js/*.test.mjs` e `*.test.mjs` (sem recursão): só arquivos dessas pastas casam,
+  // e o arquivo histórico é uma pasta (os testes antigos de lá nunca entram).
+  for (const dir of ["tests", "v2/js", "."])
+    for (const e of fs.readdirSync(path.join(root, dir), {
+      withFileTypes: true,
+    }))
+      if (e.name.endsWith(".test.mjs"))
+        assert.ok(e.isFile(), `${dir}/${e.name}`);
+  assert.ok(
+    !listSources().some((f) => f.startsWith(".old/")),
+    "o arquivo histórico fica fora das regras de arquitetura",
   );
 });

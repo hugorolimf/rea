@@ -391,27 +391,34 @@ export function gameLog({
 }
 
 /**
- * Junta o estado do leitor de tela com o do jogo: a rodada do arquivo do jogo vale mais que a do OCR; ouro, nível,
- * XP, banco de itens e loja continuam vindo da tela. `sources` diz de onde veio cada campo (null = não lido).
+ * Estado de base da partida a partir dos arquivos do jogo (`gameLog().status`): a rodada e a fase do Sentry. Ouro, nível,
+ * XP, banco de itens e loja não estão em nenhum arquivo do jogo: saem nulos aqui e só o GEP os preenche (mergeGep).
+ * `sources` diz de onde veio cada campo (null = sem fonte).
  */
-export function mergeSources(screen, game) {
-  const stageFromGame = game?.available && game.stage ? game.stage : null,
-    from = (value, source) =>
-      value === null || value === undefined ? null : source;
+export function gameFilesState(game) {
+  const ok = game?.available === true,
+    stage = ok && game.stage ? game.stage : null;
   return {
-    ...screen,
-    stage: stageFromGame ?? screen.stage ?? null,
-    phase: game?.available ? game.phase : null,
-    phaseKind: game?.available ? game.phaseKind : null,
+    stage,
+    phase: ok ? game.phase : null,
+    phaseKind: ok ? game.phaseKind : null,
+    gold: null,
+    level: null,
+    xp: null,
+    items: null,
+    bank: null,
+    unknownItems: 0,
+    shop: null,
+    removers: null,
     sources: {
-      stage: stageFromGame ? "game-log" : from(screen.stage, "screen"),
-      phase: game?.available && game.phase ? "game-log" : null,
-      gold: from(screen.gold, "screen"),
-      level: from(screen.level, "screen"),
-      xp: from(screen.xp, "screen"),
-      items: from(screen.bank, "screen"),
-      shop: from(screen.shop, "screen"),
-      // Reserva: sem fonte própria aqui. Só o GEP fresco a informa (mergeGep); a entrada manual foi removida.
+      stage: stage ? "game-log" : null,
+      phase: ok && game.phase ? "game-log" : null,
+      gold: null,
+      level: null,
+      xp: null,
+      items: null,
+      shop: null,
+      // Reserva: sem fonte aqui. Só o GEP fresco a informa (mergeGep); a entrada manual foi removida.
       bench: null,
     },
   };

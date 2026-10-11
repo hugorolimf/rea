@@ -333,19 +333,19 @@ export function createRecommender(deps) {
         },
         stages,
       };
-    // Partida revista: a leitura de tela é da partida de agora e não vale para ela.
+    // Partida revista: o estado lido agora é da partida de agora e não vale para ela.
     const seen = options.replayGameId
       ? {}
       : seenState(metadata.gameId, gepContext(metadata, snapshot));
     // Reserva: só com origem GEP fresca (a entrada manual saiu e o cliente não a define). Sem GEP fica vazia.
     options.bench = gepBenchUnits(seen, HERO_ID);
-    // Banco de itens: o do servidor (GEP ou tela, sem consumíveis) manda; o do cliente só vale numa partida revista.
+    // Banco de itens: o do servidor (GEP, sem consumíveis) manda; o do cliente só vale numa partida revista.
     options.inventory = recommendInventory(
       options.replayGameId ? options.inventory : [],
       seen,
       (id) => itemIds.has(id),
     );
-    // Banco lido da tela (ou enviado pelo cliente): sem ele o plano de itens não atribui nada, só lista desejos.
+    // Banco observado pelo GEP (ou enviado pelo cliente): sem ele o plano de itens não atribui nada, só lista desejos.
     options.bankRead =
       !options.replayGameId &&
       (Array.isArray(seen.items) || options.inventory.length > 0);

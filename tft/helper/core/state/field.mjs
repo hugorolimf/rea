@@ -1,26 +1,20 @@
 // `Field<T>`: um valor do estado do jogo com a sua origem. null é "desconhecido"; um palpite nunca é um valor sem a
 // confiança "estimated". ESM puro (o tempo entra como argumento: `now`).
 
-/** Origens possíveis de um campo. "gamefile"/"sentry"/"lcu" são os arquivos e o cliente do jogo; "screen" é OCR/ícones. */
+/** Origens possíveis de um campo. "gamefile"/"sentry"/"lcu" são os arquivos e o cliente do jogo; "gep", os eventos do
+ * Overwolf gravados pelo TFTAcademy. Não há leitura de tela. */
 export const FIELD_SOURCES = [
   "gamefile",
   "sentry",
   "lcu",
   "gep",
-  "screen",
   "manual",
   "derived",
   "estimated",
 ];
 
-/** Quanto confiar: observado pelo jogo (GEP, arquivos) > lido da tela > derivado de regra > informado > estimado. */
-export const FIELD_CONFIDENCE = [
-  "observed",
-  "read",
-  "derived",
-  "manual",
-  "estimated",
-];
+/** Quanto confiar: observado pelo jogo (GEP, arquivos) > derivado de regra > informado > estimado. */
+export const FIELD_CONFIDENCE = ["observed", "derived", "manual", "estimated"];
 
 /** Campo desconhecido: sem valor, sem origem. */
 export const unknownField = () => ({
@@ -54,7 +48,7 @@ export function field(
   };
 }
 
-/** Confiança de uma origem do estado: o GEP e os arquivos do jogo são observados; a tela é lida; o piso é derivado. */
+/** Confiança de uma origem do estado: o GEP e os arquivos do jogo são observados; o piso é derivado. */
 export function confidenceOf(source) {
   switch (source) {
     case "gep":
@@ -62,8 +56,6 @@ export function confidenceOf(source) {
     case "sentry":
     case "lcu":
       return "observed";
-    case "screen":
-      return "read";
     case "derived":
       return "derived";
     case "manual":

@@ -104,7 +104,7 @@ export function createDraw(ui) {
             ? `<span class="cell" data-uncertain="${b.level.uncertain ? 1 : 0}" title="${esc(b.level.title)}"><small class="lbl">Nível</small><b>${esc(b.level.text)}</b>${b.xp ? `<small class="sub">${esc(b.xp.text)} XP${b.xp.cost != null ? ` · ${esc(b.xp.cost)}g` : ""}</small>` : ""}</span>`
             : "",
           b.gold
-            ? `<span class="cell" data-stale="${b.gold.stale ? 1 : 0}" title="${esc(b.gold.title)}"><small class="lbl">Ouro</small><b>${esc(b.gold.value)}</b>${b.gold.interest != null ? `<small class="sub go">+${esc(b.gold.interest)} juros</small>` : ""}</span>`
+            ? `<span class="cell" title="${esc(b.gold.title)}"><small class="lbl">Ouro</small><b>${esc(b.gold.value)}</b>${b.gold.interest != null ? `<small class="sub go">+${esc(b.gold.interest)} juros</small>` : ""}</span>`
             : "",
           b.hp != null
             ? `<span class="cell" title="Vida"><small class="lbl">Vida</small><b>${esc(b.hp)}</b></span>`

@@ -144,7 +144,7 @@
       }
     }
   }
-  /* Fonte GEP (Overwolf/TFTAcademy): verde = alimentando o helper; âmbar = parada ou esquema desconhecido (usa a leitura de tela).
+  /* Fonte GEP (Overwolf/TFTAcademy): verde = alimentando o helper; âmbar = parada ou esquema desconhecido (campos do jogador sem fonte).
      Texto longo ("GEP off · ligar gravação") corta com reticências; o texto inteiro está na dica. */
   .gep-chip {
     display: block;
@@ -202,7 +202,7 @@
     place-items: center;
     flex: none;
     transition: opacity var(--dur-3);
-    /* Leitura velha: o anel esmaece e o número fica em itálico (não depende só da opacidade). */
+    /* Valor não observado (nível derivado ou estimado): o anel esmaece e o número fica em itálico (não depende só da opacidade). */
     &[data-stale="1"] {
       opacity: 0.6;
       & .ring-center {

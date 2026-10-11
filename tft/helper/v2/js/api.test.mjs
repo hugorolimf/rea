@@ -19,7 +19,7 @@ const state = (extra = {}) => ({
     gold: 30,
     level: 4,
     items: ["A"],
-    sources: { level: "screen" },
+    sources: { level: "gep" },
   },
   ...extra,
 });

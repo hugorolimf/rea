@@ -5,13 +5,12 @@ import { confidenceOf, field, unknownField } from "./field.mjs";
 /** Nome da origem no estado mesclado (`sources`) -> origem do `Field`. */
 const SOURCE = {
   gep: "gep",
-  screen: "screen",
   "game-log": "sentry",
   derived: "derived",
 };
 
 /**
- * Estado da partida a partir do que o servidor leu (`seen`: tela + arquivos do jogo + GEP, já com uma fonte só por
+ * Estado da partida a partir do que o servidor leu (`seen`: arquivos do jogo + GEP, já com uma fonte só por
  * campo). `now` (epoch ms) só serve para datar as observações; ele entra como argumento.
  */
 export function buildGameState(seen, { now = null, gameId = null } = {}) {
@@ -55,7 +54,7 @@ export function buildGameState(seen, { now = null, gameId = null } = {}) {
   };
 }
 
-/** Resumo para o /api/state: listas viram contagem (os valores já estão em `screen`); escalares ficam inteiros. */
+/** Resumo para o /api/state: listas viram contagem (os valores já estão no estado visto); escalares ficam inteiros. */
 export function summarizeState(state) {
   const brief = (f) =>
     Array.isArray(f.value)

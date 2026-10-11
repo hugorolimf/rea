@@ -1,7 +1,6 @@
 // Custo do caminho de GET /api/state, offline: recompõe a rota com os MESMOS módulos do servidor (somente leitura)
-// e mede cada parte. Não abre porta, não fala com o servidor da 3218, não inicia o leitor de tela (sem `sync`, sem
-// PowerShell) e não grava nada (nem `matches.observe`, que escreve em data/). Lê os arquivos do jogo e o banco do GEP
-// como o servidor faz.
+// e mede cada parte. Não abre porta, não fala com o servidor da 3218 e não grava nada (nem `matches.observe`, que
+// escreve em data/). Lê os arquivos do jogo e o banco do GEP como o servidor faz.
 //
 //   node scripts/bench-state.mjs [--iterations 20] [--interval 450] [--json]
 //
@@ -11,10 +10,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gameLog, mergeSources } from "../game-log.mjs";
+import { gameFilesState, gameLog } from "../game-log.mjs";
 import { gepReader, mergeGep } from "../gep-reader.mjs";
 import { levelTracker } from "../level.mjs";
-import { screenReader } from "../screen-reader.mjs";
 import { streakTracker } from "../streak.mjs";
 import { snapshotSignature } from "../core/state/snapshot-identity.mjs";
 
@@ -36,22 +34,7 @@ const boardPath = path.join(
 const catalog = JSON.parse(
   fs.readFileSync(path.join(root, "catalog.json"), "utf8"),
 );
-const icons = JSON.parse(
-  fs.readFileSync(path.join(root, "assets-manifest.json"), "utf8"),
-);
-
 // Mesmas composições de server.mjs (sem iniciar nada).
-const screen = screenReader(
-  root,
-  [],
-  catalog.champions.map((c) => ({ id: c.apiName, names: [c.name] })),
-  [],
-  {
-    launch: () => {
-      throw Error("bench-state não inicia o leitor de tela");
-    },
-  },
-);
 const gameFiles = gameLog(),
   levels = levelTracker(),
   streaks = streakTracker(),
@@ -59,7 +42,6 @@ const gameFiles = gameLog(),
     champions: new Set(catalog.champions.map((c) => c.apiName)),
     items: new Set(catalog.items.map((i) => i.apiName)),
   });
-void icons;
 
 /** Partida em andamento para a fonte GEP (mesma forma de `gepContext` em server.mjs). */
 const gepContextFor = (metadata, hero) => ({
@@ -96,16 +78,15 @@ for (let i = 0; i < iterations; i++) {
   const hero = snapshot.statsBlock.players.find(
     (p) => String(p.playerId) === HERO_ID,
   );
-  // seenState(): tela + arquivos do jogo + nível + GEP.
-  const screenNow = mark("screen.status", () => screen.status());
+  // seenState(): arquivos do jogo + GEP + nível (sem a precedência com histerese, que é só aritmética).
   const files = mark("gameFiles.status", () => gameFiles.status(gameId));
-  const merged = mark("mergeSources", () => mergeSources(screenNow, files));
-  const leveled = mark("levels.apply", () => levels.apply(merged, gameId));
+  const base = mark("gameFilesState", () => gameFilesState(files));
   const gepNow = mark("gep.status", () =>
     gep.status(gepContextFor({ gameId, phase: "InProgress" }, hero)),
   );
-  const { gepStatus, ...seen } = mark("mergeGep", () =>
-    mergeGep(leveled, gepNow),
+  const merged = mark("mergeGep", () => mergeGep(base, gepNow));
+  const { gepStatus, ...seen } = mark("levels.apply", () =>
+    levels.apply(merged, gameId),
   );
   mark("streaks", () => {
     streaks.observe({ gameId, stage: seen.stage, hp: hero?.health });

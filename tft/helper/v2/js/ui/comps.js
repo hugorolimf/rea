@@ -384,7 +384,7 @@ export function compsContext(data) {
  * Tela de seleção de comp. `onPick(id)` fixa uma comp; `onRelease()` volta às sugestões automáticas.
  * `update({comps, ranking, autoTitle, roster, bank, equipped, goalId, source})` redesenha só quando algo visível mudou;
  * `roster` é o de `rosterOf` (roster.js): suas peças em campo e na reserva;
- * `bank` é o banco de itens lido da tela (null sem leitura) e `equipped`, {campeão: itens} do seu tabuleiro.
+ * `bank` é o banco de itens lido (null sem fonte) e `equipped`, {campeão: itens} do seu tabuleiro.
  */
 export function mountComps(root, { onPick, onRelease }) {
   const $ = (id) => root.querySelector(`#${id}`),

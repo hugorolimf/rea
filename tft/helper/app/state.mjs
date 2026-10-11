@@ -1,9 +1,10 @@
-// Camada de estado do servidor: chama as fontes (tela, arquivos do jogo, GEP) e monta O estado da partida, com um só
-// valor por campo. É a única que guarda memória entre leituras (nível confirmado, fonte ativa de cada campo, contadores
-// de divergência); as regras moram em core/state/. O servidor lê ouro, nível, XP, estágio, loja e itens daqui e o
-// cliente só manda decisões do usuário (ver core/state/inputs.mjs).
-import { mergeSources } from "../game-log.mjs";
-import { holdPickedAugments, mergeGep } from "../gep-reader.mjs";
+// Camada de estado do servidor: chama as fontes (arquivos do jogo e GEP) e monta O estado da partida, com um só valor por
+// campo. É a única que guarda memória entre leituras (último nível observado, fonte ativa de cada campo, contadores de
+// divergência); as regras moram em core/state/. O servidor lê ouro, nível, XP, estágio, loja e itens daqui e o cliente
+// só manda decisões do usuário (ver core/state/inputs.mjs). Não há leitura de tela: o que o GEP não informa fica
+// desconhecido, com o motivo em `noSource`.
+import { gameFilesState } from "../game-log.mjs";
+import { holdPickedAugments, mergeGep, noSourceOf } from "../gep-reader.mjs";
 import { levelTracker } from "../level.mjs";
 import { buildGameState, summarizeState } from "../core/state/game-state.mjs";
 import {
@@ -41,12 +42,11 @@ export const gepContextFor = (heroId) => (metadata, snapshot) => {
 };
 
 /**
- * Cria o montador de estado. Fontes: `screen.status()`, `gameFiles.status(gameId)`, `gep.status(ctx)`. `now` é o
- * relógio (injetável em teste); `onDivergence(evento)` recebe cada divergência GEP x tela (o servidor grava no log);
- * `readings` é o número de leituras seguidas da histerese.
+ * Cria o montador de estado. Fontes: `gameFiles.status(gameId)` e `gep.status(ctx)`. `now` é o relógio (injetável em
+ * teste); `onDivergence(evento)` recebe cada divergência GEP x arquivo do jogo (o servidor grava no log); `readings` é o
+ * número de leituras seguidas da histerese.
  */
 export function createStateHub({
-  screen,
   gameFiles,
   gep,
   levels = levelTracker(),
@@ -59,15 +59,13 @@ export function createStateHub({
     picked = null; // últimos aprimoramentos escolhidos vistos no GEP, por partida (holdPickedAugments)
   return {
     /**
-     * Estado visto agora para a partida `gameId`: leitura de tela + arquivos do jogo, nível validado, e por cima o GEP
-     * nos campos em que ele vale (fresco e consistente, com histerese). O formato é o de sempre (`gold`, `level`,
-     * `sources`...); `gameState(seen)` dá a mesma coisa normalizada. `gepCtx` null = sem GEP nesta chamada.
+     * Estado visto agora para a partida `gameId`: arquivos do jogo (estágio e fase) e, por cima, o GEP nos campos em que
+     * ele vale (fresco e consistente, com histerese no estágio); depois o nível (observado ou piso derivado). O formato
+     * é o de sempre (`gold`, `level`, `sources`, `noSource`...); `gameState(seen)` dá a mesma coisa normalizada.
+     * `gepCtx` null = sem GEP nesta chamada.
      */
     seen(gameId, gepCtx = null) {
-      const base = levels.apply(
-          mergeSources(screen.status(), gameFiles.status(gameId)),
-          gameId,
-        ),
+      const base = gameFilesState(gameFiles.status(gameId)),
         gepNow = gepCtx ? gep.status(gepCtx) : null,
         step = reduceSources(memory, {
           gameId,
@@ -78,23 +76,27 @@ export function createStateHub({
       memory = step.memory;
       divergence = step.divergence;
       for (const event of step.events) onDivergence(event);
-      // Aprimoramentos escolhidos são cumulativos na partida: um silêncio do GEP não os apaga (só a partida nova).
-      const held = holdPickedAugments(
-        picked,
-        mergeGep(
+      const merged = mergeGep(
           base,
           gepNow,
           (name) => name === "bench" || step.picks[name] === "gep",
         ),
-        gameId,
-      );
+        // Nível: o do GEP (já validado na precedência) ou o piso derivado do último observado; o motivo de um campo
+        // sem valor é recalculado depois dele (o piso é um valor, marcado "derived").
+        leveled = levels.apply(merged, gameId),
+        // Aprimoramentos escolhidos são cumulativos na partida: um silêncio do GEP não os apaga (só a partida nova).
+        held = holdPickedAugments(
+          picked,
+          { ...leveled, noSource: noSourceOf(leveled, gepNow) },
+          gameId,
+        );
       picked = held.memory;
       return held.seen;
     },
     /** `GameState` do estado visto (campos com valor, fonte, confiança e idade), resumido para o /api/state. */
     gameState: (seen, gameId = null) =>
       summarizeState(buildGameState(seen, { now: now(), gameId })),
-    /** Contadores de divergência GEP x tela. */
+    /** Contadores de divergência GEP x arquivo do jogo. */
     divergence: () => ({ ...divergence }),
   };
 }

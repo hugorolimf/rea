@@ -35,7 +35,7 @@ import {
 } from "../gep-reader.mjs";
 import { analysisInputs } from "../core/state/inputs.mjs";
 import { buildGameState } from "../core/state/game-state.mjs";
-import { mergeSources } from "../game-log.mjs";
+import { gameFilesState } from "../game-log.mjs";
 import { analyze } from "../engine.mjs";
 import { recommendInventory } from "../item-holdings.mjs";
 
@@ -653,29 +653,18 @@ function activeGep(over = {}) {
     ...over,
   };
 }
-const screenSeen = () =>
-  mergeSources(
-    {
-      running: true,
-      error: null,
-      window: true,
-      stage: "2-1",
-      gold: 7,
-      level: 5,
-      xp: "4/20",
-      stale: { gold: false, level: false, xp: false, stage: false },
-      items: ["DA_Component_BFSword"],
-      bank: ["DA_Component_BFSword"],
-      unknownItems: 1,
-      shop: [{ text: "Algo", id: "DA_18_Elise" }, null, null, null, null],
-      removers: 0,
-    },
-    { available: true, stage: "1-3", phase: "Planning", phaseKind: "planning" },
-  );
+/** Estado dos arquivos do jogo (Sentry em 1-3), sobre o qual o servidor mescla o GEP. */
+const filesSeen = () =>
+  gameFilesState({
+    available: true,
+    stage: "1-3",
+    phase: "Planning",
+    phaseKind: "planning",
+  });
 
-test("precedência: GEP fresco vence a tela em ouro, nível, XP, banco de itens e loja; cada campo com origem e idade", () => {
+test("GEP fresco preenche ouro, nível, XP, banco de itens e loja; cada campo com origem e idade", () => {
   const { gep } = activeGep();
-  const seen = mergeGep(screenSeen(), gep);
+  const seen = mergeGep(filesSeen(), gep);
   assert.equal(seen.gold, 0);
   assert.equal(seen.level, 2);
   assert.equal(seen.xp, "0/2");
@@ -712,8 +701,7 @@ test("precedência: GEP fresco vence a tela em ouro, nível, XP, banco de itens 
   assert.equal(seen.sourcesDetail.gold.confidence, "observed");
   assert.equal(seen.sourcesDetail.gold.inferred, true);
   assert.equal(typeof seen.sourcesDetail.level.ageMs, "number");
-  assert.equal(seen.levelInfo.source, "gep");
-  assert.equal(seen.stale.gold, false);
+  assert.deepEqual(seen.noSource, { augments: "aguardando-gep" });
   assert.equal(seen.gepStatus.state, "ativo");
   assert.equal(
     "fields" in seen.gepStatus,
@@ -724,65 +712,69 @@ test("precedência: GEP fresco vence a tela em ouro, nível, XP, banco de itens 
 
 test("precedência: o estágio do arquivo do jogo continua valendo; o GEP só preenche quando falta", () => {
   const { gep } = activeGep();
-  const withLog = mergeGep(screenSeen(), gep);
+  const withLog = mergeGep(filesSeen(), gep);
   assert.equal(withLog.stage, "1-3");
   assert.equal(withLog.sources.stage, "game-log");
-  const noLog = mergeGep(
-    mergeSources({ stage: null, gold: null, stale: {} }, { available: false }),
-    gep,
-  );
+  const noLog = mergeGep(gameFilesState({ available: false }), gep);
   assert.equal(noLog.stage, "1-3");
   assert.equal(noLog.sources.stage, "gep");
 });
 
-test("fallback: GEP obsoleto, ausente ou com esquema novo deixa a tela como está, sem erro", () => {
-  const base = screenSeen();
+test("sem GEP fresco (obsoleto, ausente ou desligado) os campos do jogador ficam desconhecidos, com o motivo, sem erro", () => {
+  const base = filesSeen();
   const { file } = activeGep();
   const stale = reader(file, { t: at(LAST_DT + 600) }).status(ctx);
   const merged = mergeGep(base, stale);
-  assert.equal(merged.gold, 7);
-  assert.equal(merged.level, 5);
-  assert.equal(merged.sources.gold, "screen");
-  assert.equal(merged.sources.level, "screen");
+  assert.equal(merged.gold, null);
+  assert.equal(merged.level, null);
+  assert.equal(merged.sources.gold, null);
+  assert.equal(merged.sources.level, null);
   assert.equal(merged.gepStatus.state, "obsoleto");
   assert.equal(merged.gepBench, undefined);
+  assert.equal(merged.noSource.gold, "sem-eventos-recentes");
+  assert.equal(merged.noSource.items, "sem-eventos-recentes");
+  assert.equal(merged.stage, "1-3", "o estágio do arquivo do jogo continua");
   const absent = mergeGep(
     base,
     reader(path.join(tmp, "x.db"), { t: 0 }).status(ctx),
   );
   assert.deepEqual(
     [absent.gold, absent.gepStatus.state, absent.gepStatus.reason],
-    [7, "ausente", "banco-ausente"],
+    [null, "ausente", "banco-ausente"],
   );
+  assert.equal(absent.noSource.shop, "banco-ausente");
   assert.equal(mergeGep(base, null).gepStatus.reason, "desligada");
-  assert.equal(mergeGep(base, undefined).gold, 7);
+  assert.equal(mergeGep(base, null).noSource.gold, "desligada");
+  assert.equal(mergeGep(base, undefined).gold, null);
 });
 
-test("fallback por campo: sem a identidade confirmada o banco de itens fica com a tela; loja escondida não troca a da tela", () => {
+test("por campo: sem a identidade local confirmada o banco de itens fica desconhecido; loja escondida também", () => {
   const { file } = activeGep();
   const gep = reader(file, { t: at(LAST_DT + 3) }).status({
     ...ctx,
     local: { name: "Outra", tag: "Z" },
   });
-  const seen = mergeGep(screenSeen(), gep);
+  const seen = mergeGep(filesSeen(), gep);
   assert.equal(seen.gold, 0, "ouro vem do GEP");
-  assert.deepEqual(
+  assert.equal(
     seen.items,
-    ["DA_Component_BFSword"],
-    "itens ficam com a tela",
+    null,
+    "nunca o banco de outro jogador nem um banco vazio",
   );
-  assert.equal(seen.sources.items, "screen");
+  assert.equal(seen.sources.items, null);
+  assert.equal(seen.noSource.items, "identidade-divergente");
   // Loja escondida segundo o GEP.
   const hidden = structuredClone(activeGep().gep);
   hidden.fields.shop.visible = false;
-  const s2 = mergeGep(screenSeen(), hidden);
-  assert.equal(s2.shop[0].id, "DA_18_Elise");
-  assert.equal(s2.sources.shop, "screen");
+  const s2 = mergeGep(filesSeen(), hidden);
+  assert.equal(s2.shop, null);
+  assert.equal(s2.sources.shop, null);
+  assert.equal(s2.noSource.shop, "loja-escondida");
 });
 
 test("reserva do GEP no formato do motor: só com GEP ativo, só do jogador, estrelas desconhecidas ficam de fora", () => {
   const { gep } = activeGep();
-  const seen = mergeGep(screenSeen(), gep);
+  const seen = mergeGep(filesSeen(), gep);
   const units = gepBenchUnits(seen, "47445859");
   assert.deepEqual(
     units.map((u) => [u.championName, u.starLevel, u.playerId, u.source]),
@@ -794,7 +786,7 @@ test("reserva do GEP no formato do motor: só com GEP ativo, só do jogador, est
     ],
   );
   assert.deepEqual(units[0].itemNames, []);
-  assert.deepEqual(gepBenchUnits(mergeGep(screenSeen(), null), "47445859"), []);
+  assert.deepEqual(gepBenchUnits(mergeGep(filesSeen(), null), "47445859"), []);
   assert.deepEqual(
     gepBenchUnits(
       { gepBench: [{ id: "DA_18_Rakan", stars: null, items: [] }] },
@@ -803,7 +795,7 @@ test("reserva do GEP no formato do motor: só com GEP ativo, só do jogador, est
     [],
   );
   // Sem GEP a reserva fica sem fonte (a entrada manual foi removida; nunca o que a interface mandar).
-  assert.equal(mergeGep(screenSeen(), null).sources.bench, null);
+  assert.equal(mergeGep(filesSeen(), null).sources.bench, null);
 });
 
 test("evaluateGep: relógio adiantado em relação ao banco não gera idade negativa", () => {
@@ -853,7 +845,7 @@ test("motor: a reserva do GEP chega ao motor com origem gep; sem GEP a reserva �
       evidence: new Map(),
     });
   const { gep } = activeGep();
-  const seen = mergeGep(screenSeen(), gep);
+  const seen = mergeGep(filesSeen(), gep);
   const withGep = run(gepBenchUnits(seen, String(HERO)));
   assert.deepEqual(
     withGep.self.reserve.map((u) => [u.id, u.stars, u.source]).sort(),
@@ -865,7 +857,7 @@ test("motor: a reserva do GEP chega ao motor com origem gep; sem GEP a reserva �
     ],
   );
   assert.deepEqual(
-    run(gepBenchUnits(mergeGep(screenSeen(), null), String(HERO))).self.reserve,
+    run(gepBenchUnits(mergeGep(filesSeen(), null), String(HERO))).self.reserve,
     [],
   );
   // E o banco de itens do GEP (vazio de componentes) vale como leitura: o enviado pelo cliente não o sobrescreve.
@@ -876,7 +868,7 @@ test("motor: a reserva do GEP chega ao motor com origem gep; sem GEP a reserva �
   assert.deepEqual(
     recommendInventory(
       ["DA_Component_BFSword"],
-      mergeGep(screenSeen(), null),
+      mergeGep(filesSeen(), null),
       (id) => items.has(id),
     ),
     ["DA_Component_BFSword"],
@@ -1127,7 +1119,7 @@ test("Wisp na loja pelo leitor e pela mescla: wisps separados, shop só com camp
     ],
   );
   assert.equal(gep.coverage.wisps, 2);
-  const seen = mergeGep(screenSeen(), gep);
+  const seen = mergeGep(filesSeen(), gep);
   assert.deepEqual(seen.wisps, gep.fields.shop.wisps);
   assert.equal(seen.sources.wisps, "gep");
   assert.equal(seen.sourcesDetail.wisps.confidence, "observed");
@@ -1152,15 +1144,15 @@ test("Wisp na loja pelo leitor e pela mescla: wisps separados, shop só com camp
     ).shop,
     [null, "DA_18_Rakan"],
   );
-  // Loja escondida ou escolhida a da tela pela precedência: os Wisps do GEP não entram.
+  // Loja escondida ou negada pela precedência: os Wisps do GEP não entram.
   const hidden = structuredClone(gep);
   hidden.fields.shop.visible = false;
-  assert.equal(mergeGep(screenSeen(), hidden).wisps, undefined);
-  const denied = mergeGep(screenSeen(), gep, (name) => name !== "shop");
+  assert.equal(mergeGep(filesSeen(), hidden).wisps, undefined);
+  const denied = mergeGep(filesSeen(), gep, (name) => name !== "shop");
   assert.equal(denied.wisps, undefined);
   assert.equal(denied.sources.wisps, undefined);
-  // Sem GEP, nada de Wisps (a tela não os distingue).
-  assert.equal(mergeGep(screenSeen(), null).wisps, undefined);
+  // Sem GEP, nada de Wisps.
+  assert.equal(mergeGep(filesSeen(), null).wisps, undefined);
 });
 
 // --- aprimoramentos (oferta e escolhidos) --------------------------------------------------------------------------
@@ -1442,9 +1434,9 @@ test("aprimoramentos: sem a coluna feature só as chaves inequívocas (a chave m
   ]);
 });
 
-test("aprimoramentos na mescla: só o GEP (a oferta lida da tela por OCR é descartada) e os escolhidos vêm com ele, mesmo contra a precedência dos demais campos", () => {
+test("aprimoramentos na mescla: só o GEP (uma oferta antiga no estado é descartada) e os escolhidos vêm com ele, mesmo contra a precedência dos demais campos", () => {
   const gep = augGep(FULL_AUG_ROWS);
-  const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Fora"] };
+  const base = { ...filesSeen(), augments: ["DA_Kingslayer", "DA_Fora"] };
   const seen = mergeGep(base, gep);
   // A oferta do FULL_AUG_ROWS foi seguida da escolha (`picked_augment`), mas o `augments.me` vazio não veio: segue aberta.
   assert.deepEqual(seen.augments, [
@@ -1484,15 +1476,13 @@ test("aprimoramentos na mescla: só o GEP (a oferta lida da tela por OCR é desc
   const state = buildGameState(seen, { now: 1_000_000, gameId: "g" });
   assert.equal(state.me.pickedAugments.source, "gep");
   assert.equal(state.me.augmentOffer.source, "gep");
-  // A precedência com histerese (tela escolhida para ouro) não esconde o que só o GEP observa.
-  const screenWins = mergeGep(base, gep, () => false);
-  assert.equal(screenWins.gold, 7);
-  assert.equal(screenWins.sources.gold, "screen");
-  assert.deepEqual(screenWins.pickedAugments, [
-    { id: "DA_Min_Max", stage: "2-1" },
-  ]);
-  assert.equal(screenWins.augments.length, 3);
-  // GEP obsoleto ou ausente: SEM FONTE de aprimoramentos (a oferta da tela não volta), sem erro e sem escolhidos.
+  // A precedência negando os demais campos (ouro sem fonte) não esconde o que só o GEP observa.
+  const denied = mergeGep(base, gep, () => false);
+  assert.equal(denied.gold, null);
+  assert.equal(denied.sources.gold, null);
+  assert.deepEqual(denied.pickedAugments, [{ id: "DA_Min_Max", stage: "2-1" }]);
+  assert.equal(denied.augments.length, 3);
+  // GEP obsoleto ou ausente: SEM FONTE de aprimoramentos (a oferta antiga não volta), sem erro e sem escolhidos.
   const stale = mergeGep(
     base,
     augGep(FULL_AUG_ROWS, { augments: AUGS }, LAST_DT + 900),
@@ -1518,7 +1508,7 @@ test("aprimoramentos na mescla: só o GEP (a oferta lida da tela por OCR é desc
 });
 
 test("aprimoramentos: carta fora do catálogo fica de fora e NOMEADA; oferta vazia fecha a escolha; sem eventos é aguardando", () => {
-  const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Min_Max"] };
+  const base = { ...filesSeen(), augments: ["DA_Kingslayer", "DA_Min_Max"] };
   const partial = augGep(
     [
       augRow(
@@ -1560,7 +1550,7 @@ test("aprimoramentos: carta fora do catálogo fica de fora e NOMEADA; oferta vaz
   assert.deepEqual(seen.augmentSource.unresolved, ["DA_Inexistente"]);
   assert.equal(seen.pickedAugments, undefined);
   assert.equal(seen.sources.pickedAugments, undefined);
-  // Oferta vazia (escolha feita/fechada): nenhuma oferta, mesmo que a tela ainda mostre uma antiga.
+  // Oferta vazia (escolha feita/fechada): nenhuma oferta, mesmo que o estado ainda traga uma antiga.
   const closed = augGep(
     [augRow(LAST_DT + 1, "augments", "me", "{}")],
     { augments: AUGS },

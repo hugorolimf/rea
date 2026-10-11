@@ -36,9 +36,6 @@
     "catalogSource": "https://raw.communitydragon.org/latest/cdragon/tft/en_us.json",
     "catalogDate": "2026-10-09T00:48:57.373Z",
     "screen": {
-      "running": false,
-      "error": null,
-      "window": null,
       "stage": null,
       "gold": null,
       "level": null,

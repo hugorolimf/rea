@@ -205,9 +205,9 @@ export const kindCounts = (items, kinds) =>
     .filter((k) => k.count);
 
 /**
- * Banco de itens lido da tela, como o painel o mostra: `bank` com todo espaço reconhecido (repetidos e consumíveis
- * incluídos, na ordem do banco), `items` só o que a análise usa e `unknown` os espaços ocupados sem ícone
- * reconhecido. Null enquanto a tela não foi lida (ou é uma partida revista, sem leitura).
+ * Banco de itens lido (GEP), como o painel o mostra: `bank` com todo espaço reconhecido (repetidos e consumíveis
+ * incluídos, na ordem do banco), `items` só o que a análise usa e `unknown` os espaços ocupados sem item
+ * reconhecido. Null sem banco lido (GEP sem fonte) ou numa partida revista.
  */
 export function bankReading(screen) {
   if (!screen || !Array.isArray(screen.items)) return null;

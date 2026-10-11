@@ -1,14 +1,13 @@
 // Laço do servidor que conduz a análise SOZINHO durante uma partida (M10b, ARQUITETURA.md): antes, a recomendação só se
 // renovava com a interface web aberta e visível (era ela quem chamava POST /api/recommend, e o navegador pausa abas
-// ocultas), e o leitor de tela só rodava enquanto alguma tela lia /api/state. Aqui o servidor:
+// ocultas). Aqui o servidor:
 //   1. enquanto há partida em andamento, lê o MESMO estado que GET /api/state devolve (`readState`) a cada tick barato;
 //   2. calcula a chave de análise que o cliente usa (core/state/analysis-key.mjs) com as decisões do usuário que o
 //      servidor lembra (comp fixada, trocas, aprimoramentos: `decisions(gameId)`, guardadas em plan-state);
 //   3. só quando a chave muda (e respeitando o intervalo mínimo; a chave já traz a janela de 120 s) roda o pipeline da
 //      recomendação (`refresh`), que grava no cache de análises e no feed do overlay. Um POST posterior com a mesma chave
-//      responde do cache (`results`); chave igual não reanalisa;
-//   4. mantém o leitor de tela ligado durante a partida (as demais fontes, GEP e arquivos do jogo, são lidas a cada
-//      `readState`) e o desliga quando a partida termina.
+//      responde do cache (`results`); chave igual não reanalisa. As fontes (GEP e arquivos do jogo) são lidas a cada
+//      `readState`; nada é ligado ou desligado com a partida.
 // Sem partida o tick é só `probe()` (fase do cliente em cache): nenhuma leitura de estado e nenhuma análise. Este módulo
 // não importa o servidor nem o motor: tudo entra por parâmetro (os testes usam relógio e pipeline falsos).
 import {
@@ -99,11 +98,11 @@ export function createRecentResults({
 /**
  * Cria o laço. Dependências (todas injetáveis):
  * - `probe()` -> `{ inMatch, gameId }`: há partida em andamento? Barata (fase do cliente em cache); é o único custo sem partida.
- * - `readState()` -> corpo de GET /api/state (com `screen`, `signature`, `match`, `players`...); pode lançar (arquivo do jogo ausente).
+ * - `readState()` -> corpo de GET /api/state (com o estado visto, `signature`, `match`, `players`...); pode lançar (arquivo do
+ *   jogo ausente). O GEP e os arquivos do jogo são lidos a cada `readState`.
  * - `decisions(gameId)` -> últimas decisões do usuário nesta partida, ou null (valem `DEFAULT_DECISIONS`).
  * - `refresh(decisions, state)` -> `{ status }`: roda o pipeline (grava nos caches e no feed do overlay); 200 = análise feita.
  * - `results`: `createRecentResults()` compartilhado com o POST (`has(chave)` evita repetir).
- * - `sources.sync(ativo)`: liga/desliga o leitor de tela (GEP e arquivos do jogo são lidos a cada `readState`).
  * - `now`, `timers`: relógio e agendador; `report(nome, ms)`: tempo para o TEMPO; `log(nível, texto)`.
  * `intervalMs` = tick; `minGapMs` = mínimo entre análises (dobra a cada falha seguida, até `maxBackoffMs`).
  * `maxTickMs`: um tick que passa disso (uma fonte que nunca responde) é abandonado e o laço segue no próximo; o laço nunca
@@ -115,7 +114,6 @@ export function createAutoRefresh({
   decisions = () => null,
   refresh,
   results,
-  sources = { sync() {} },
   now = Date.now,
   timers = { setTimeout, clearTimeout },
   intervalMs = 3000,
@@ -152,8 +150,7 @@ export function createAutoRefresh({
     rejectedKey = null;
     lastRunAt = -Infinity;
     failures = 0;
-    sources.sync(false);
-    log("INFO", "laço automático: partida terminou; leitor de tela parado");
+    log("INFO", "laço automático: partida terminou");
   }
   async function step() {
     const p = await probe();
@@ -168,7 +165,6 @@ export function createAutoRefresh({
         `laço automático: partida ${p.gameId ?? "?"} em andamento; o servidor conduz a análise sem a interface`,
       );
     }
-    sources.sync(true);
     const state = await readState();
     if (!state) return { action: "wait", reason: "sem-estado" };
     if (state.gameId !== gameId) {
@@ -268,15 +264,12 @@ export function createAutoRefresh({
       stopped = false;
       schedule(startDelayMs);
     },
-    /** Desliga o laço e o leitor de tela (se havia partida). */
+    /** Desliga o laço. */
     stop() {
       stopped = true;
       timers.clearTimeout(timer);
       timer = null;
-      if (active) {
-        active = false;
-        sources.sync(false);
-      }
+      active = false;
     },
     /** Estado do laço (diagnóstico e testes). */
     status: () => ({

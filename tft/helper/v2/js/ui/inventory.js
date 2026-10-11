@@ -14,7 +14,7 @@ const cap = (text) =>
   `<p class="eyebrow inv-cap" aria-hidden="true">${text}</p>`;
 
 /**
- * Inventário lido da tela: o banco de itens, o que montar agora (componente + componente → item → quem
+ * Inventário lido (banco de itens do GEP): o banco de itens, o que montar agora (componente + componente → item → quem
  * usa) e o que está a um componente. Dados de `ownedItemAdvice` do servidor; sem leitura, fica oculto.
  */
 export function mountInventory(root) {
@@ -27,7 +27,7 @@ export function mountInventory(root) {
       )}${ARROW}${itemPortrait({ id: r.item.id, name: r.item.name }, { size: 26 })}${portrait(r.championId, r.champion, { size: 22 })}</li>`;
   return {
     /**
-     * `reading` é o banco lido da tela (ver `bankReading`): aparece na hora, sem esperar a análise, com todo espaço
+     * `reading` é o banco de itens lido (ver `bankReading`): aparece na hora, sem esperar a análise, com todo espaço
      * reconhecido e um marcador para cada espaço ocupado que não foi reconhecido. `advice` (montar agora, falta um
      * componente) e `emblems` só valem se a análise foi feita com este mesmo banco; senão esperam a próxima.
      */

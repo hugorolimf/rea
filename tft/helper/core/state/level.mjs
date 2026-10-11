@@ -14,32 +14,6 @@ export const XP = {
   carouselRound: 4,
 };
 
-/**
- * Nível a partir do XP mostrado ("4/10" → 4): o total do XP é o que falta para o próximo nível. Totais repetidos
- * (2: nível 1 ou 2; 68: nível 8 ou 9) são resolvidos pelo nível conhecido mais próximo (`hint`); sem pista, o maior.
- * `prevXp` (a leitura anterior) detecta a subida dentro do empate: no mesmo nível o XP atual nunca cai, então o
- * mesmo total com XP menor e o total do nível seguinte igual significa que subiu ("60/68" → "4/68" com pista 8 → 9).
- */
-export function levelFromXp(xp, hint = null, prevXp = null) {
-  const cur = /^(\d+)\/(\d+)$/.exec(xp ?? "");
-  const levels = levelsForXp(xp);
-  if (!levels.length) return null;
-  const total = Number(cur[2]);
-  const prev = /^(\d+)\/(\d+)$/.exec(prevXp ?? "");
-  if (
-    hint != null &&
-    prev &&
-    prev[2] === cur[2] &&
-    Number(cur[1]) < Number(prev[1]) &&
-    XP.xpToNext[hint + 1] === total
-  )
-    hint += 1;
-  if (levels.length === 1 || hint == null) return levels.at(-1);
-  return levels.reduce((best, lv) =>
-    Math.abs(lv - hint) < Math.abs(best - hint) ? lv : best,
-  );
-}
-
 /** Níveis possíveis para o XP mostrado ("4/10" → [4]; "5/2" e "0/2" → [1, 2]); vazio se o total não existe no jogo. */
 export function levelsForXp(xp) {
   const total = Number(/^(\d+)\/(\d+)$/.exec(xp ?? "")?.[2]);
@@ -47,45 +21,6 @@ export function levelsForXp(xp) {
   return Object.entries(XP.xpToNext)
     .filter(([, n]) => n === total)
     .map(([lv]) => Number(lv));
-}
-
-/**
- * Junta as duas leituras do HUD num nível: `ocr` (o número do nível) e `xp` ("atual/total", cujo total diz o nível).
- * Devolve `{ level, source, conflict, ambiguous }` com `source` em "ocr+xp" (as duas concordam), "ocr", "xp" (nível
- * inferido do total, sem leitura do número), "held" (conflito sem saída: mantém `held`) ou null.
- * Em conflito (o total de XP não existe para o nível lido) vale a leitura plausível: o nível só sobe, de 1 em 1 em
- * condições normais, então com `held` confiável ("trusted") só vale `held` até `held + 2`. Se as duas forem plausíveis,
- * vence o número lido (o OCR dele exige três cópias iguais; o do XP é uma leitura só). `ambiguous` marca o total
- * repetido (2, 68) resolvido apenas pela pista.
- */
-export function reconcileLevel({
-  ocr = null,
-  xp = null,
-  prevXp = null,
-  held = null,
-  trusted = true,
-} = {}) {
-  const candidates = levelsForXp(xp),
-    inferred = candidates.length ? levelFromXp(xp, held, prevXp) : null,
-    ambiguous = candidates.length > 1;
-  if (ocr == null)
-    return {
-      level: inferred,
-      source: inferred == null ? null : "xp",
-      conflict: false,
-      ambiguous,
-    };
-  if (!candidates.length)
-    return { level: ocr, source: "ocr", conflict: false, ambiguous: false };
-  if (candidates.includes(ocr))
-    return { level: ocr, source: "ocr+xp", conflict: false, ambiguous };
-  const plausible = (lv) =>
-    !trusted || held == null || (lv >= held && lv <= held + 2);
-  if (plausible(ocr))
-    return { level: ocr, source: "ocr", conflict: true, ambiguous: false };
-  if (inferred != null && plausible(inferred))
-    return { level: inferred, source: "xp", conflict: true, ambiguous };
-  return { level: held, source: "held", conflict: true, ambiguous: false };
 }
 
 /** "3-5" → número da rodada contando desde 1-1 (1-1 = 1); null se não for estágio-rodada. */
@@ -158,52 +93,38 @@ export function levelConsistent({
 }
 
 /**
- * Valida a leitura de nível de uma partida e devolve o estado já com `level`, `levelInfo` e `sources.level`. Puro:
- * `memory` = `{ game, anchor }` (a partida e o último nível confirmado `{ level, xp, stage }`); devolve a memória nova.
- * `seen` é o estado mesclado (tela + arquivo do jogo, com `stage` do arquivo do jogo). Precedência (FONTES-DE-DADOS.md,
- * "Nível"): leitura fresca e plausível > piso derivado do XP passivo > (fora daqui) estimativa pelo tabuleiro. Uma
- * leitura só é descartada se não for corroborada pelo total do XP lido junto: abaixo do que o XP passivo garante no
- * estágio-rodada, ou abaixo do último nível confirmado.
+ * Nível de uma partida: o observado (GEP, já validado por `levelConsistent` na precedência) ou, sem ele, o piso derivado
+ * do XP passivo. Devolve o estado já com `level`, `levelInfo` e `sources.level`. Puro: `memory` = `{ game, anchor }` (a
+ * partida e o último nível observado `{ level, xp, stage }`); devolve a memória nova. `seen` é o estado mesclado
+ * (arquivos do jogo + GEP, com o estágio do arquivo do jogo). Precedência (FONTES-DE-DADOS.md, "Nível"): nível observado
+ * > piso derivado (a partir do último observado nesta partida, ou do nível 1 em 1-1) > (fora daqui) estimativa pelo
+ * tabuleiro. O piso é "o real é este ou maior" (`levelInfo.minimum`); sem estágio nem observação, nível desconhecido.
  */
 export function reduceLevel(memory, seen, gameId = null) {
   let anchor = gameId !== memory.game ? null : memory.anchor;
   const stage = /^\d-\d$/.test(seen.stage ?? "") ? seen.stage : null,
     read = Number.isInteger(seen.level) ? seen.level : null,
-    stale = seen.stale?.level === true,
-    corroborated = read !== null && levelsForXp(seen.xp).includes(read),
     // Piso global: o que o XP passivo garante a quem nunca comprou XP. Só vale a partir do estágio 2.
     globalFloor = stage && Number(stage[0]) >= 2 ? levelFloor(stage) : null;
   let level = null,
-    source = null,
-    rejected = null;
-  if (read !== null && !stale) {
-    if (!corroborated && globalFloor !== null && read < globalFloor)
-      rejected = {
-        read,
-        reason: `abaixo do mínimo ${globalFloor} garantido em ${stage}`,
-      };
-    else if (!corroborated && anchor && read < anchor.level)
-      rejected = {
-        read,
-        reason: `abaixo do último nível confirmado (${anchor.level})`,
-      };
-    else {
-      level = read;
-      source = "screen";
-      anchor = { level, xp: corroborated ? seen.xp : null, stage };
-    }
-  }
-  if (level === null) {
-    // Sem leitura aproveitável: o maior piso conhecido. A leitura velha também é piso (o nível só sobe).
+    source = null;
+  if (read !== null) {
+    level = read;
+    source = seen.sources?.level ?? null;
+    anchor = {
+      level,
+      xp: levelsForXp(seen.xp).includes(read) ? seen.xp : null,
+      stage,
+    };
+  } else {
+    // Sem nível observado agora: o maior piso conhecido (o nível só sobe; quem compra XP sobe mais rápido).
     const floors = [];
-    if (anchor && stage)
-      floors.push({ level: levelFloor(stage, anchor), source: "derived" });
-    if (globalFloor !== null)
-      floors.push({ level: globalFloor, source: "derived" });
-    if (read !== null && stale && !rejected)
-      floors.push({ level: read, source: "screen" });
-    const best = floors.sort((a, b) => b.level - a.level)[0];
-    if (best) ({ level, source } = best);
+    if (anchor && stage) floors.push(levelFloor(stage, anchor));
+    if (globalFloor !== null) floors.push(globalFloor);
+    if (floors.length) {
+      level = Math.max(...floors);
+      source = "derived";
+    }
   }
   const sources = { ...seen.sources, level: source },
     // XP de outro nível não pode desenhar a barra do nível mostrado.
@@ -217,17 +138,8 @@ export function reduceLevel(memory, seen, gameId = null) {
       ...seen,
       level,
       xp,
-      stale: { ...seen.stale, level: source === "screen" ? stale : false },
-      sources: { ...sources, xp: xp === null ? null : sources.xp },
-      levelInfo: {
-        source,
-        minimum: source === "derived",
-        stale: source === "screen" && stale,
-        rejected,
-        conflict: seen.levelConflict === true,
-        ambiguous: seen.levelAmbiguous === true,
-        read,
-      },
+      sources: { ...sources, xp: xp === null ? null : (sources.xp ?? null) },
+      levelInfo: { source, minimum: source === "derived", read },
     },
   };
 }

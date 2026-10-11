@@ -72,7 +72,7 @@ export function nextItemRecipe(
       }
       return { id, name: label, state: "bank" };
     }
-    // Servidor antigo ou sem informação: o banco lido da tela decide; sem banco, o estado é desconhecido.
+    // Servidor antigo ou sem informação: o banco de itens lido decide; sem banco, o estado é desconhecido.
     if (!stock) return { id, name: label, state: "unknown" };
     if (takeOne(stock, id) === null)
       return { id, name: label, state: "missing" };

@@ -25,7 +25,7 @@ import {
   mergeGep,
   parseCarouselPieces,
 } from "../gep-reader.mjs";
-import { mergeSources } from "../game-log.mjs";
+import { gameFilesState } from "../game-log.mjs";
 
 const catalog = JSON.parse(
   fs.readFileSync(new URL("../catalog.json", import.meta.url), "utf8"),
@@ -401,10 +401,12 @@ test("GEP do banco real: round_type e carousel_pieces chegam ao estado visto, e 
   assert.equal(status.fields.stage.name, "Carousel");
 
   const seen = mergeGep(
-    mergeSources(
-      { stage: null, gold: null },
-      { available: true, stage: "2-4", phase: "Draft", phaseKind: "draft" },
-    ),
+    gameFilesState({
+      available: true,
+      stage: "2-4",
+      phase: "Draft",
+      phaseKind: "draft",
+    }),
     status,
   );
   assert.deepEqual(seen.gepRound, {
@@ -416,7 +418,7 @@ test("GEP do banco real: round_type e carousel_pieces chegam ao estado visto, e 
   assert.equal(seen.carouselOffer.stage, "2-4");
   assert.equal(seen.sources.carousel, "gep");
   // Sem GEP ativo nada disso existe (nada inventado).
-  const off = mergeGep(mergeSources({ stage: "2-4" }, null), {
+  const off = mergeGep(gameFilesState(null), {
     available: false,
     state: "ausente",
   });
@@ -629,16 +631,9 @@ test("carouselFeed: lê a última análise do feed do overlay e o mapa de emblem
 
 /* ---------- Composição do servidor: fontes -> estado visto -> bloco ---------- */
 
-/** O que `buildStateBody` faz: o hub mescla tela + arquivos do jogo + GEP e o bloco do carrossel sai do estado visto. */
-function serverBlock({
-  gameFiles,
-  file,
-  screen = { stage: null, running: true },
-  rec = recBody,
-  clock,
-}) {
+/** O que `buildStateBody` faz: o hub mescla arquivos do jogo + GEP e o bloco do carrossel sai do estado visto. */
+function serverBlock({ gameFiles, file, rec = recBody, clock }) {
   const hub = createStateHub({
-    screen: { status: () => screen },
     gameFiles: { status: () => gameFiles },
     gep: gepReader({
       file,
@@ -744,12 +739,11 @@ test("servidor: o carrossel acaba quando a rodada muda, mesmo com a oferta antig
   );
 });
 
-test("servidor: sem GEP nem arquivos do jogo, só o calendário (estimado) e a lista de prioridade", () => {
+test("servidor: sem GEP e sem a fase do jogo (só a rodada do arquivo), só o calendário (estimado) e a lista de prioridade", () => {
   const { block } = serverBlock({
     file: path.join(os.tmpdir(), "nao-existe", "tft-events.db"),
     clock: { t: 1210_000 },
-    screen: { stage: "3-4", running: true, items: ["DA_Component_BFSword"] },
-    gameFiles: { available: false },
+    gameFiles: { available: true, stage: "3-4", phase: null, phaseKind: null },
   });
   assert.equal(block.active, true);
   assert.equal(block.source, "schedule");

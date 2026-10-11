@@ -294,7 +294,7 @@ function render(model) {
     inventory.update(
       status.waiting ? null : last?.rec?.ownedItemAdvice,
       emblemsOf(last?.rec),
-      // O banco vem direto da leitura da tela; a análise só acrescenta montar agora/falta um.
+      // O banco vem direto do estado (GEP); a análise só acrescenta montar agora/falta um.
       status.waiting || status.replay ? null : bankReading(latestState?.screen),
     );
     lastModel = model;
@@ -389,8 +389,6 @@ function render(model) {
       "info",
       `Planejamento · leitura de há ${status.ageSeconds ?? "?"}s`,
     );
-  else if (status.reader)
-    showNotice("info", `Leitor de tela: ${status.reader}`);
   else showNotice("", "");
   liveTitle = `${model.plan?.panel?.action ? model.plan.panel.action + " · " : ""}TFT Compass`;
   setTitle();
@@ -458,7 +456,7 @@ async function showItems() {
 const view = () => parseHash(location.hash).view;
 const replayOf = () => parseHash(location.hash).replay;
 const setTitle = () => (document.title = documentTitle(view(), liveTitle));
-// Dados dos cartões de comp (aba Comps e modal do HUD): as comps de meta, o encaixe da partida, o banco lido da tela e a
+// Dados dos cartões de comp (aba Comps e modal do HUD): as comps de meta, o encaixe da partida, o banco de itens lido e a
 // comp fixada. `compsData` precisa estar carregado.
 function compCardsData() {
   const rec = last?.rec;
@@ -470,7 +468,7 @@ function compCardsData() {
       units: rec?.self?.units,
       screen: replayOf() ? null : latestState?.screen,
     }),
-    // Banco lido da tela (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
+    // Banco de itens lido (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
     bank: replayOf() ? null : (bankReading(latestState?.screen)?.items ?? null),
     equipped: replayOf() ? {} : equippedBy(rec?.self?.units),
     goalId: goals.get(matchKeyOf(latestState))?.id ?? null,
@@ -717,7 +715,7 @@ async function pull() {
       );
     let rec = last?.rec;
     if (key !== lastKey || !rec) {
-      // A análise pode levar segundos: o banco lido da tela já aparece, sem esperá-la (só com a aba visível: oculta,
+      // A análise pode levar segundos: o banco de itens lido já aparece, sem esperá-la (só com a aba visível: oculta,
       // o desenho completo logo abaixo é que fica guardado para a volta).
       if (!document.hidden)
         inventory.update(

@@ -1,13 +1,9 @@
 // Rodar com: node --test tft/helper/tests/item-holdings.test.mjs
 // Itens do jogador comp a comp: onde está cada item que a build da comp pede e quanto isso vale no ranking e no score.
-// Comps sintéticas sobre o catálogo real; o "banco" chega pelo leitor de tela (processo falso), como no servidor.
+// Comps sintéticas sobre o catálogo real; o "banco" chega pelo GEP (mergeGep), como no servidor.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { PassThrough } from "node:stream";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze } from "../engine.mjs";
@@ -17,8 +13,8 @@ import {
   recommendInventory,
   resolveHoldings,
 } from "../item-holdings.mjs";
-import { mergeSources } from "../game-log.mjs";
-import { screenReader } from "../screen-reader.mjs";
+import { gameFilesState } from "../game-log.mjs";
+import { mergeGep } from "../gep-reader.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), ".."),
   catalog = JSON.parse(readFileSync(path.join(root, "catalog.json"), "utf8")),
@@ -375,43 +371,26 @@ test("resolveHoldings: o posicionado é gasto antes e o resto vai ao carry, depo
   assert.equal(r.counts.taken, 1);
 });
 
-test("(f) o banco lido da tela chega ao motor; consumíveis ficam de fora e o cliente só vale sem leitura", async (t) => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "holdings-")),
-    helper = path.join(dir, "helper");
-  await mkdir(helper);
-  await mkdir(path.join(dir, "data"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const procs = [];
-  const reader = screenReader(helper, [], [], [], {
-    settleMs: 20,
-    launch() {
-      const proc = Object.assign(new EventEmitter(), {
-        stdout: new PassThrough(),
-        stderr: new PassThrough(),
-        kill() {},
-      });
-      procs.push(proc);
-      return proc;
+test("(f) o banco de itens do GEP chega ao motor; consumíveis ficam de fora e o cliente só vale sem leitura", () => {
+  // Mesma cadeia do servidor: arquivos do jogo → GEP (mergeGep) → inventário da análise → motor.
+  const gep = {
+    available: true,
+    state: "ativo",
+    identity: "confirmada",
+    fields: {
+      items: {
+        value: [IE, BT],
+        bank: [IE, "DA_Consumable_ItemRemover", BT],
+        removers: 1,
+        unknown: 0,
+        ageMs: 100,
+      },
     },
-  });
-  t.after(() => reader.stop());
-  reader.sync(true);
-  for (let i = 0; i < 200 && !procs.length; i++)
-    await new Promise((r) => setTimeout(r, 5));
-  procs[0].stdout.write(
-    JSON.stringify({
-      window: true,
-      items: [IE, "DA_Consumable_ItemRemover", BT],
-      unknownItems: 0,
-      removers: 1,
-    }) + "\n",
-  );
-  for (let i = 0; i < 200 && !reader.status().items; i++)
-    await new Promise((r) => setTimeout(r, 5));
-  // Mesma cadeia do servidor: leitura de tela → fontes mescladas (seenState) → inventário da análise → motor.
-  const seen = mergeSources(reader.status(), null),
+  };
+  const seen = mergeGep(gameFilesState({ available: false }), gep),
     known = new Set(catalog.items.map((i) => i.apiName));
   assert.deepEqual(seen.items, [IE, BT]);
+  assert.equal(seen.sources.items, "gep");
   assert.ok(
     seen.bank.includes("DA_Consumable_ItemRemover"),
     "o banco inteiro segue informativo",
@@ -422,15 +401,17 @@ test("(f) o banco lido da tela chega ao motor; consumíveis ficam de fora e o cl
   assert.deepEqual(carryKinds(a)[0], "bank");
   assert.ok(
     row(a).score > row(run(base(), [])).score,
-    "o item lido da tela entra no score",
+    "o item do banco do GEP entra no score",
   );
-  // Cliente com leitura antiga: a tela de agora manda. Sem leitura (null), vale o enviado. Ids desconhecidos saem.
+  // Cliente com leitura antiga: o estado de agora manda. Sem leitura (null: GEP fora), vale o enviado. Ids desconhecidos saem.
   assert.deepEqual(
     recommendInventory([GS], seen, (x) => known.has(x)),
     [IE, BT],
   );
+  const off = mergeGep(gameFilesState({ available: false }), null);
+  assert.equal(off.items, null);
   assert.deepEqual(
-    recommendInventory([GS], { items: null }, (x) => known.has(x)),
+    recommendInventory([GS], off, (x) => known.has(x)),
     [GS],
   );
   assert.deepEqual(

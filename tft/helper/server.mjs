@@ -11,7 +11,6 @@ import { metaIsStale } from "./meta-builds.mjs";
 import { KINDS as ITEM_KINDS, itemTiers } from "./item-tiers.mjs";
 import { isConsumable, kindOf } from "./core/catalog/items.mjs";
 import { compsAreStale } from "./meta-comps.mjs";
-import { screenReader } from "./screen-reader.mjs";
 import { gameLog } from "./game-log.mjs";
 import { gepReader, wispCatalog } from "./gep-reader.mjs";
 import { createStateHub, gepContextFor } from "./app/state.mjs";
@@ -31,7 +30,6 @@ import { threadWorker } from "./app/analysis-runner.mjs";
 import { carouselFeed } from "./app/carousel-view.mjs";
 import { createRecommender, stageTimer } from "./app/recommend.mjs";
 import { createAutoRefresh, createRecentResults } from "./app/auto-refresh.mjs";
-import { benchCandidates as buildBenchCandidates } from "./bench-candidates.mjs";
 import { installDiagnostics } from "./diagnostics.mjs";
 import { streakTracker } from "./streak.mjs";
 import { replaySnapshot } from "./replay.mjs";
@@ -297,21 +295,10 @@ function itemsPayload() {
     })),
   };
 }
-// Ícones que o leitor compara com cada espaço do banco de itens (ver bench-candidates.mjs).
-const benchCandidates = buildBenchCandidates(catalog, icons, root);
-const screen = screenReader(
-  root,
-  benchCandidates,
-  catalog.champions.map((c) => ({
-    id: c.apiName,
-    names: [c.name, localNames[c.apiName]].filter(Boolean),
-  })),
-  augmentList,
-);
-process.on("exit", () => screen.stop());
-// Rodada e fase lidas dos arquivos que o próprio jogo grava (sem OCR); a tela segue como reserva. Ver FONTES-DE-DADOS.md.
+// Rodada e fase lidas dos arquivos que o próprio jogo grava. Ver FONTES-DE-DADOS.md.
 const gameFiles = gameLog();
-// Fonte GEP (banco do TFTAcademy, somente leitura): vence a tela por campo quando fresca; obsoleta/ausente cai para a tela.
+// Fonte GEP (banco do TFTAcademy, somente leitura): a única que observa ouro, nível, XP, loja e itens do jogador; obsoleta
+// ou ausente, esses campos ficam desconhecidos (`noSource` diz o motivo). Não há leitura de tela.
 const gep = gepReader({
   champions: new Set(catalog.champions.map((c) => c.apiName)),
   items: new Set(catalog.items.map((i) => i.apiName)),
@@ -320,15 +307,14 @@ const gep = gepReader({
   wisps: wispCatalog(catalog.items, itemCatalog),
 });
 const gepContext = gepContextFor(HERO_ID); // partida em andamento para a fonte GEP (app/state.mjs)
-// O estado da partida (app/state.mjs): tela + arquivos do jogo + GEP com uma fonte só por campo (core/state/precedence.mjs).
+// O estado da partida (app/state.mjs): arquivos do jogo + GEP com uma fonte só por campo (core/state/precedence.mjs).
 const stateHub = createStateHub({
-  screen,
   gameFiles,
   gep,
   onDivergence: (e) =>
     diag.write(
       "AVISO",
-      `GEP e tela divergem em ${e.field}: gep=${JSON.stringify(e.gep)} tela=${JSON.stringify(e.base)} (vale ${e.active === "gep" ? "o GEP" : "a tela"})`,
+      `GEP e arquivo do jogo divergem em ${e.field}: gep=${JSON.stringify(e.gep)} arquivo=${JSON.stringify(e.base)} (vale ${e.active === "gep" ? "o GEP" : "o arquivo do jogo"})`,
     ),
 });
 const seenState = stateHub.seen;
@@ -365,12 +351,11 @@ const matches = matchTracker(
             `partida ${matches.status().id} encerrada sem Ao vivo para guardar`,
           );
       }
-      // Só partida nova zera; "resume" (encerrada por engano e reaberta) mantém plano, caches e leitor.
+      // Só partida nova zera; "resume" (encerrada por engano e reaberta) mantém plano e caches.
       if (kind === "start") {
         recommender?.clear();
         // O plano não é zerado aqui: o estado é da partida (gameId) e "start" também dispara quando o servidor reinicia
         // no meio de uma partida, que deve continuar com o plano guardado em disco.
-        screen.stop();
       }
       // Partida registrada no histórico: o plano e o progresso dela não valem para a próxima. "end" não zera: uma
       // partida encerrada por engano pode reabrir ("resume") e continua com o mesmo plano.
@@ -565,7 +550,7 @@ async function current() {
       practice,
       localPlayerId: local ? String(local.playerId) : null,
       // Peças em campo: ESTIMATIVA de último recurso, não leitura (jogar abaixo do nível, slot extra e invocações a
-      // invalidam). Só entra na análise com levelEstimated = true; o nível lido/derivado vem de screen.level.
+      // invalidam). Só entra na análise com levelEstimated = true; o nível observado/derivado vem do estado (app/state.mjs).
       estimatedLevel: local
         ? Math.max(1, Math.min(11, local.boardPieces.length))
         : null,
@@ -577,7 +562,7 @@ async function current() {
         health: p.health,
       })),
       warnings: [
-        "Banco adversário não capturado. A loja é lida da tela quando o leitor está ativo, não pelo arquivo do tabuleiro.",
+        "Banco adversário não capturado. A loja vem do GEP (TFTAcademy); sem ele ela fica desconhecida (o arquivo do tabuleiro não a traz).",
         "Pool estimado: bancos ocultos, duplicadores e slots reservados em lojas não observados.",
         "Economia, posições e counters são heurísticos; comps de meta usam a cópia de estatísticas disponível. Sem simulação de combate ou garantia de vitória.",
         "Emblemas, Wisps, invocações e regras especiais de traits não são simulados.",
@@ -611,18 +596,10 @@ function recordTiming(route, ms) {
   timings.routes.clear();
 }
 // O corpo de GET /api/state, sem gravá-lo no feed do overlay. Serve a rota e o laço automático (app/auto-refresh.mjs), que
-// por isso enxerga exatamente o que a interface vê; o leitor de tela liga/desliga conforme a fase, como sempre.
+// por isso enxerga exatamente o que a interface vê.
 let lastState = { at: 0, body: null };
 async function buildStateBody() {
   const { metadata, snapshot } = await current();
-  screen.sync(
-    // Reconnect é partida em andamento (o rastreador de partidas também a conta): parar o leitor ali apagaria nível e ouro.
-    metadata.phase === "InProgress" || metadata.phase === "Reconnect"
-      ? true
-      : typeof metadata.phase === "string"
-        ? false
-        : null,
-  );
   const { gepStatus, ...seenNow } = seenState(
     metadata.gameId,
     gepContext(metadata, snapshot),
@@ -635,7 +612,7 @@ async function buildStateBody() {
   const body = {
     ...metadata,
     screen: seenNow,
-    // Estado normalizado (cada campo com valor, fonte, confiança e idade) e a divergência GEP x tela contada.
+    // Estado normalizado (cada campo com valor, fonte, confiança e idade) e a divergência GEP x arquivo do jogo contada.
     gameState: {
       ...stateHub.gameState(seenNow, metadata.gameId),
       divergence: stateHub.divergence(),
@@ -747,7 +724,6 @@ const auto = createAutoRefresh({
     return done;
   },
   results: analysisResults,
-  sources: { sync: (active) => screen.sync(active) },
   intervalMs: AUTO_TICK_MS,
   minGapMs: AUTO_TICK_MS,
   report: recordTiming,
@@ -770,7 +746,6 @@ const healthBody = () => ({
   auto: auto.status(),
   match: matches.status().status,
   capture: captures.status(),
-  screenReader: { running: screen.status().running },
   sources: pulseHealth(),
 });
 handle = async (req, res) => {
@@ -903,17 +878,6 @@ handle = async (req, res) => {
     // Saúde: o servidor está de pé e cada fonte de acompanhamento ainda gira? (idade do último ciclo de cada uma)
     if (req.method === "GET" && url.pathname === "/api/health")
       return json(200, healthBody());
-    if (req.method === "POST" && url.pathname === "/api/screen-capture") {
-      if (
-        req.headers.origin &&
-        req.headers.origin !== `http://127.0.0.1:${port}` &&
-        req.headers.origin !== `http://localhost:${port}`
-      )
-        return json(403, { error: "Origem não autorizada." });
-      const file = path.join(root, "../data/screen-calibration.png");
-      const shot = await screen.capture(file);
-      return json(200, { ...shot, file });
-    }
     if (req.method === "POST" && url.pathname === "/api/recommend") {
       if (
         req.headers.origin &&
