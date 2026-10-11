@@ -51,7 +51,7 @@ const state = (extra = {}) => ({
   match: { id: "G1" },
   localPlayerId: "47445859",
   estimatedLevel: 6,
-  screen: {
+  seen: {
     xp: "2/20",
     stage: "2-3",
     shop: ["A", "B"],
@@ -62,7 +62,7 @@ const state = (extra = {}) => ({
     level: 4,
     items: ["I1"],
     gepBench: [],
-    sources: { level: "tela" },
+    sources: { level: "gep" },
   },
   ...extra,
 });
@@ -72,8 +72,8 @@ test("a chave do núcleo é idêntica à de antes, para estados e instantes vari
   const states = [
     state(),
     state({ signature: undefined }),
-    state({ screen: { ...state().screen, level: null, gold: null } }),
-    state({ screen: undefined }),
+    state({ seen: { ...state().seen, level: null, gold: null } }),
+    state({ seen: undefined }),
     state({ match: undefined, phase: null, sameGame: null }),
   ];
   const payloads = [
@@ -88,7 +88,12 @@ test("a chave do núcleo é idêntica à de antes, para estados e instantes vari
         T0 + REFRESH_WINDOW_MS - 1,
         T0 + 5 * REFRESH_WINDOW_MS,
       ])
-        assert.equal(analysisKey(s, p, t), legacyKey(s, p, t));
+        // O estado visto se chamava `screen` no corpo de /api/state antes de a leitura de tela sair; hoje é `seen`. A
+        // referência lê o nome antigo: a mesma chave para os mesmos valores.
+        assert.equal(
+          analysisKey(s, p, t),
+          legacyKey({ ...s, screen: s.seen }, p, t),
+        );
 });
 
 test("a janela de renovação é de 120 s e o cliente só acrescenta o relógio", () => {
@@ -194,7 +199,7 @@ test("a chave reage ao que o jogo mudou e às decisões, e ignora o que não mud
   const base = analysisKey(state(), p, T0);
   assert.notEqual(
     base,
-    analysisKey(state({ screen: { ...state().screen, gold: 31 } }), p, T0),
+    analysisKey(state({ seen: { ...state().seen, gold: 31 } }), p, T0),
   );
   assert.notEqual(base, analysisKey(state({ signature: "sig2" }), p, T0));
   assert.notEqual(

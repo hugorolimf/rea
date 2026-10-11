@@ -209,11 +209,11 @@ export const kindCounts = (items, kinds) =>
  * incluídos, na ordem do banco), `items` só o que a análise usa e `unknown` os espaços ocupados sem item
  * reconhecido. Null sem banco lido (GEP sem fonte) ou numa partida revista.
  */
-export function bankReading(screen) {
-  if (!screen || !Array.isArray(screen.items)) return null;
-  const bank = Array.isArray(screen.bank) ? screen.bank : screen.items,
-    unknown = Number.isInteger(screen.unknownItems) ? screen.unknownItems : 0;
-  return { bank, items: screen.items, unknown };
+export function bankReading(seen) {
+  if (!seen || !Array.isArray(seen.items)) return null;
+  const bank = Array.isArray(seen.bank) ? seen.bank : seen.items,
+    unknown = Number.isInteger(seen.unknownItems) ? seen.unknownItems : 0;
+  return { bank, items: seen.items, unknown };
 }
 
 /**

@@ -3,14 +3,29 @@
 // `#revisao/<id>` e desenha exatamente a mesma tela, sem pedir análise nova.
 //
 // Formato em disco: `<dir>/<gameId>.json.gz`, JSON comprimido `{ v, gameId, at, state, recommendation }`. `v` é a versão do
-// esquema (`SCHEMA`); versão desconhecida, arquivo ausente ou corrompido leem como "sem dados guardados" (null). O registro
+// esquema (`SCHEMA`); versão desconhecida, arquivo ausente ou corrompido leem como "sem dados guardados" (null). A versão 1
+// guardava o estado visto na chave antiga `state.screen`; ao ler, ela vira `state.seen` (a da versão 2). O registro
 // da partida no histórico (match-history.jsonl) leva só `liveSnapshot: { v, at, bytes }`; registros antigos não o têm.
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 
-/** Versão do esquema do arquivo guardado. */
-export const SCHEMA = 1;
+/** Versão do esquema do arquivo guardado (2: o estado visto em `state.seen`). */
+export const SCHEMA = 2;
+
+/** Lê um arquivo de uma versão conhecida no formato atual; null se a versão é desconhecida ou faltam partes. */
+function upgrade(data) {
+  if (!data?.state || !data.recommendation) return null;
+  if (data.v === SCHEMA) return data;
+  if (data.v !== 1) return null;
+  // Versão 1: o estado visto estava em `screen` (nome de quando havia leitura de tela); o conteúdo é o mesmo.
+  const { screen, ...state } = data.state;
+  return {
+    ...data,
+    v: SCHEMA,
+    state: state.seen === undefined ? { ...state, seen: screen } : state,
+  };
+}
 /** Quantas partidas ficam guardadas; as mais antigas saem quando entra uma nova (cada uma pesa algumas centenas de KB). */
 export const KEEP = 40;
 
@@ -106,10 +121,9 @@ export function createLiveSnapshots({ dir, keep = KEEP, now = Date.now } = {}) {
       if (!entry) return null;
       if (entry.payload) return entry.payload;
       try {
-        const data = JSON.parse(zlib.gunzipSync(fs.readFileSync(fileOf(id))));
-        return data?.v === SCHEMA && data.state && data.recommendation
-          ? data
-          : null;
+        return upgrade(
+          JSON.parse(zlib.gunzipSync(fs.readFileSync(fileOf(id)))),
+        );
       } catch {
         return null;
       }

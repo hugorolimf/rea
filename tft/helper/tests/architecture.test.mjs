@@ -1179,3 +1179,15 @@ test("sem leitura de tela: servidor e scripts não iniciam leitor nenhum e os gl
     "o arquivo histórico fica fora das regras de arquitetura",
   );
 });
+
+test("estado neutro: nenhum arquivo do produto lê o estado visto pelo nome antigo `screen` (é `seen` desde o P3)", () => {
+  // Única exceção: o rótulo "screen" dentro da chave de análise, mantido para a chave não mudar (comentado no arquivo).
+  const allowed = new Set(["core/state/analysis-key.mjs"]);
+  const bad = [];
+  for (const f of PRODUCT) {
+    if (allowed.has(f)) continue;
+    const code = stripNonCode(read(f));
+    if (/\.screen\b|[{,]\s*screen\s*:/.test(code)) bad.push(f);
+  }
+  assert.deepEqual(bad, []);
+});

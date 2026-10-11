@@ -219,7 +219,7 @@ test("modelo: a linha 'Próximo item' leva o item do servidor e o banco de itens
   const state = structuredClone(base.state),
     rec = structuredClone(base.rec),
     plan = rec.recommendations[0];
-  state.screen = {
+  state.seen = {
     stage: "4-2",
     gold: 30,
     level: 8,

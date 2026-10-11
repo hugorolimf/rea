@@ -461,7 +461,7 @@ test("GEP ausente: o chip da interface diz 'GEP off · sem fonte' e lista o que 
       gameFiles: sentryAt("3-2"),
     }).seen(GAME_ID, ctx),
     { status } = buildModel({
-      state: { screen: seen, gepStatus: seen.gepStatus },
+      state: { seen, gepStatus: seen.gepStatus },
       rec: null,
     });
   assert.equal(status.gep.state, "ausente");
@@ -508,7 +508,7 @@ const frozenKey = (state, payload, now) =>
     window: Math.floor(now / REFRESH_WINDOW_MS),
   });
 
-test("chave de análise dos estados só com o GEP é a mesma da regra congelada", () => {
+test("chave de análise dos estados só com o GEP é a mesma da regra congelada (o estado em `seen` dá a chave de `screen`)", () => {
   const base = JSON.parse(
       fs.readFileSync(
         new URL("../live-mock-base.json", import.meta.url),
@@ -520,15 +520,16 @@ test("chave de análise dos estados só com o GEP é a mesma da regra congelada"
       base,
       ...replay().map(({ seen }) => {
         const { gepStatus: _gepStatus, ...rest } = seen;
-        return { ...base, screen: rest };
+        return { ...base, seen: rest };
       }),
-      { ...base, screen: undefined },
+      { ...base, seen: undefined },
     ];
   for (const body of bodies) {
     const payload = decisionPayload(body, { goalCompId: "X" });
+    // O estado visto está em `seen` (P3); a regra congelada o lia em `screen`: a chave não muda.
     assert.equal(
       analysisKey(body, payload, now),
-      frozenKey(body, payload, now),
+      frozenKey({ ...body, screen: body.seen }, payload, now),
     );
   }
 });

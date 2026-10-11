@@ -662,7 +662,7 @@
     c.state.gepStatus = x.gep
       ? { state: "ativo", reason: null, lastEventAgeMs: 2000 }
       : { state: "ausente", reason: "banco-ausente" };
-    c.state.screen = x.gep
+    c.state.seen = x.gep
       ? {
           stage: x.stage,
           gold: x.gold,
@@ -694,7 +694,7 @@
           },
         }
       : {
-          ...c.state.screen,
+          ...c.state.seen,
           stage: x.stage,
           gold: null,
           level: null,
@@ -1191,8 +1191,8 @@
         reason: "sem-eventos-recentes",
         lastEventAgeMs: 95000,
       };
-      for (const k of Object.keys(c.state.screen.noSource))
-        c.state.screen.noSource[k] = "sem-eventos-recentes";
+      for (const k of Object.keys(c.state.seen.noSource))
+        c.state.seen.noSource[k] = "sem-eventos-recentes";
     },
   );
   add(
@@ -1207,8 +1207,8 @@
         reason: "gravacao-desligada",
         recordGames: false,
       };
-      for (const k of Object.keys(c.state.screen.noSource))
-        c.state.screen.noSource[k] = "gravacao-desligada";
+      for (const k of Object.keys(c.state.seen.noSource))
+        c.state.seen.noSource[k] = "gravacao-desligada";
     },
   );
   add(

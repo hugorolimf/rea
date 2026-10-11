@@ -2,10 +2,10 @@
  * Cruzamento "peças que o plano quer" x "loja de agora": função pura (sem DOM) compartilhada pela lista Comprar
  * (steps.js, via model.js) e pelo painel Roll ("Na loja"). Quem desenha só lê o resultado; as regras ficam aqui.
  *
- * Fonte da loja (`screen.sources.shop`, preenchida pelo servidor): só o GEP a entrega.
+ * Fonte da loja (`seen.sources.shop`, preenchida pelo servidor): só o GEP a entrega.
  *   - "gep" : evento do jogo (`store.shop_pieces`) do TFTAcademy, observado e fresco -> confiança "confiavel"; com a
  *     fonte GEP fora do estado "ativo" (`gepStatus`), a mesma loja vale só como "provavel";
- *   - sem fonte (`sources.shop` diferente de "gep", `screen.shop` ausente, loja escondida) -> `known: false`: nenhum
+ *   - sem fonte (`sources.shop` diferente de "gep", `seen.shop` ausente, loja escondida) -> `known: false`: nenhum
  *     aviso, nem de "na loja" nem de "fora da loja".
  * Wisps (fogos-fátuos) chegam com `id: null` (e `wisp: true`) e nunca são campeões: ficam de fora do cruzamento.
  */
@@ -26,11 +26,11 @@ const wantOf = (n) => {
 };
 
 /**
- * Loja de agora a partir de `state.screen`: `{ known, source, confidence, slots: [{ slot, id }], unreadable }`.
+ * Loja de agora a partir de `state.seen`: `{ known, source, confidence, slots: [{ slot, id }], unreadable }`.
  * `slot` vai de 1 a 5; `unreadable` conta cartas com texto mas sem campeão reconhecido (não Wisp). `gepStatus`
  * (`state.gepStatus`) rebaixa um GEP que não está "ativo" para "provável". Sem a loja do GEP, `known: false`.
  */
-export function shopView(screen, { gepStatus = null } = {}) {
+export function shopView(seen, { gepStatus = null } = {}) {
   const none = {
     known: false,
     source: null,
@@ -38,11 +38,11 @@ export function shopView(screen, { gepStatus = null } = {}) {
     slots: [],
     unreadable: 0,
   };
-  const raw = screen?.shop;
+  const raw = seen?.shop;
   // Só o GEP entrega a loja: sem ela (outra origem ou nenhuma), a loja é desconhecida, nunca vazia.
-  if (!Array.isArray(raw) || screen.sources?.shop !== "gep") return none;
+  if (!Array.isArray(raw) || seen.sources?.shop !== "gep") return none;
   const wispSlots = new Set(
-    (Array.isArray(screen.wisps) ? screen.wisps : [])
+    (Array.isArray(seen.wisps) ? seen.wisps : [])
       .map((w) => w?.slot)
       .filter(Number.isInteger),
   );

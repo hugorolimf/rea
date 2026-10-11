@@ -137,7 +137,7 @@ test("Formação com dados reais gravados: Varus pede o Infinity Edge que está 
   const { state, rec } = JSON.parse(
     readFileSync(new URL("../../live-mock-base.json", import.meta.url), "utf8"),
   );
-  state.screen = {
+  state.seen = {
     stage: "4-2",
     gold: 54,
     level: 8,

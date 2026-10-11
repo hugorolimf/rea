@@ -105,8 +105,7 @@ const slots = parseCarouselPieces(PIECES).slots;
 function input({ offer = true, phaseKind = "draft", ageSeconds = 3 } = {}) {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
-  state.screen = {
-    running: true,
+  state.seen = {
     stage: "2-4",
     gold: 30,
     level: 5,
@@ -127,7 +126,7 @@ function input({ offer = true, phaseKind = "draft", ageSeconds = 3 } = {}) {
     {
       stage: "2-4",
       phaseKind,
-      items: state.screen.items,
+      items: state.seen.items,
       ...(offer && { carouselOffer: { stage: "2-4", slots, ageMs: 1200 } }),
     },
     { rec, gameId: GAME },

@@ -1,7 +1,7 @@
 /**
  * Aprimoramentos: o caminho escolhido na partida (2-1, 3-2, 4-2), a oferta aberta e o registro local de correções.
- * Oferta e escolhidos vêm do GEP (Overwolf, lido pelo servidor; única fonte): o servidor manda `screen.augmentOffer`,
- * `screen.augmentSource` e, na análise, `chosenAugments` (source "gep"). A marcação à mão só corrige (desmarcar).
+ * Oferta e escolhidos vêm do GEP (Overwolf, lido pelo servidor; única fonte): o servidor manda `seen.augmentOffer`,
+ * `seen.augmentSource` e, na análise, `chosenAugments` (source "gep"). A marcação à mão só corrige (desmarcar).
  */
 export const AUG_STAGES = ["2-1", "3-2", "4-2"];
 
@@ -26,16 +26,16 @@ const GEP_REASON = {
 };
 
 /**
- * Oferta de aprimoramentos para a tela (Ao vivo e overlay), sem DOM. `screen` = `state.screen` do servidor
+ * Oferta de aprimoramentos para a tela (Ao vivo e overlay), sem DOM. `seen` = `state.seen` do servidor
  * (`augmentOffer` = `{open, stage, cards: [{slot, id, text, rerolled}], unresolved}` e `augmentSource` = `{state, reason,
  * held, picked, unresolved}`); `advice` = `rec.augmentAdvice` da última análise. A análise só vale para a oferta de AGORA
  * (mesmo conjunto de cartas); enquanto a nova não chega, `pending` e as cartas vêm com o nome do GEP.
  * Devolve `{ source: {state, text, title} | null, augmentRound, open, stage, pending, comp, note, cards, unresolved }`; cada carta:
  * `{ id, name, rank, best, reroll, rerolled, unknown, desc, reasons, expected, measured, tier, estimated }`.
  */
-export function augOfferView(screen, advice = null) {
-  const src = screen?.augmentSource ?? null,
-    offer = screen?.augmentOffer ?? null,
+export function augOfferView(seen, advice = null) {
+  const src = seen?.augmentSource ?? null,
+    offer = seen?.augmentOffer ?? null,
     unresolved = src?.unresolved ?? offer?.unresolved ?? [];
   const source = !src
     ? null

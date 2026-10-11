@@ -21,7 +21,7 @@ const card = (id) => ({ text: id, id });
 const live = ({ shop, gold = 54, tweak } = {}) => {
   const s = structuredClone(state),
     r = structuredClone(rec);
-  s.screen = {
+  s.seen = {
     stage: "4-2",
     gold,
     level: 8,

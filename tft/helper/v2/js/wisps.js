@@ -83,11 +83,11 @@ export function wispTitle(wisp, verdict) {
  * painel, desconhecido) e `boardFit` (opcional). Sem catálogo ou sem Wisp na loja devolve `[]`.
  */
 export function wispsView(
-  screen,
+  seen,
   { catalog, hero, rec = null, roll, boardFit = null } = {},
 ) {
   const book = wispBook(catalog);
-  if (!screen || !book) return [];
+  if (!seen || !book) return [];
   const ctx = {
     hp: hero?.hp ?? null,
     gold: hero?.gold ?? null,
@@ -96,7 +96,7 @@ export function wispsView(
     rolldown: roll == null ? null : roll.go === true,
     boardFit,
   };
-  return wispsInState(screen, book).map(({ slot, wisp }) => {
+  return wispsInState(seen, book).map(({ slot, wisp }) => {
     const verdict = decideWisp(wisp, ctx);
     return {
       slot,

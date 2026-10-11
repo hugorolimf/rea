@@ -167,7 +167,7 @@ const GEP_OPEN_HINT =
   "Abra o Overwolf com o TFTAcademy (gravação de partidas ligada) para o helper receber esses dados.";
 /**
  * Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. `noSource` (opcional) é o
- * `screen.noSource` do servidor (motivo de cada campo do jogador sem valor): com o GEP fora, o chip e a dica dizem quais
+ * `seen.noSource` do servidor (motivo de cada campo do jogador sem valor): com o GEP fora, o chip e a dica dizem quais
  * campos estão sem fonte (`missing`), em vez de só "GEP off". Nada é lido de outro lugar: sem GEP, ficam desconhecidos.
  */
 export function gepNote(g, noSource = null) {
@@ -228,7 +228,7 @@ export function gepNote(g, noSource = null) {
 export function buildModel({ state, rec }, { review = null } = {}) {
   // Comp fixada na tela de seleção (preview) tem prioridade sobre a primeira sugestão.
   const plan = rec?.preview ?? rec?.recommendations?.[0] ?? null,
-    screen = state?.screen ?? {},
+    seen = state?.seen ?? {},
     hp = num(rec?.self?.health),
     // Partida acompanhada pelo servidor. Em andamento, vida ≤ 0 não encerra: o primeiro tabuleiro de cada
     // partida traz -1 em todos. Sem partida acompanhada, a vida do Hero decide.
@@ -252,21 +252,21 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     // Nível: observado pelo jogo ("lido", hoje pelo GEP), piso derivado do XP passivo ("derivado": o real é este ou maior) ou,
     // só se nada disso existir, o número de peças em campo ("estimado", nunca uma leitura). O servidor já entrega o lido/derivado.
     level:
-      num(screen.level) ?? num(state?.estimatedLevel) ?? num(rec?.currentLevel),
+      num(seen.level) ?? num(state?.estimatedLevel) ?? num(rec?.currentLevel),
     levelSource:
-      num(screen.level) === null
+      num(seen.level) === null
         ? "estimado"
-        : screen.sources?.level === "derived"
+        : seen.sources?.level === "derived"
           ? "derivado"
           : "lido",
     // Nível que a análise usou (pode estar uma leitura atrás do mostrado até a próxima análise).
     levelUsed: num(rec?.currentLevel),
-    xp: parseXp(screen.xp),
-    gold: num(screen.gold),
+    xp: parseXp(seen.xp),
+    gold: num(seen.gold),
     // Origem GEP (banco do TFTAcademy, observada): a interface só avisa de leve no tooltip.
-    levelFrom: screen.sources?.level === "gep" ? "gep" : null,
-    goldFrom: screen.sources?.gold === "gep" ? "gep" : null,
-    stage: parseStage(screen.stage),
+    levelFrom: seen.sources?.level === "gep" ? "gep" : null,
+    goldFrom: seen.sources?.gold === "gep" ? "gep" : null,
+    stage: parseStage(seen.stage),
     phase: rec?.metadata?.phase ?? null,
   };
   const status = {
@@ -296,7 +296,7 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     gameId: rec?.metadata?.gameId ?? null,
     // Estado da fonte GEP (ativo, obsoleto, ausente, esquema-desconhecido) para o tooltip do indicador ao vivo.
     // Na revisão a fonte é a de quando a partida acabou, não a de agora: sem chip nem aviso dela.
-    gep: review ? null : gepNote(state?.gepStatus, screen.noSource ?? null),
+    gep: review ? null : gepNote(state?.gepStatus, seen.noSource ?? null),
   };
   if (!plan) return { hero, status, plan: null };
 
@@ -403,7 +403,7 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     });
   // Loja de agora (só ao vivo): cruza a lista Comprar e o painel Roll com a mesma função (shop-match.js).
   const shopNow = live
-    ? shopView(screen, { gepStatus: state?.gepStatus })
+    ? shopView(seen, { gepStatus: state?.gepStatus })
     : shopView(null);
   add(
     "swap",
@@ -516,13 +516,13 @@ export function buildModel({ state, rec }, { review = null } = {}) {
         unit: u,
         item: u.nextItem,
         // Banco de itens lido (GEP): a interface só o usa para mostrar os componentes quando o servidor não disse o que falta.
-        bank: Array.isArray(screen.items) ? screen.items : null,
+        bank: Array.isArray(seen.items) ? seen.items : null,
       })),
   );
   // Todos os itens recomendados de cada campeão em campo (até 3), com a situação de cada um segundo o banco lido
   // (core/items/champion-items.mjs): o "Próximo item" acima é só o destaque. Só entra quem ainda tem item pendente; o
   // carry primeiro. Sem banco lido não há o que dizer de "pronto"/"falta": a lista não aparece em vez de afirmar errado.
-  const bankNow = Array.isArray(screen.items) ? screen.items : null;
+  const bankNow = Array.isArray(seen.items) ? seen.items : null;
   add(
     "builds",
     "Itens dos campeões",

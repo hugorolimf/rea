@@ -98,19 +98,19 @@ export function recommendPayload(
   compSwaps = {},
   { replay = false } = {},
 ) {
-  const screen = state.screen ?? {},
+  const seen = state.seen ?? {},
     decisions = decisionsOf(state, goal, augments, compSwaps);
   // Ao vivo só vão as decisões. (O modo de compatibilidade `legacyServer`, que mandava nível/ouro/banco para servidores
   // anteriores ao M7, foi removido: o servidor atual lê o próprio estado e responde 400 só se a decisão for inválida.)
   if (!replay) return decisions;
   return {
     ...decisions,
-    level: screen.level ?? state.estimatedLevel ?? 7,
-    gold: screen.gold ?? null,
+    level: seen.level ?? state.estimatedLevel ?? 7,
+    gold: seen.gold ?? null,
     bench: [],
-    inventory: Array.isArray(screen.items) ? screen.items : [],
-    levelEstimated: screen.level == null,
-    levelSource: screen.level == null ? "estimado" : "lido",
+    inventory: Array.isArray(seen.items) ? seen.items : [],
+    levelEstimated: seen.level == null,
+    levelSource: seen.level == null ? "estimado" : "lido",
   };
 }
 /** Estado de saúde do servidor (barato; responde mesmo durante uma análise): ver GET /api/health. */

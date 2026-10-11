@@ -54,14 +54,14 @@ test("rolldown em andamento (o plano manda rolar) vira pular; sem painel de Roll
 });
 
 test("sem os Wisps do GEP, a loja não é relida pelo catálogo: nenhum Wisp (nada de palpite)", () => {
-  const screen = {
+  const seen = {
     shop: [
       { text: "DA_18_Xayah", id: "DA_18_Xayah" },
       null,
       { text: "Punguista", id: null },
     ],
   };
-  const out = wispsView(screen, { catalog, hero, roll: { go: false } });
+  const out = wispsView(seen, { catalog, hero, roll: { go: false } });
   assert.deepEqual(out, []);
 });
 
@@ -71,11 +71,11 @@ test("a faixa de vida da análise vale sobre a vida lida", () => {
       { strategy: { panels: { economy: { pressure: "critical" } } } },
     ],
   };
-  const screen = { wisps: [{ slot: 5, id: "DA_18_Tremors", known: true }] };
+  const seen = { wisps: [{ slot: 5, id: "DA_18_Tremors", known: true }] };
   const late = { ...hero, stage: { stage: 5, round: 2 } };
-  const calm = wispsView(screen, { catalog, hero: late, roll: { go: false } });
+  const calm = wispsView(seen, { catalog, hero: late, roll: { go: false } });
   assert.equal(calm[0].veredito, "avaliar");
-  const risky = wispsView(screen, {
+  const risky = wispsView(seen, {
     catalog,
     hero: late,
     rec,

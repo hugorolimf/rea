@@ -55,8 +55,7 @@ const BF = "DA_Component_BFSword",
 function input(items, tweak) {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
-  state.screen = {
-    running: true,
+  state.seen = {
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -159,7 +158,7 @@ test("itens do campeão: sem banco lido a lista não afirma nada", () => {
   const m = buildModel(
     (() => {
       const i = input([]);
-      delete i.state.screen.items;
+      delete i.state.seen.items;
       return i;
     })(),
   );

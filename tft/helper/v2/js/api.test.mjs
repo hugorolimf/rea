@@ -10,7 +10,7 @@ const state = (extra = {}) => ({
   actionable: true,
   sameGame: true,
   match: { id: 1 },
-  screen: {
+  seen: {
     xp: "2/20",
     stage: "2-3",
     shop: ["A", "B"],
@@ -23,7 +23,7 @@ const state = (extra = {}) => ({
   },
   ...extra,
 });
-// O payload do POST só leva decisões do usuário; ouro, nível e banco de itens vêm do estado (screen).
+// O payload do POST só leva decisões do usuário; ouro, nível e banco de itens vêm do estado (seen).
 const payload = { goalCompId: "", compSwaps: {} };
 const at = (ms, fn) => {
   const real = Date.now;
@@ -49,7 +49,7 @@ test("regravar o arquivo sem mudar o jogo não pede análise nova; mudar o jogo,
     key,
   );
   // Ouro, nível, banco de itens e se o nível é piso derivado entram na chave pelo estado, não pelo payload.
-  for (const screen of [
+  for (const seen of [
     { gold: 31 },
     { level: 5 },
     { items: ["A", "B"] },
@@ -57,13 +57,10 @@ test("regravar o arquivo sem mudar o jogo não pede análise nova; mudar o jogo,
   ])
     assert.notEqual(
       at(t, () =>
-        analysisKey(
-          state({ screen: { ...state().screen, ...screen } }),
-          payload,
-        ),
+        analysisKey(state({ seen: { ...state().seen, ...seen } }), payload),
       ),
       key,
-      JSON.stringify(screen),
+      JSON.stringify(seen),
     );
   // Uma decisão do usuário (comp fixada) continua mudando a chave.
   assert.notEqual(
@@ -73,7 +70,7 @@ test("regravar o arquivo sem mudar o jogo não pede análise nova; mudar o jogo,
   assert.notEqual(
     at(t, () =>
       analysisKey(
-        state({ screen: { ...state().screen, shop: ["A", "C"] } }),
+        state({ seen: { ...state().seen, shop: ["A", "C"] } }),
         payload,
       ),
     ),
@@ -110,7 +107,7 @@ test("o payload do POST leva só decisões do usuário; o servidor lê ouro, ní
   const live = {
     localPlayerId: "47445859",
     estimatedLevel: 6,
-    screen: {
+    seen: {
       gold: 54,
       level: 8,
       items: ["DA_Component_BFSword"],
@@ -147,7 +144,7 @@ test("o payload do POST leva só decisões do usuário; o servidor lê ouro, ní
 
 test("partida revista: os campos antigos do cliente continuam indo (a leitura de agora não vale para ela)", () => {
   const body = recommendPayload(
-    { localPlayerId: "1", estimatedLevel: 6, screen: {} },
+    { localPlayerId: "1", estimatedLevel: 6, seen: {} },
     null,
     [],
     {},

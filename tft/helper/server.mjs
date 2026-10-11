@@ -611,7 +611,7 @@ async function buildStateBody() {
   });
   const body = {
     ...metadata,
-    screen: seenNow,
+    seen: seenNow,
     // Estado normalizado (cada campo com valor, fonte, confiança e idade) e a divergência GEP x arquivo do jogo contada.
     gameState: {
       ...stateHub.gameState(seenNow, metadata.gameId),
@@ -622,7 +622,7 @@ async function buildStateBody() {
     // Origem e estado bruto dos arquivos do jogo; `hints` são estimativas (voz de compra etc.), não dado observado.
     gameFiles: gameFiles.status(metadata.gameId),
     // Compras e fusões do TFT.log contra o tabuleiro: a reserva NÃO é reconstruível (o log não grava venda nem
-    // movimento); `bench.upperBound` é só um teto. A reserva observada vem do GEP (`screen.sources.bench`); sem ele, fica sem fonte. Ver FONTES-DE-DADOS.md.
+    // movimento); `bench.upperBound` é só um teto. A reserva observada vem do GEP (`seen.sources.bench`); sem ele, fica sem fonte. Ver FONTES-DE-DADOS.md.
     unitLedger: gameFiles.ledger(
       metadata.gameId,
       snapshot.statsBlock.players.find((p) => String(p.playerId) === HERO_ID)

@@ -295,7 +295,7 @@ function render(model) {
       status.waiting ? null : last?.rec?.ownedItemAdvice,
       emblemsOf(last?.rec),
       // O banco vem direto do estado (GEP); a análise só acrescenta montar agora/falta um.
-      status.waiting || status.replay ? null : bankReading(latestState?.screen),
+      status.waiting || status.replay ? null : bankReading(latestState?.seen),
     );
     lastModel = model;
     if (status.replay) compModal.close();
@@ -306,7 +306,7 @@ function render(model) {
       model.plan?.panel ?? null,
       status.replay || status.ended || status.waiting
         ? []
-        : wispsView(latestState?.screen, {
+        : wispsView(latestState?.seen, {
             catalog: getCatalog(),
             hero: model.hero,
             rec: last?.rec,
@@ -333,7 +333,7 @@ function render(model) {
       records: replay
         ? chosen.map((a) => ({ id: a.id, stage: null, name: a.name }))
         : augRecords(),
-      stage: replay ? null : (latestState?.screen?.stage ?? null),
+      stage: replay ? null : (latestState?.seen?.stage ?? null),
       live: replay ? false : status.live,
       readonly: replay,
     });
@@ -419,7 +419,7 @@ function drawChampItems() {
   const cell =
     lastModel?.plan?.cells?.find((c) => c.id === selectedCell) ?? null;
   // Partida revista: o banco de agora não vale para ela.
-  champItems.update(cell, replayOf() ? [] : (latestState?.screen?.items ?? []));
+  champItems.update(cell, replayOf() ? [] : (latestState?.seen?.items ?? []));
 }
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && selectedCell) {
@@ -469,7 +469,7 @@ function compCardsData() {
       screen: replayOf() ? null : latestState?.screen,
     }),
     // Banco de itens lido (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
-    bank: replayOf() ? null : (bankReading(latestState?.screen)?.items ?? null),
+    bank: replayOf() ? null : (bankReading(latestState?.seen)?.items ?? null),
     equipped: replayOf() ? {} : equippedBy(rec?.self?.units),
     goalId: goals.get(matchKeyOf(latestState))?.id ?? null,
     swapCount: goals.get(matchKeyOf(latestState))?.swaps.length ?? 0,
@@ -645,7 +645,7 @@ async function pull() {
       if (!rec)
         rec = await loadRecommendation({
           ...recommendPayload(
-            { ...state, screen: {} },
+            { ...state, seen: {} },
             null,
             [],
             {},
@@ -654,7 +654,7 @@ async function pull() {
           replayGameId: replay,
         });
       lastKey = "";
-      last = { state: { ...rec.metadata, screen: {} }, rec, replay };
+      last = { state: { ...rec.metadata, seen: {} }, rec, replay };
       const shown = last;
       loop.paint(() => {
         const model = buildModel(shown);
@@ -721,7 +721,7 @@ async function pull() {
         inventory.update(
           rec?.ownedItemAdvice,
           emblemsOf(rec),
-          bankReading(state.screen),
+          bankReading(state.seen),
         );
       rec = await loadRecommendation(payload);
       lastKey = key;

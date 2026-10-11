@@ -29,19 +29,19 @@ const makeState = (extra = {}) => ({
   localPlayerId: "P1",
   estimatedLevel: 5,
   players: [{ id: "P1" }, { id: "P2" }],
-  screen: {
+  seen: {
     gold: 30,
     level: 5,
     xp: "2/20",
     stage: "2-1",
     shop: ["A"],
     items: [],
-    sources: { level: "tela" },
+    sources: { level: "gep" },
   },
   ...extra,
 });
 const withGold = (gold, extra = {}) =>
-  makeState({ screen: { ...makeState().screen, gold }, ...extra });
+  makeState({ seen: { ...makeState().seen, gold }, ...extra });
 
 /** Monta o laço com tudo falso. `pipeline` imita app/recommend.mjs: guarda o resultado sob a chave de análise. */
 function harness({ status = 200, refresh } = {}) {

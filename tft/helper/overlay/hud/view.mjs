@@ -460,10 +460,10 @@ function buyOf(model) {
 }
 
 /** Wisps da loja agora (só ao vivo e com a função e o catálogo injetados); um dado estranho nunca derruba a tela. */
-function wispsOf(model, screen, rec, deps) {
+function wispsOf(model, seen, rec, deps) {
   if (!model.status.live || typeof deps.wispsView !== "function") return [];
   try {
-    const list = deps.wispsView(screen, {
+    const list = deps.wispsView(seen, {
       catalog: deps.catalog,
       hero: model.hero,
       rec,
@@ -509,22 +509,25 @@ function levelOf(model) {
   };
 }
 
-/** Origem declarada de um dado (`screen.sources.<chave>`): "gep", "game-log", "derived" ou null se não informada. */
-const sourceOf = (screen, key) => str(screen?.sources?.[key]);
+/**
+ * Origem declarada de um dado do estado visto (`seen.sources.<chave>`, de GET /api/state): "gep", "game-log", "derived"
+ * ou null se não informada.
+ */
+const sourceOf = (seen, key) => str(seen?.sources?.[key]);
 
 /**
  * De onde vêm os dados (chip do GEP, campos sem fonte, origem da loja, do ouro e do nível), para o indicador de saúde.
  * `missing`: nomes para o usuário dos campos do jogador sem fonte (`status.gep.missing`), ou [] se nenhum.
  */
-function sourcesOf(model, screen, bar) {
-  const shop = sourceOf(screen, "shop");
+function sourcesOf(model, seen, bar) {
+  const shop = sourceOf(seen, "shop");
   const missing = model.status.gep?.missing;
   return {
     gep: bar?.gep ?? null,
     missing: Array.isArray(missing) ? missing : [],
     shopSource: shop === "gep" ? shop : null,
-    goldSource: sourceOf(screen, "gold"),
-    levelSource: sourceOf(screen, "level"),
+    goldSource: sourceOf(seen, "gold"),
+    levelSource: sourceOf(seen, "level"),
   };
 }
 
@@ -642,7 +645,7 @@ export function overlayView(
       notices,
       bar,
       dim: stateStale || recStale,
-      sources: sourcesOf(model, stateBody?.screen, bar),
+      sources: sourcesOf(model, stateBody?.seen, bar),
       // O carrossel vem do estado, não da análise: aparece mesmo sem plano (ver carouselOf).
       carousel: carouselOf(stateBody, stateStale, deps),
       // Aprimoramentos também vêm do estado (a oferta do GEP); a análise só ordena as cartas.
@@ -698,8 +701,8 @@ export function overlayView(
       },
     };
 
-  const bank = Array.isArray(stateBody?.screen?.items)
-      ? stateBody.screen.items
+  const bank = Array.isArray(stateBody?.seen?.items)
+      ? stateBody.seen.items
       : [],
     roll = rollOf(model),
     items = {
@@ -724,7 +727,7 @@ export function overlayView(
     builds,
     plan,
     buy: buyOf(model),
-    wisps: wispsOf(model, stateBody?.screen, rec, deps),
+    wisps: wispsOf(model, stateBody?.seen, rec, deps),
     economy: economyOf(rec),
     level: levelOf(model),
     sections: [

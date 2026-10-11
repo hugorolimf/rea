@@ -110,12 +110,12 @@ test("matriz de atributos: ordena pela coluna escolhida e guarda o máximo de ca
 });
 
 test("bankReading mantém repetidos, consumíveis e espaços não reconhecidos do banco lido", () => {
-  const screen = {
+  const seen = {
     items: ["A", "A", "B"],
     bank: ["A", "DA_Consumable_ItemRemover", "A", "B"],
     unknownItems: 2,
   };
-  assert.deepEqual(bankReading(screen), {
+  assert.deepEqual(bankReading(seen), {
     bank: ["A", "DA_Consumable_ItemRemover", "A", "B"],
     items: ["A", "A", "B"],
     unknown: 2,

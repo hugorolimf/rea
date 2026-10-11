@@ -464,7 +464,7 @@ export function createRecommender(deps) {
     const uiKey = !plain
       ? null
       : analysisKey(
-          { ...metadata, screen: seen },
+          { ...metadata, seen },
           decisionPayload(metadata, picked),
           now(),
         );

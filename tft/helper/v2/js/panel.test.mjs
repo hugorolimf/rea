@@ -103,7 +103,7 @@ const panelFor = (opts, tweak) => {
       ...opts,
     });
   tweak?.(s);
-  state.screen = {
+  state.seen = {
     stage: "4-2",
     gold: s.options.gold,
     level: 8,

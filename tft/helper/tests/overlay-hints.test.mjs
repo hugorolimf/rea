@@ -54,7 +54,7 @@ const SUN = "DA_SunfireCape";
 function liveInput() {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
-  state.screen = {
+  state.seen = {
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -145,8 +145,8 @@ const SHOP = [
 ];
 /** Põe uma loja no estado, com a origem declarada (GEP ativo por padrão: confiável). */
 function withShop(input, cards = SHOP, source = "gep") {
-  input.state.screen.shop = cards;
-  input.state.screen.sources = { ...input.state.screen.sources, shop: source };
+  input.state.seen.shop = cards;
+  input.state.seen.sources = { ...input.state.seen.sources, shop: source };
   if (source === "gep")
     input.state.gepStatus = { state: "ativo", lastEventAgeMs: 1000 };
   return input;
@@ -262,8 +262,8 @@ test("view: roll ganha o nível em que o servidor manda rolar (veredito 'esperar
 
 test("view: sources resume de onde vem cada dado (GEP, campos sem fonte, loja, ouro, nível)", () => {
   const input = withShop(liveInput());
-  input.state.screen.sources.gold = "gep";
-  input.state.screen.sources.level = "derived";
+  input.state.seen.sources.gold = "gep";
+  input.state.seen.sources.level = "derived";
   const v = viewOf(feedOf(input));
   assert.deepEqual(v.sources.gep, v.bar.gep);
   assert.equal(v.sources.gep.state, "ativo");
@@ -286,14 +286,14 @@ test("view: sources resume de onde vem cada dado (GEP, campos sem fonte, loja, o
 test("view: sem o GEP, sources.missing lista os campos do jogador sem fonte (status.gep.missing)", () => {
   const input = liveInput();
   input.state.gepStatus = { state: "ausente", reason: "sem-banco" };
-  input.state.screen.gold = null;
-  input.state.screen.sources = {
+  input.state.seen.gold = null;
+  input.state.seen.sources = {
     gold: null,
     level: null,
     xp: null,
     shop: null,
   };
-  input.state.screen.noSource = {
+  input.state.seen.noSource = {
     gold: "GEP ausente",
     shop: "GEP ausente",
   };
@@ -308,13 +308,13 @@ test("view: sem o GEP, sources.missing lista os campos do jogador sem fonte (sta
 test("view: wisps usam deps.wispsView/deps.catalog só ao vivo e toleram a ausência ou a falha deles", () => {
   const calls = [],
     list = [{ slot: 3, id: "W1", name: "Punguista", veredito: "comprar" }];
-  const stub = (screen, opts) => (calls.push({ screen, opts }), list);
+  const stub = (seen, opts) => (calls.push({ seen, opts }), list);
   const input = withShop(liveInput());
   const withWisps = { ...deps, wispsView: stub, catalog: wispCatalog };
   const v = viewOf(feedOf(input), { deps: withWisps });
   assert.deepEqual(v.wisps, list);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].screen, input.state.screen);
+  assert.equal(calls[0].seen, input.state.seen);
   assert.equal(calls[0].opts.catalog, wispCatalog);
   assert.equal(calls[0].opts.hero.gold, 54);
   assert.equal(
@@ -514,15 +514,15 @@ test("dicas: veredito de esperar o nível, subir de nível e perigo de vida no m
 
 test("dicas: Wisp real da loja ganha veredito e motivo do catálogo, ancorado no espaço dele", () => {
   const input = liveInput();
-  input.state.screen.shop = [
+  input.state.seen.shop = [
     null,
     null,
     { id: null, text: "Punguista", wisp: true },
     null,
     null,
   ];
-  input.state.screen.sources = { shop: "gep" };
-  input.state.screen.wisps = [
+  input.state.seen.sources = { shop: "gep" };
+  input.state.seen.wisps = [
     { slot: 3, id: "DA_Cutpurse18", name: "Punguista", known: true },
   ];
   input.state.gepStatus = { state: "ativo", lastEventAgeMs: 500 };

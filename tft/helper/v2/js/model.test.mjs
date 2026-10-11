@@ -21,7 +21,7 @@ const { state, rec } = JSON.parse(
 const live = () => {
   const s = structuredClone(state),
     r = structuredClone(rec);
-  s.screen = {
+  s.seen = {
     stage: "4-2",
     gold: 54,
     level: 8,
@@ -404,14 +404,14 @@ test("nível: lido, derivado (piso) e estimado pelo tabuleiro são distinguidos"
   const read = buildModel(live());
   assert.equal(read.hero.levelSource, "lido");
   const derived = live();
-  derived.state.screen = {
-    ...derived.state.screen,
+  derived.state.seen = {
+    ...derived.state.seen,
     level: 5,
     sources: { level: "derived" },
   };
   assert.equal(buildModel(derived).hero.levelSource, "derivado");
   const estimated = live();
-  estimated.state.screen = { ...estimated.state.screen, level: null };
+  estimated.state.seen = { ...estimated.state.seen, level: null };
   estimated.state.estimatedLevel = 6;
   const m = buildModel(estimated);
   assert.equal(m.hero.level, 6);
@@ -525,7 +525,7 @@ test("achar rolando: peças viáveis, verde a partir de 50%, com a subida de ní
 
 test("fonte GEP: o modelo traz a origem de ouro/nível e o estado da fonte para o tooltip", () => {
   const s = structuredClone(state);
-  s.screen = {
+  s.seen = {
     stage: "1-3",
     gold: 0,
     level: 2,
@@ -540,7 +540,7 @@ test("fonte GEP: o modelo traz a origem de ouro/nível e o estado da fonte para 
   assert.equal(hero.levelSource, "lido");
   assert.equal(status.gep.label, "GEP ativo · último evento há 4s");
   // Nível derivado (piso do XP passivo) não é observado pelo GEP; sem origem, nenhum dos dois.
-  s.screen.sources = { gold: null, level: "derived" };
+  s.seen.sources = { gold: null, level: "derived" };
   const other = buildModel({ state: s, rec: null }).hero;
   assert.equal(other.goldFrom, null);
   assert.equal(other.levelFrom, null);
@@ -638,9 +638,9 @@ test("fonte GEP: sem GEP o chip diz 'sem fonte' e a dica lista os campos do joga
     gepNote({ state: "ausente", reason: "banco-ausente" }).missing,
     undefined,
   );
-  // O modelo repassa `screen.noSource` ao chip.
+  // O modelo repassa `seen.noSource` ao chip.
   const s = structuredClone(state);
-  s.screen = { stage: "2-1", sources: { stage: "game-log" }, noSource };
+  s.seen = { stage: "2-1", sources: { stage: "game-log" }, noSource };
   s.gepStatus = { state: "ausente", reason: "banco-ausente" };
   const m = buildModel({ state: s, rec: null });
   assert.equal(m.status.gep.short, "GEP off · sem fonte");

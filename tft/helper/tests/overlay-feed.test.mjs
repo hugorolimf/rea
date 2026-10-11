@@ -25,7 +25,7 @@ test("sem nada registrado: state e recommendation nulos, rev 0.0", () => {
 test("registrar só o state não altera a recomendação, e vice-versa; rev conta cada gravação", () => {
   const clock = makeClock(),
     feed = createOverlayFeed({ now: clock.now }),
-    state = { screen: { gold: 30 } },
+    state = { seen: { gold: 30 } },
     rec = { metadata: { gameId: "g1" }, recommendations: [] };
   feed.recordState(state);
   let snap = feed.snapshot();
@@ -38,7 +38,7 @@ test("registrar só o state não altera a recomendação, e vice-versa; rev cont
   assert.equal(snap.rev, "1.1");
   assert.equal(snap.recommendation.body, rec);
   assert.equal(snap.state.body, state, "o state anterior segue igual");
-  feed.recordState({ screen: { gold: 31 } });
+  feed.recordState({ seen: { gold: 31 } });
   assert.equal(feed.snapshot().rev, "2.1");
   assert.equal(feed.snapshot().recommendation.body, rec);
 });
@@ -95,7 +95,7 @@ test("snapshot({ since: rev atual }) é curto: unchanged, sem state nem recommen
 
 test("os corpos não são copiados nem alterados: mesma referência de ida e de volta", () => {
   const feed = createOverlayFeed({ now: makeClock().now }),
-    state = { screen: { gold: 30, items: ["a"] } },
+    state = { seen: { gold: 30, items: ["a"] } },
     rec = { metadata: { gameId: "g1" }, recommendations: [{ id: 1 }] },
     frozen = JSON.stringify([state, rec]);
   // Os registradores devolvem o próprio corpo (o servidor responde com ele).

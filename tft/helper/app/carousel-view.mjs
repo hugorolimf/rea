@@ -16,7 +16,7 @@ const sameGame = (rec, gameId) =>
   String(rec.metadata.gameId) === String(gameId);
 
 /**
- * Bloco `carousel` do estado. `seen` = o estado visto (`screen` do /api/state): `stage`, `phaseKind`, `gepRound`,
+ * Bloco `carousel` do estado. `seen` = o estado visto (`seen` do /api/state): `stage`, `phaseKind`, `gepRound`,
  * `carouselOffer`, `items`. `rec` = último corpo de /api/recommend (ou null, ou uma função que o entrega), `gameId` = partida atual. Opções:
  * `emblemTrait(itemId)` e `nameOf(id)` (catálogo do servidor).
  *

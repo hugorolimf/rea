@@ -101,7 +101,7 @@ for (let i = 0; i < iterations; i++) {
       id: String(p.playerId),
       health: p.health,
     })),
-    screen: seen,
+    seen,
     gepStatus,
     gameFiles: files,
     unitLedger: ledger,

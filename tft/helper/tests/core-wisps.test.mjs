@@ -258,13 +258,13 @@ test("a loja que o motor lê (analysisInputs) não tem Wisp: só ids de campeõe
     { live: false },
   );
   assert.deepEqual(inputs.shop, ["DA_18_Xayah", null, null, null, null]);
-  // Mesmo a loja lida da tela (nome de exibição, sem id) nunca vira id.
-  const screen = [
+  // Carta só com o nome de exibição (sem id) nunca vira id.
+  const named = [
     { text: "Abandon Ship", id: null },
     { text: "Payday", id: null },
   ];
   assert.deepEqual(
-    analysisInputs({ shop: screen, augments: [] }, { live: false }).shop,
+    analysisInputs({ shop: named, augments: [] }, { live: false }).shop,
     [null, null],
   );
   // E withoutWisps tira de qualquer loja os Wisps reconhecidos (catálogo ou marca do leitor).
