@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-0FCxUj7kSw5TVdaA01VHuaP8yYxfqP/CjAme7qLIkg8='">
+<title>TFT helper</title>
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body { font: 12px/1.35 "Segoe UI", system-ui, sans-serif; color: #e6e6e6; user-select: none; cursor: default; }
+  p { position: absolute; top: 8px; right: 8px; max-width: 320px; margin: 0; padding: 6px 10px; border-radius: 6px; background: rgba(15, 15, 20, 0.72); }
+</style>
+</head>
+<body>
+<p>Servidor do helper não responde em 127.0.0.1:<span id="porta">3218</span>; reabrindo sozinho quando voltar (servidor iniciado antes do overlay? reinicie-o)</p>
+<script>var p=new URLSearchParams(location.search).get("port");if(/^[0-9]{1,5}$/.test(p||""))document.getElementById("porta").textContent=p;</script>
+</body>
+</html>

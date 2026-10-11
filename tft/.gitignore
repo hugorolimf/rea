@@ -1,1 +1,4 @@
 data/
+helper/overlay/node_modules/
+helper/overlay/overlay.config.json
+helper/overlay/overlay.log

@@ -8,5 +8,9 @@ foreach ($connection in Get-NetTCPConnection -State Listen -LocalPort 3218, 3219
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
   Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'screen-reader\.ps1' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $stopped += "leitor de tela (PID $($_.ProcessId))" }
+$electron = Join-Path $PSScriptRoot 'overlay\node_modules\electron\dist\electron.exe'
+Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
+  Where-Object { $_.ExecutablePath -eq $electron } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $stopped += "overlay (PID $($_.ProcessId))" }
 if ($stopped.Count) { 'TFT Helper parado:'; $stopped | ForEach-Object { "  - $_" } } else { 'TFT Helper já estava parado.' }
 Start-Sleep -Seconds 2

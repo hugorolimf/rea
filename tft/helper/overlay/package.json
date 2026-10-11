@@ -1,0 +1,17 @@
+{
+  "name": "tft-helper-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sobreposição (janela transparente, sempre no topo e click-through) do TFT helper. Sem injeção no jogo.",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "44.7.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}
