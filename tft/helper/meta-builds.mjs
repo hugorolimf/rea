@@ -3,8 +3,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { itemRole } from "./core/catalog/items.mjs";
-export const META_SOURCE =
-  "https://api-hc.metatft.com/tft-comps-api/unit_items_processed";
+import { netSignal, writeFileAtomic } from "./meta-files.mjs";
+import { PATCH_SOURCE, patchLabel } from "./meta-scope.mjs";
+// A mesma resposta que publica o patch atual (meta-scope.mjs).
+export const META_SOURCE = PATCH_SOURCE;
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
 // Papel inferido dos cinco primeiros itens de meta (papel do item: core/catalog/items.mjs); empate ou lista curta
 // devolve null e o chamador usa sua heurística.
@@ -17,7 +19,8 @@ function roleOf(ids) {
   const ranked = Object.entries(n).sort((a, b) => b[1] - a[1]);
   return ranked[0][1] >= 2 && ranked[0][1] > ranked[1][1] ? ranked[0][0] : null;
 }
-function shape(file) {
+/** Mapas de builds e papéis de uma cópia já lida (null = vazio); mesma forma de `loadMeta`. */
+export function shape(file) {
   const builds = new Map(),
     roles = new Map();
   for (const [id, ids] of Object.entries(file?.units ?? {})) {
@@ -48,9 +51,9 @@ export async function loadMeta(root, set) {
   }
 }
 /** Baixa a lista atual e regrava a cópia local. Rejeita resposta de outro set ou sem unidades. */
-export async function refreshMeta(root, set) {
+export async function refreshMeta(root, set, { signal } = {}) {
   const response = await fetch(META_SOURCE, {
-    signal: AbortSignal.timeout(20000),
+    signal: netSignal(20000, signal),
   });
   if (!response.ok) throw Error("MetaTFT respondeu " + response.status);
   const raw = await response.json();
@@ -75,17 +78,16 @@ export async function refreshMeta(root, set) {
           .map((u) => u.unit)
           .filter((u) => typeof u === "string"),
       };
-  const patch = raw.region_patch_adjustment?.selected_patch;
   const file = {
     source: META_SOURCE,
     fetchedAt: new Date().toISOString(),
     set,
-    patch: patch ? patch.patch + (patch.b_patch_version ?? "") : null,
+    patch: patchLabel(raw.region_patch_adjustment?.selected_patch),
     units,
     items,
     games: Number.isFinite(raw.overall?.count) ? raw.overall.count : null,
   };
-  await fs.writeFile(filePath(root), JSON.stringify(file, null, 1));
+  await writeFileAtomic(filePath(root), JSON.stringify(file, null, 1));
   return shape(file);
 }
 export const metaIsStale = (meta) =>

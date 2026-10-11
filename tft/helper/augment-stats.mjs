@@ -6,6 +6,7 @@
 // A MetaTFT não publica colocação medida por aprimoramento neste set (o campo vem vazio).
 import fs from "node:fs/promises";
 import path from "node:path";
+import { netSignal, writeFileAtomic } from "./meta-files.mjs";
 
 const NOXU = "https://noxutft.com/tft-augments";
 const TIERS = "https://api-hc.metatft.com/tft-comps-api/comp_augment_tiers";
@@ -40,11 +41,11 @@ export function parseNoxu(html) {
 }
 
 /** Baixa as duas fontes e regrava a cópia local; mantém a parte que falhar da cópia anterior. */
-export async function refreshAugmentStats(root) {
+export async function refreshAugmentStats(root, { signal } = {}) {
   const prev = await loadAugmentStats(root);
   const [noxu, tiers] = await Promise.allSettled([
     fetch(NOXU, {
-      signal: AbortSignal.timeout(30000),
+      signal: netSignal(30000, signal),
       headers: { "User-Agent": "tft-helper (local)" },
     }).then(async (r) => {
       if (!r.ok) throw Error("NoxuTFT respondeu " + r.status);
@@ -53,7 +54,7 @@ export async function refreshAugmentStats(root) {
         throw Error("NoxuTFT: tabela não reconhecida");
       return parsed;
     }),
-    fetch(TIERS, { signal: AbortSignal.timeout(30000) }).then(async (r) => {
+    fetch(TIERS, { signal: netSignal(30000, signal) }).then(async (r) => {
       if (!r.ok) throw Error("MetaTFT respondeu " + r.status);
       const out = {};
       for (const [cluster, v] of Object.entries((await r.json()).results ?? {}))
@@ -73,7 +74,7 @@ export async function refreshAugmentStats(root) {
     compTiers:
       tiers.status === "fulfilled" ? tiers.value : (prev?.compTiers ?? {}),
   };
-  await fs.writeFile(filePath(root), JSON.stringify(file));
+  await writeFileAtomic(filePath(root), JSON.stringify(file));
   return file;
 }
 

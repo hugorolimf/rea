@@ -3,7 +3,7 @@
     "measured": "https://noxutft.com/tft-augments",
     "tiers": "https://api-hc.metatft.com/tft-comps-api/comp_augment_tiers"
   },
-  "fetchedAt": "2026-10-11T03:00:38.000Z",
+  "fetchedAt": "2026-10-11T16:03:28.198Z",
   "augments": {
     "DA_SoloLeveling": {
       "avg": 3.68,

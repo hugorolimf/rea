@@ -4,9 +4,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { compBuildStats, tierOf } from "./item-edge.mjs";
+import { netSignal, writeFileAtomic } from "./meta-files.mjs";
+import { fetchCurrentPatch, patchLabel, scopedQuery } from "./meta-scope.mjs";
 const BASE = "https://api-hc.metatft.com/tft-comps-api/";
-const STATS_QUERY =
-  "comps_stats?queue=1100&patch=current&days=3&rank=CHALLENGER,DIAMOND,EMERALD,GRANDMASTER,MASTER,PLATINUM&permit_filter_adjustment=true";
+// Colocações das comps no recorte comum (meta-scope.mjs), o mesmo das estatísticas de tabuleiro e da evidência.
+const STATS_QUERY = "comps_stats?" + scopedQuery();
 // A MetaTFT agrega os últimos 3 dias; renovar a cada 2 h acompanha o dia do patch sem pesar na API.
 const MAX_AGE_MS = 2 * 60 * 60 * 1000,
   MIN_GAMES = 5000;
@@ -16,8 +18,12 @@ export async function loadComps(root, set, catalog) {
   let file = null;
   try {
     file = JSON.parse(await fs.readFile(filePath(root), "utf8"));
-    if (file.set !== set) file = null;
   } catch {}
+  return shapeComps(file, set, catalog);
+}
+/** Resolve nomes de uma cópia já lida (null ou de outro set = lista vazia); mesma forma de `loadComps`. */
+export function shapeComps(file, set, catalog) {
+  if (file?.set !== set) file = null;
   const champions = new Map(catalog.champions.map((c) => [c.apiName, c])),
     traitName = new Map(catalog.traits.map((t) => [t.apiName, t.name]));
   const comps = (file?.comps ?? [])
@@ -59,18 +65,19 @@ export async function loadComps(root, set, catalog) {
   };
 }
 /** Baixa comps e estatísticas e regrava a cópia local. Rejeita resposta de outro set ou vazia. */
-export async function refreshComps(root, set) {
+export async function refreshComps(root, set, { signal } = {}) {
   const get = async (route) => {
-    const r = await fetch(BASE + route, { signal: AbortSignal.timeout(30000) });
+    const r = await fetch(BASE + route, { signal: netSignal(30000, signal) });
     if (!r.ok)
       throw Error(
         "MetaTFT respondeu " + r.status + " em " + route.split("?")[0],
       );
     return r.json();
   };
-  const [data, stats] = await Promise.all([
+  const [data, stats, currentPatch] = await Promise.all([
     get("comps_data"),
     get(STATS_QUERY),
+    fetchCurrentPatch({ signal }),
   ]);
   const details = data?.results?.data;
   if (details?.tft_set !== set)
@@ -112,15 +119,17 @@ export async function refreshComps(root, set) {
     });
   }
   if (!comps.length) throw Error("MetaTFT não devolveu comps.");
-  const patch = stats?.filter_adjustment?.selected_patch ?? null;
-  await fs.writeFile(
+  // O `comps_stats` deixou de trazer `filter_adjustment.selected_patch`; vale o patch publicado em unit_items_processed.
+  const patch =
+    patchLabel(stats?.filter_adjustment?.selected_patch) ?? currentPatch;
+  await writeFileAtomic(
     filePath(root),
     JSON.stringify(
       {
         source: BASE + "comps_data + comps_stats",
         fetchedAt: new Date().toISOString(),
         set,
-        patch: patch ? patch.patch + (patch.b_patch_version ?? "") : null,
+        patch,
         comps,
       },
       null,

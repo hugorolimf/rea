@@ -2,8 +2,15 @@
 // de partidas por campeão × estrela × quantidade de itens, por campeão × item e por sinergia × patamar.
 // Servem para escolher os trunfos (suas peças com estrela e itens de melhor colocação medida) e o emblema que
 // mais rende; os tabuleiros inteiros são medidos pelo explorer (evidence.mjs). O servidor guarda uma cópia local com origem/data e segue com ela se a rede falhar.
+// Toda tabela é pedida com o recorte de meta-scope.mjs (o mesmo das comps): sem ele o explorer devolve outro set.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { netSignal, writeFileAtomic } from "./meta-files.mjs";
+import {
+  fetchCurrentPatch,
+  METATFT_SCOPE,
+  scopedQuery,
+} from "./meta-scope.mjs";
 
 const BASE = "https://api-hc.metatft.com/tft-explorer-api/";
 const MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -14,9 +21,9 @@ const stat = (r) =>
     ? [Math.round(r.avg_placement * 1000) / 1000, r.total_games]
     : null;
 
-async function get(name) {
-  const response = await fetch(BASE + name, {
-    signal: AbortSignal.timeout(40000),
+async function get(name, signal) {
+  const response = await fetch(`${BASE}${name}?${scopedQuery()}`, {
+    signal: netSignal(40000, signal),
   });
   if (!response.ok) throw Error(`MetaTFT ${name} respondeu ${response.status}`);
   const rows = await response.json();
@@ -30,13 +37,14 @@ async function get(name) {
  * - `unitItem["id|item"]` (o campeão com aquele item, uma cópia);
  * - `trait["apiName|patamar"]` (patamar = índice do breakpoint, 1 = o primeiro).
  */
-export async function refreshStats(root, set) {
-  const [total, tiers, numItems, unitItems, traits] = await Promise.all([
-    get("total"),
-    get("unit_tier"),
-    get("unit_tier_numitems_unique"),
-    get("unit_items_unique"),
-    get("traits"),
+export async function refreshStats(root, set, { signal } = {}) {
+  const [total, tiers, numItems, unitItems, traits, patch] = await Promise.all([
+    get("total", signal),
+    get("unit_tier", signal),
+    get("unit_tier_numitems_unique", signal),
+    get("unit_items_unique", signal),
+    get("traits", signal),
+    fetchCurrentPatch({ signal }),
   ]);
   const unit = {},
     unitItem = {},
@@ -78,15 +86,17 @@ export async function refreshStats(root, set) {
   const file = {
     source:
       BASE +
-      "{total,unit_tier,unit_tier_numitems_unique,unit_items_unique,traits}",
+      "{total,unit_tier,unit_tier_numitems_unique,unit_items_unique,traits}?" +
+      METATFT_SCOPE,
     fetchedAt: new Date().toISOString(),
     set,
+    patch,
     base,
     unit,
     unitItem,
     trait,
   };
-  await fs.writeFile(filePath(root), JSON.stringify(file));
+  await writeFileAtomic(filePath(root), JSON.stringify(file));
   return file;
 }
 

@@ -3,11 +3,22 @@
 // Filtros repetidos valem "e"; valores separados por vírgula no mesmo filtro valem "ou".
 // Cada resposta é a colocação média e o número de partidas dos tabuleiros finais que batem com os filtros.
 // Cache em memória e em disco (6 h): numa partida as mesmas perguntas se repetem a cada leitura.
+// Toda pergunta vai com o recorte de meta-scope.mjs (o mesmo das comps e de meta-stats): sem ele o explorer responde com
+// outro set e toda pergunta do set atual volta com 0 partidas.
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import {
+  evidenceIds,
+  OUT_OF_SET,
+  outOfSetIds,
+  SCOPE_TAG,
+  scopedQuery,
+} from "./meta-scope.mjs";
 
 const BASE = "https://api-hc.metatft.com/tft-explorer-api/";
 const TTL_MS = 6 * 60 * 60 * 1000;
+// Um cache com pelo menos tantas respostas, todas com 0 partidas, foi perguntado no recorte errado: não é usado.
+const MIN_EMPTY_CACHE = 5;
 const CONCURRENCY = 8;
 // Gravação do cache em disco: no mínimo 30 s entre uma e outra e serialização em fatias de 1.000 entradas.
 const PERSIST_GAP_MS = 30_000;
@@ -61,10 +72,59 @@ export function assetsOf(units, stats, { minGames = 300, limit = 2 } = {}) {
   return [...best.values()].sort((a, b) => a.avg - b.avg).slice(0, limit);
 }
 
-/** Cliente do explorer com cache; `file` guarda as respostas entre reinícios do servidor. */
+/** A resposta guardada mediu algum tabuleiro? (`total`: partidas > 0; condicional: alguma peça ou sinergia). */
+const measured = (value) =>
+  value !== null &&
+  typeof value === "object" &&
+  ("games" in value ? value.games > 0 : Object.keys(value).length > 0);
+
+/**
+ * Separa o cache lido do disco no que serve e no que é recusado: vencido (TTL), perguntado sem o recorte atual
+ * (`scope` ausente ou de outro recorte), "fora do set" (cita peça ou sinergia fora do catálogo `ids`) e, por último,
+ * o cache inteiro quando todas as respostas que sobraram têm 0 partidas. Devolve `{kept: [[chave, entrada]], rejected}`.
+ */
+export function screenCache(saved, { ids = null, now = Date.now() } = {}) {
+  const rejected = { expired: 0, scope: 0, outOfSet: 0, empty: 0 };
+  let kept = [];
+  for (const [k, v] of Object.entries(saved ?? {})) {
+    if (!(now - v?.at < TTL_MS)) rejected.expired++;
+    else if (v.scope !== SCOPE_TAG) rejected.scope++;
+    else if (outOfSetIds(evidenceIds(k), ids).length) rejected.outOfSet++;
+    else kept.push([k, v]);
+  }
+  if (
+    kept.length >= MIN_EMPTY_CACHE &&
+    !kept.some(([, v]) => measured(v.value))
+  ) {
+    rejected.empty = kept.length;
+    kept = [];
+  }
+  return { kept, rejected };
+}
+
+/** Texto do aviso de cache recusado (null quando nada relevante foi recusado; vencidas não contam). */
+function rejectedNote({ scope, outOfSet, empty }) {
+  const parts = [
+    scope && `${scope} sem o recorte de set/patch atual`,
+    outOfSet && `${outOfSet} ${OUT_OF_SET} (peça ou sinergia fora do catálogo)`,
+    empty && `${empty} de um cache inteiro com 0 partidas`,
+  ].filter(Boolean);
+  return parts.length
+    ? `cache de evidência: respostas descartadas (${parts.join("; ")}); serão perguntadas de novo`
+    : null;
+}
+
+/**
+ * Cliente do explorer com cache; `file` guarda as respostas entre reinícios do servidor. `ids` (de `setIdsOf(catalog)`)
+ * liga a recusa do que é "fora do set": no cache lido e nas respostas condicionais novas.
+ */
 export function explorer(
   file,
-  { minGapMs = PERSIST_GAP_MS, fetchTimeoutMs = FETCH_TIMEOUT_MS } = {},
+  {
+    minGapMs = PERSIST_GAP_MS,
+    fetchTimeoutMs = FETCH_TIMEOUT_MS,
+    ids = null,
+  } = {},
 ) {
   const cache = new Map(),
     tmp = `${file}.tmp`;
@@ -79,8 +139,10 @@ export function explorer(
     }
   };
   const saved = load(file) ?? (fs.existsSync(tmp) ? load(tmp) : null);
-  for (const [k, v] of Object.entries(saved ?? {}))
-    if (Date.now() - v?.at < TTL_MS) cache.set(k, v);
+  const screened = screenCache(saved, { ids });
+  for (const [k, v] of screened.kept) cache.set(k, v);
+  const note = rejectedNote(screened.rejected);
+  if (note) console.warn(note);
   let dirty = false,
     saving = null,
     timer = null,
@@ -143,7 +205,7 @@ export function explorer(
   };
   const inflight = new Map();
   async function fetchRows(endpoint, filters) {
-    const response = await fetch(`${BASE}${endpoint}?${filters.join("&")}`, {
+    const response = await fetch(`${BASE}${endpoint}?${scopedQuery(filters)}`, {
       signal: AbortSignal.timeout(fetchTimeoutMs),
     });
     if (!response.ok)
@@ -161,7 +223,7 @@ export function explorer(
     const p = fetchRows(endpoint, filters)
       .then((rows) => {
         const value = shape(rows);
-        cache.set(k, { at: Date.now(), value });
+        cache.set(k, { at: Date.now(), scope: SCOPE_TAG, value });
         dirty = true;
         schedulePersist();
         return value;
@@ -170,6 +232,17 @@ export function explorer(
     inflight.set(k, p);
     return p;
   }
+  // Resposta condicional em que a maioria das peças (ou sinergias) não está no catálogo do set atual: é de outro set.
+  // Lança em vez de devolver, para não entrar no cache; quem pergunta trata a falha como "sem resposta".
+  const inSet = (endpoint, out, idsOf) => {
+    const keys = Object.keys(out);
+    const off = keys.filter((k) => outOfSetIds(idsOf(k), ids).length);
+    if (keys.length && off.length * 2 > keys.length)
+      throw Error(
+        `MetaTFT ${endpoint}: resposta ${OUT_OF_SET} (${off.length} de ${keys.length}, ex.: ${off[0]})`,
+      );
+    return out;
+  };
   const stat = (r) =>
     r && Number.isFinite(r.avg_placement) && r.total_games > 0
       ? {
@@ -208,7 +281,7 @@ export function explorer(
             if (m && r.total_games > 0)
               out[m[1]] = [r.avg_placement, r.total_games];
           }
-          return out;
+          return inSet("units_unique", out, (id) => ({ units: [id] }));
         }),
         cached("traits", [filter], (rows) => {
           const out = {};
@@ -217,11 +290,13 @@ export function explorer(
             if (m && r.total_games > 0)
               out[`${m[1]}|${m[2]}`] = [r.avg_placement, r.total_games];
           }
-          return out;
+          return inSet("traits", out, (k) => ({ traits: [k.split("|")[0]] }));
         }),
       ]);
       return { units, traits };
     },
+    /** O que a leitura do cache em disco recusou (vencidas, sem recorte, fora do set, cache inteiro vazio) e o que ficou. */
+    health: () => ({ kept: screened.kept.length, rejected: screened.rejected }),
     /** Resolve várias consultas de total em paralelo (limite de conexões); falhas viram null. */
     async totals(filterSets) {
       const out = new Map(),
