@@ -403,16 +403,16 @@ function carouselOf(stateBody, stateStale, deps) {
 }
 
 /**
- * Aprimoramentos (oferta lida do jogo pelo GEP, `state.screen.augmentOffer`): o cartão aparece enquanto a escolha está aberta
+ * Aprimoramentos (oferta lida do jogo pelo GEP, `state.seen.augmentOffer`): o cartão aparece enquanto a escolha está aberta
  * no jogo, com as cartas na ordem da última análise (`rec.augmentAdvice`, só se for desta mesma oferta). Sem fonte (GEP
  * fora), aparece só na rodada de aprimoramento, dizendo "sem fonte". A regra é a da interface (`deps.augOfferView`, de
  * /v2/js/augs.js); sem ela, ou com a leitura velha, não há cartão. Devolve o modelo de `augOfferView` ou null.
  */
 function augmentsOf(stateBody, recBody, stateStale, deps) {
   if (stateStale || typeof deps?.augOfferView !== "function") return null;
-  const screen = stateBody?.screen ?? null;
+  const seen = stateBody?.seen ?? null;
   try {
-    const v = deps.augOfferView(screen, recBody?.augmentAdvice ?? null);
+    const v = deps.augOfferView(seen, recBody?.augmentAdvice ?? null);
     if (v.open) return v;
     // Sem fonte, só na rodada de aprimoramento (`augmentRound`, da trilha da interface) vale um cartão.
     return v.source?.state === "sem-fonte" && v.augmentRound ? v : null;

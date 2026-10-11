@@ -73,12 +73,12 @@ export function mountAugs(root, { onRemove }) {
   let drawn = "";
   return {
     /**
-     * `screen` é o `state.screen` do servidor (oferta e fonte dos aprimoramentos); `advice` e `chosen` vêm de
+     * `seen` é o `state.seen` do servidor (oferta e fonte dos aprimoramentos); `advice` e `chosen` vêm de
      * /api/recommend; `records` são as escolhas (do GEP ou corrigidas à mão); `stage` é o estágio lido.
      * `readonly` (partida revista) esconde o botão de desmarcar.
      */
     update({
-      screen = null,
+      seen = null,
       advice,
       chosen = [],
       records = [],
@@ -87,8 +87,8 @@ export function mountAugs(root, { onRemove }) {
       readonly = false,
     }) {
       const key = JSON.stringify([
-        screen?.augmentOffer ?? null,
-        screen?.augmentSource ?? null,
+        seen?.augmentOffer ?? null,
+        seen?.augmentSource ?? null,
         advice,
         chosen,
         records,
@@ -98,7 +98,7 @@ export function mountAugs(root, { onRemove }) {
       ]);
       if (key === drawn) return;
       drawn = key;
-      const view = augOfferView(readonly ? null : screen, advice),
+      const view = augOfferView(readonly ? null : seen, advice),
         known = new Map(chosen.map((a) => [a.id, a])),
         slots = augPath(records, known),
         offering = view.open,

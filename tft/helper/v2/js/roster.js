@@ -6,7 +6,7 @@ import { starCopies } from "../../core/pool/copies.mjs";
  *
  * Fontes (as duas já chegam ao cliente; nada aqui pede ao servidor):
  * - campo: `rec.self.units` (tabuleiro do arquivo do jogo, `{ championName, starLevel }`);
- * - reserva: `state.screen.gepBench` (GEP, `{ id, stars }`), válida só com `screen.sources.bench === "gep"`. Sem GEP
+ * - reserva: `state.seen.gepBench` (GEP, `{ id, stars }`), válida só com `seen.sources.bench === "gep"`. Sem GEP
  *   fresco a reserva é DESCONHECIDA, não vazia: uma peça fora de campo fica "reserva desconhecida", nunca "ausente".
  *
  * `rosterOf` devolve dados simples (serializáveis, entram nas chaves de redesenho); `ownership(roster, id)` diz onde está
@@ -18,10 +18,10 @@ const starOf = (s) => {
 };
 
 /**
- * `units`: `rec.self.units` (campo); `screen`: `state.screen` (reserva do GEP). Devolve
+ * `units`: `rec.self.units` (campo); `seen`: `state.seen` (reserva do GEP). Devolve
  * `{ benchKnown, field: {id: [estrelas...]}, reserve: {id: [estrelas...]} }`.
  */
-export function rosterOf({ units = [], screen = null } = {}) {
+export function rosterOf({ units = [], seen = null } = {}) {
   const field = {},
     reserve = {};
   for (const u of Array.isArray(units) ? units : []) {
@@ -30,9 +30,9 @@ export function rosterOf({ units = [], screen = null } = {}) {
       (field[id] ??= []).push(starOf(u.starLevel));
   }
   const benchKnown =
-    screen?.sources?.bench === "gep" && Array.isArray(screen?.gepBench);
+    seen?.sources?.bench === "gep" && Array.isArray(seen?.gepBench);
   if (benchKnown)
-    for (const u of screen.gepBench) {
+    for (const u of seen.gepBench) {
       const id = u?.id;
       if (typeof id === "string" && id)
         (reserve[id] ??= []).push(starOf(u.stars));

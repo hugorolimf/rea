@@ -62,7 +62,7 @@ export function augOfferView(seen, advice = null) {
   const base = {
     source,
     // Rodada de aprimoramento agora (2-1, 3-2, 4-2) pelo estágio lido: onde o "sem fonte" importa.
-    augmentRound: AUG_STAGES.includes(screen?.stage ?? ""),
+    augmentRound: AUG_STAGES.includes(seen?.stage ?? ""),
     open,
     stage: offer?.stage ?? null,
     pending: false,

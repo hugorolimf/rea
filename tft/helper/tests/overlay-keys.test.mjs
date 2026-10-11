@@ -938,7 +938,7 @@ test("sonda: timeout isolado não troca a página; 3 seguidos marcam fora do ar 
   const main = stripNonCode(read("overlay/main.mjs"), { keepStrings: true });
   assert.match(
     main,
-    /probeStep\(\s*\{ \.\.\.probe, hudLoaded: lastOnline === true/,
+    /probeStep\(\s*\{\s*\.\.\.probe,\s*hudLoaded: lastOnline === true/,
   );
   assert.ok(!/const PROBE_TIMEOUT_MS = 2500/.test(main));
 });

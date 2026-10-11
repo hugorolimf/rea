@@ -23,7 +23,7 @@ const gep = (list) => ({ sources: { bench: "gep" }, gepBench: list });
 test("peça só na reserva aparece como 'na reserva', não como ausente", () => {
   const r = rosterOf({
     units: [unit("A")],
-    screen: gep([bench("B")]),
+    seen: gep([bench("B")]),
   });
   const b = ownership(r, "B");
   assert.equal(b.state, "reserve");
@@ -38,7 +38,7 @@ test("peça só na reserva aparece como 'na reserva', não como ausente", () => 
 test("cópias em campo e na reserva somam para a próxima estrela", () => {
   const r = rosterOf({
     units: [unit("V", 1)],
-    screen: gep([bench("V", 1)]),
+    seen: gep([bench("V", 1)]),
   });
   const v = ownership(r, "V");
   assert.equal(v.state, "both");
@@ -48,14 +48,14 @@ test("cópias em campo e na reserva somam para a próxima estrela", () => {
   assert.match(v.text, /2\/3 para 2★/);
   // 2★ em campo (3 cópias) + 1★ na reserva = 4 cópias de 1★, rumo ao 3★ (9).
   const w = ownership(
-    rosterOf({ units: [unit("V", 2)], screen: gep([bench("V", 1)]) }),
+    rosterOf({ units: [unit("V", 2)], seen: gep([bench("V", 1)]) }),
     "V",
   );
   assert.equal(w.copies, 4);
   assert.deepEqual(w.next, { stars: 3, have: 4, need: 9 });
   // Duas cópias só na reserva.
   const two = ownership(
-    rosterOf({ units: [], screen: gep([bench("K"), bench("K")]) }),
+    rosterOf({ units: [], seen: gep([bench("K"), bench("K")]) }),
     "K",
   );
   assert.equal(two.label, "2 cópias na reserva");
@@ -63,14 +63,14 @@ test("cópias em campo e na reserva somam para a próxima estrela", () => {
 });
 
 test("sem GEP a reserva é desconhecida, não vazia: fora de campo fica 'reserva desconhecida'", () => {
-  for (const screen of [
+  for (const seen of [
     null,
     {},
     // Fonte da reserva que não é o GEP (leitura de tela, nula): a lista não vale.
-    { sources: { bench: "screen" }, gepBench: [bench("B")] },
+    { sources: { bench: "seen" }, gepBench: [bench("B")] },
     { sources: { bench: null } },
   ]) {
-    const r = rosterOf({ units: [unit("A")], screen });
+    const r = rosterOf({ units: [unit("A")], seen });
     assert.equal(r.benchKnown, false);
     assert.equal(ownership(r, "B").state, "unknown");
     assert.equal(ownership(r, "B").label, "reserva desconhecida");
@@ -89,7 +89,7 @@ test("sem GEP a reserva é desconhecida, não vazia: fora de campo fica 'reserva
 test("contagem da comp: N/M em campo e +K só na reserva (a peça com cópia nos dois lugares conta em campo)", () => {
   const r = rosterOf({
     units: [unit("A"), unit("B")],
-    screen: gep([bench("B"), bench("C"), bench("Z")]),
+    seen: gep([bench("B"), bench("C"), bench("Z")]),
   });
   const c = compOwnership(r, ["A", "B", "C", "D"]);
   assert.deepEqual([c.field, c.reserve, c.size], [2, 1, 4]);
@@ -109,7 +109,7 @@ test("cartão da aba Comps (o mesmo do modal) marca a peça na reserva com selo 
   const [a, b, d] = comp.units;
   const roster = rosterOf({
     units: [unit(a)],
-    screen: gep([bench(b), bench(d)]),
+    seen: gep([bench(b), bench(d)]),
   });
   // Campo + reserva da mesma peça: `d` também em campo.
   roster.field[d] = [1];
@@ -171,8 +171,8 @@ test("Ao vivo: anel N/M em campo + reserva à parte, Formação 'na reserva' e C
   const live = {
     state: {
       ...state,
-      screen: {
-        ...state.screen,
+      seen: {
+        ...state.seen,
         ...gep([bench("DA_18_Aphelios"), bench("DA_18_Varus")]),
       },
     },
@@ -249,7 +249,7 @@ test("Plano: a peça comprada que está na reserva diz 'na reserva' em vez de 'p
   };
   const roster = rosterOf({
     units: [unit("V")],
-    screen: gep([bench("B"), bench("V")]),
+    seen: gep([bench("B"), bench("V")]),
   });
   const v = planView(progress, true, roster);
   assert.equal(v.units[0].line, "0→2★ · na reserva");

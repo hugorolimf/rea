@@ -306,9 +306,9 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     current = rec.currentPlan?.board ?? [],
     owned = new Set(current.map((u) => u.id)),
     transitions = plan.transitions ?? [],
-    // Suas peças em campo (rec.self.units) e na reserva (GEP, state.screen.gepBench): regra única de roster.js, a mesma
+    // Suas peças em campo (rec.self.units) e na reserva (GEP, state.seen.gepBench): regra única de roster.js, a mesma
     // dos cartões da aba Comps e do modal. Sem GEP a reserva é desconhecida (não vazia).
-    roster = rosterOf({ units: rec.self?.units, screen });
+    roster = rosterOf({ units: rec.self?.units, seen });
 
   const cells = (plan.positions ?? []).map((p) => {
     const u = byId.get(p.championId),

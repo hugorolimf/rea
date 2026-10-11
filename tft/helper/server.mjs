@@ -1,5 +1,4 @@
 import http from "node:http";
-import https from "node:https";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +13,7 @@ import { compsAreStale } from "./meta-comps.mjs";
 import { gameLog } from "./game-log.mjs";
 import { gepReader, wispCatalog } from "./gep-reader.mjs";
 import { createStateHub, gepContextFor } from "./app/state.mjs";
+import { readLcuData } from "./app/lcu.mjs";
 import { createOverlayFeed } from "./app/overlay-feed.mjs";
 import { createLiveSnapshots } from "./app/live-snapshot.mjs";
 import {
@@ -411,61 +411,9 @@ function lcu() {
   return lcuCache.at ? Promise.resolve(lcuCache.data) : lcuPending;
 }
 async function readLcu() {
-  try {
-    const parts = (
-      await fs.readFile("C:/Riot Games/League of Legends/lockfile", "utf8")
-    )
-      .trim()
-      .split(":");
-    const get = (route) =>
-      new Promise((resolve) => {
-        const r = https.request(
-          {
-            hostname: "127.0.0.1",
-            port: parts[2],
-            path: route,
-            rejectUnauthorized: false,
-            headers: {
-              Authorization:
-                "Basic " + Buffer.from("riot:" + parts[3]).toString("base64"),
-            },
-          },
-          (s) => {
-            let body = "";
-            s.on("data", (c) => (body += c));
-            s.on("end", () => {
-              try {
-                resolve(JSON.parse(body));
-              } catch {
-                resolve(null);
-              }
-            });
-          },
-        );
-        r.on("error", () => resolve(null));
-        r.setTimeout(2000, () => r.destroy(Error("timeout")));
-        r.end();
-      });
-    const [session, self, phase] = await Promise.all([
-      get("/lol-gameflow/v1/session"),
-      get("/lol-summoner/v1/current-summoner"),
-      get("/lol-gameflow/v1/gameflow-phase"),
-    ]);
-    // `at` em data identifica a leitura: o rastreador conta leituras do cliente, não chamadas.
-    const at = Date.now();
-    lcuCache = {
-      at,
-      data: {
-        gameId: session?.gameData?.gameId,
-        puuid: self?.puuid,
-        phase,
-        at,
-      },
-    };
-  } catch {
-    lcuCache = { at: Date.now(), data: null };
-  }
-  return lcuCache.data;
+  const data = await readLcuData();
+  lcuCache = { at: data?.at ?? Date.now(), data };
+  return data;
 }
 /** Estado final de uma partida passada, reconstruído das capturas de tabuleiro (ver replay.mjs). */
 async function replayState(gameId) {

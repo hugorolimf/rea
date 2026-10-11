@@ -1007,9 +1007,10 @@ test("T7: todo `defineFact` está na raiz do módulo com `compute` nomeado, sem 
 /**
  * Teto de linhas de server.mjs (D12). Só baixa; a meta de M9 é < 400. Subiu de 900 para 960 uma vez, na entrega do servidor
  * que não para (M10b: /api/health, proteção de cada requisição e a ligação da thread de análise, que já estão em app/) junto
- * com o bloco do carrossel (app/carousel-view.mjs); o que for novo vai para app/, não para cá.
+ * com o bloco do carrossel (app/carousel-view.mjs); o que for novo vai para app/, não para cá. Baixou para 930 quando a leitura
+ * do cliente do LoL foi para app/lcu.mjs (2026-10-11).
  */
-const SERVER_MAX_LINES = 960;
+const SERVER_MAX_LINES = 930;
 
 test("D12: server.mjs não cresce (teto de linhas só baixa; meta de M9: < 400)", () => {
   const lines = read("server.mjs").split("\n").length;

@@ -174,7 +174,7 @@ function gepPicks() {
     ),
     names = new Map(analysed.map((a) => [a.id, a.name])),
     // Os do estado lido agora (GEP) aparecem já, sem esperar a análise; o nome vem dela ou do id do GEP.
-    read = latestState?.screen?.pickedAugments ?? [];
+    read = latestState?.seen?.pickedAugments ?? [];
   return read.length
     ? read.map((p) => ({
         id: p.id,
@@ -327,7 +327,7 @@ function render(model) {
     );
     augs.update({
       // Oferta aberta e fonte dos aprimoramentos: do estado lido agora (GEP), não da análise.
-      screen: replay || status.waiting ? null : (latestState?.screen ?? null),
+      seen: replay || status.waiting ? null : (latestState?.seen ?? null),
       advice: status.waiting ? null : last?.rec?.augmentAdvice,
       chosen,
       records: replay
@@ -466,7 +466,7 @@ function compCardsData() {
     // Suas peças em campo e na reserva (GEP), pela regra única de roster.js; partida revista: só o campo dela.
     roster: rosterOf({
       units: rec?.self?.units,
-      screen: replayOf() ? null : latestState?.screen,
+      seen: replayOf() ? null : latestState?.seen,
     }),
     // Banco de itens lido (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
     bank: replayOf() ? null : (bankReading(latestState?.seen)?.items ?? null),

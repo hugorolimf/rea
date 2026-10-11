@@ -75,7 +75,7 @@ function feed(file, gameId, start, rows, from, to) {
 
 /**
  * O servidor em miniatura: o leitor GEP sobre `file` e o montador de estado com uma tela que AINDA "lê" uma oferta por OCR
- * (`DA_Kingslayer`, de propósito): ela nunca pode aparecer. `seen(gameId)` = o `state.screen` do /api/state.
+ * (`DA_Kingslayer`, de propósito): ela nunca pode aparecer. `seen(gameId)` = o `state.seen` do /api/state.
  */
 function server(file, { augments = AUG_IDS } = {}) {
   const clock = { t: 0 };
@@ -374,11 +374,11 @@ const deps = {
 };
 const BASE = read("../live-mock-base.json");
 
-/** Estado ao vivo (formato real) com o `screen` do servidor de agora e a análise com o conselho da oferta. */
+/** Estado ao vivo (formato real) com o `seen` do servidor de agora e a análise com o conselho da oferta. */
 function overlayFeed(screen, advice) {
   const state = structuredClone(BASE.state),
     rec = structuredClone(BASE.rec);
-  state.screen = { running: true, gold: 30, level: 6, ...screen };
+  state.seen = { running: true, gold: 30, level: 6, ...screen };
   Object.assign(state, {
     actionable: true,
     sameGame: true,
