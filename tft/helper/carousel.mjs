@@ -5,7 +5,8 @@
 // demais; dentro de cada campeão, o 1º item da build vale mais que o 2º e o 3º.
 // Cada componente do banco é usado uma vez só, na ordem de prioridade, antes de medir o que falta.
 
-import { baseItemId } from "./item-tiers.mjs";
+import { baseItemId, isComponent } from "./core/catalog/items.mjs";
+import { takeOne } from "./core/items/stock.mjs";
 
 const UNIT_WEIGHT = { carry: 3, tank: 1.6, other: 1 };
 const ITEM_WEIGHT = [1, 0.75, 0.55]; // 1º, 2º e 3º item da build
@@ -28,12 +29,8 @@ export function carouselPicks(
 ) {
   const bank = [...inventory],
     wants = [];
-  const take = (id) => {
-    const at = bank.indexOf(id);
-    if (at < 0) return false;
-    bank.splice(at, 1);
-    return true;
-  };
+  // Cada cópia do banco serve a um uso só (core/items/stock.mjs).
+  const take = (id) => takeOne(bank, id) !== null;
   for (const p of plans) {
     const unit =
         p.name === carry
@@ -43,7 +40,7 @@ export function carouselPicks(
             : UNIT_WEIGHT.other,
       // Radiante equipado conta como o item base da build.
       equipped = (p.equipped ?? []).map((e) => baseItemId(e.id)),
-      held = equipped.filter((id) => id.startsWith('DA_Component_'));
+      held = equipped.filter(isComponent);
     let slots = p.slotsFree ?? 0;
     const recipes = (p.ideal ?? []).filter((r) => !equipped.includes(r.id));
     recipes.forEach((r, i) => {
@@ -57,11 +54,9 @@ export function carouselPicks(
       const need = [];
       let usedHeld = false;
       for (const part of r.components) {
-        const h = usedHeld ? -1 : held.indexOf(part.id);
-        if (h >= 0) {
-          held.splice(h, 1);
-          usedHeld = true;
-        } else if (!take(part.id)) need.push(part);
+        // Uma peça solta que a unidade já leva fecha o item (uma só por item); as demais saem do banco.
+        if (!usedHeld && takeOne(held, part.id) !== null) usedHeld = true;
+        else if (!take(part.id)) need.push(part);
       }
       // Completar um componente já equipado não gasta vaga; começar um item novo gasta.
       if (!usedHeld) {

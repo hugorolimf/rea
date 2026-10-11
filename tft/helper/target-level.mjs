@@ -1,5 +1,8 @@
 // Heurística de nível-alvo: usa apenas nível, HP, ouro e tabuleiros visíveis.
 // Não conhece estágio, experiência acumulada, streak nem augments de economia.
+// Os limiares de vida e de ouro são da política (core/economy): POLICY.hp.low/hurt/comfortable e o teto de juros.
+import { POLICY } from "./core/economy/policy.mjs";
+import { maxInterestGold } from "./core/economy/gold.mjs";
 const pressure = (p) =>
   (p.boardPieces ?? []).reduce(
     (n, u) =>
@@ -29,8 +32,8 @@ export function suggestTargetLevel(snapshot, playerId, level, gold) {
     reasons.push(
       "Hero eliminado neste snapshot: alvo apenas para planejamento.",
     );
-  } else if (hp <= 35) {
-    if (gold !== null && gold >= 50) {
+  } else if (hp <= POLICY.hp.low) {
+    if (gold !== null && gold >= maxInterestGold()) {
       reasons.push(
         `HP ${hp} baixo, mas ${gold}g permitem subir um nível para estabilizar.`,
       );
@@ -40,16 +43,20 @@ export function suggestTargetLevel(snapshot, playerId, level, gold) {
         `HP ${hp} baixo: estabilizar no nível atual antes de subir.`,
       );
     }
-  } else if (behind && hp < 60) {
+  } else if (behind && hp < POLICY.hp.hurt) {
     reasons.push(
       `Tabuleiro abaixo da mediana do lobby (${mine} vs ${median}) com HP ${hp}: subir um nível por vez.`,
     );
-  } else if (gold !== null && gold >= 50 && hp >= 60) {
+  } else if (
+    gold !== null &&
+    gold >= maxInterestGold() &&
+    hp >= POLICY.hp.hurt
+  ) {
     target = level + 2;
     reasons.push(
       `HP ${hp} e ${gold}g: economia sustenta mirar dois níveis acima.`,
     );
-  } else if (ahead && hp >= 70) {
+  } else if (ahead && hp >= POLICY.hp.comfortable) {
     target = level + 2;
     reasons.push(
       `Tabuleiro acima da mediana do lobby (${mine} vs ${median}) com HP ${hp}: dá para mirar mais alto.`,
@@ -58,7 +65,7 @@ export function suggestTargetLevel(snapshot, playerId, level, gold) {
     reasons.push(
       `HP ${hp}${gold === null ? ", ouro não informado" : `, ${gold}g`}: próximo nível como meta.`,
     );
-  if (rivals.length <= 3 && hp > 35 && target < level + 2) {
+  if (rivals.length <= 3 && hp > POLICY.hp.low && target < level + 2) {
     target++;
     reasons.push(
       `Apenas ${rivals.length} rivais vivos: fim de jogo favorece tabuleiro maior.`,

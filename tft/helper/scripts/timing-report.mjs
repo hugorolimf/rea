@@ -27,7 +27,8 @@ const q = (xs, p) =>
     Math.min(xs.length - 1, Math.floor(xs.length * p))
   ];
 const stages = new Map(),
-  routes = new Map();
+  routes = new Map(),
+  loads = new Map();
 let analyses = 0;
 for (const line of fs.readFileSync(file, "utf8").split("\n")) {
   const m = /^(\S+) TEMPO\s+(.*)$/.exec(line);
@@ -35,7 +36,28 @@ for (const line of fs.readFileSync(file, "utf8").split("\n")) {
   const at = Date.parse(m[1]);
   if ((since && at < since) || (until && at > until)) continue;
   const body = m[2];
-  const detail = /^POST \/api\/recommend (.*) \(ms\)$/.exec(body);
+  // Linha de carga por janela de ~1 min: atraso do event loop (ms), CPU do processo, heap e gravações do cache.
+  const load =
+    /^carga: loop-lag p50=(\d+) p99=(\d+) max=(\d+) \(ms\); cpu=(\d+)%; heap=(\d+)MB/.exec(
+      body,
+    );
+  if (load) {
+    for (const [i, name] of [
+      "lagP50",
+      "lagP99",
+      "lagMax",
+      "cpu",
+      "heap",
+    ].entries()) {
+      const list = loads.get(name) ?? [];
+      list.push(Number(load[i + 1]));
+      loads.set(name, list);
+    }
+    continue;
+  }
+  // "AUTO recomendação ..." = a mesma análise rodada pelo laço do servidor (app/auto-refresh.mjs), sem a interface.
+  const detail =
+    /^(?:POST \/api\/recommend|AUTO recomendação) (.*) \(ms\)$/.exec(body);
   if (detail) {
     analyses++;
     for (const kv of detail[1].matchAll(/(\w+)=(\d+)/g)) {
@@ -46,7 +68,7 @@ for (const line of fs.readFileSync(file, "utf8").split("\n")) {
     continue;
   }
   for (const r of body.matchAll(
-    /(GET|POST) (\S+) n=(\d+) p50=(\d+) p95=(\d+) max=(\d+)/g,
+    /(GET|POST|AUTO) (\S+) n=(\d+) p50=(\d+) p95=(\d+) max=(\d+)/g,
   )) {
     const key = `${r[1]} ${r[2]}`,
       list = routes.get(key) ?? { n: 0, p50: [], p95: [], max: [] };
@@ -90,3 +112,20 @@ for (const [k, v] of routes)
     String(q(v.p95, 0.5)).padStart(9),
     String(Math.max(...v.max)).padStart(8),
   );
+if (loads.size) {
+  console.log(
+    "\ncarga (janelas de ~1 min)".padEnd(26),
+    "n".padStart(4),
+    "p50".padStart(8),
+    "p95".padStart(8),
+    "máx".padStart(8),
+  );
+  for (const [k, xs] of loads)
+    console.log(
+      k.padEnd(25),
+      String(xs.length).padStart(4),
+      String(q(xs, 0.5)).padStart(8),
+      String(q(xs, 0.95)).padStart(8),
+      String(Math.max(...xs)).padStart(8),
+    );
+}

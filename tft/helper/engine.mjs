@@ -1,5 +1,6 @@
-import { POOL, ODDS, GAME } from "./rules.mjs";
-import { rollLevelOf, isContested } from "./economy.mjs";
+import { POOL, ODDS } from "./rules.mjs";
+import { isContested } from "./economy.mjs";
+import { shopsAhead } from "./core/economy/gold.mjs";
 import {
   anyUnit,
   exactUnit,
@@ -11,11 +12,42 @@ import {
 import { TIER_PLACE } from "./augment-stats.mjs";
 import { itemEdge, shrunk, tierOf } from "./item-edge.mjs";
 import { HOLD_VALUE, holdValue, resolveHoldings } from "./item-holdings.mjs";
-import { baseItem } from "./v2/js/item-source.js";
+import {
+  itemStock as stockOf,
+  movableItems,
+  ownedItems as ownedOf,
+  readyRecipes as readyRecipesOf,
+} from "./core/items/owned.mjs";
+import { takeOne } from "./core/items/stock.mjs";
 import { buildItemPlan, planPoints } from "./item-plan.mjs";
 import { isPlanItem, itemValueTable } from "./item-value.mjs";
 import { compScore } from "./comp-score.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
+import {
+  componentFamily,
+  holderRole,
+  isComponent,
+  isEmblemItem,
+  isEmblemTool,
+  itemRole,
+  recipeMap,
+  recipeOf,
+} from "./core/catalog/items.mjs";
+import { championRole, isAvatar, poolName } from "./core/catalog/champions.mjs";
+import {
+  freeByCost,
+  freeCopies,
+  starCopies,
+  upperCopies,
+} from "./core/pool/copies.mjs";
+import {
+  chanceAtLeast,
+  isBuyable,
+  levelOdds,
+  shopChance,
+  slotChance,
+  slotsIn,
+} from "./core/pool/shop.mjs";
 export { POOL, ODDS };
 const STICKY_BONUS = 10;
 // Com evidência medida (evidence.mjs), o total é a colocação esperada convertida em pontos: 0,1 de colocação
@@ -54,10 +86,8 @@ export function analyze(snapshot, catalog, options) {
   const level = options.level;
   const boardLevel = options.targetLevel ?? level;
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c]));
-  const key = (c) => (c.traits.includes("Avatar") ? "Lux" : c.name);
-  const candidates = catalog.champions.filter(
-    (c) => !c.traits.includes("Avatar"),
-  );
+  const key = poolName;
+  const candidates = catalog.champions.filter((c) => !isAvatar(c));
   const allPools = new Map();
   for (const c of catalog.champions) allPools.set(key(c), c.cost);
   const self = snapshot.statsBlock.players.find(
@@ -79,7 +109,7 @@ export function analyze(snapshot, catalog, options) {
         unknown.add(u.championName);
         continue;
       }
-      const n = 3 ** (u.starLevel - 1) * (u.quantity ?? 1),
+      const n = starCopies(u.starLevel) * (u.quantity ?? 1),
         k = key(c);
       visible.set(k, (visible.get(k) ?? 0) + n);
       if (mine) {
@@ -113,9 +143,10 @@ export function analyze(snapshot, catalog, options) {
     if (c && Number.isFinite(n) && n > 0)
       held.set(key(c), (held.get(key(c)) ?? 0) + n);
   }
-  const upper = (k) =>
-    Math.max(0, POOL[allPools.get(k)] - (visible.get(k) ?? 0));
-  const free = (k) => Math.max(0, upper(k) - (held.get(k) ?? 0));
+  // Teto observado e cópias livres (fracionárias: o banco estimado dos rivais entra com a fração): core/pool.
+  const upper = (k) => upperCopies(allPools.get(k), visible.get(k) ?? 0);
+  const free = (k) =>
+    freeCopies(allPools.get(k), visible.get(k) ?? 0, held.get(k) ?? 0);
   // Disputa: cópias vistas nos tabuleiros rivais mais as estimadas nos bancos deles.
   const contestOf = (k) => (enemy.get(k) ?? 0) + (held.get(k) ?? 0);
   const pool = [...allPools].map(([name, cost]) => ({
@@ -126,104 +157,54 @@ export function analyze(snapshot, catalog, options) {
     enemy: enemy.get(name) ?? 0,
     hidden: Math.round((held.get(name) ?? 0) * 10) / 10,
     remainingUpper: upper(name),
+    // `free` é a pool livre exata (a que as chances usam, aqui e na rolagem); `remainingLikely` é o mesmo valor
+    // arredondado a 0,1 só para exibir.
+    free: free(name),
     remainingLikely: Math.round(free(name) * 10) / 10,
     rivals: [...(rivals.get(name) ?? [])],
   }));
-  const denomByCost = {};
-  for (const p of pool)
-    denomByCost[p.cost] = (denomByCost[p.cost] ?? 0) + free(p.name);
+  const denomByCost = freeByCost(pool);
   function probability(c, atLevel = level) {
-    const denom = denomByCost[c.cost] ?? 0;
-    return denom
-      ? ((ODDS[atLevel][c.cost - 1] / 100) * free(key(c))) / denom
-      : 0;
+    return slotChance(atLevel, c.cost, free(key(c)), denomByCost[c.cost] ?? 0);
   }
   for (const entry of pool) {
     const c = catalog.champions.find((c) => key(c) === entry.name);
     entry.chancePerSlot = c ? probability(c) : 0;
-    entry.chancePerShop = 1 - (1 - entry.chancePerSlot) ** 5;
+    entry.chancePerShop = shopChance(entry.chancePerSlot);
   }
   const roleCache = new Map();
   function role(c) {
     let r = roleCache.get(c);
     if (!r) {
-      r = computeRole(c);
+      r = championRole(c, options.metaRoles);
       roleCache.set(c, r);
     }
     return r;
   }
-  function computeRole(c) {
-    const known = options.metaRoles?.get(c.apiName);
-    if (known) return known;
-    const desc = (c.ability?.desc ?? "").toLowerCase();
-    if (c.stats.range <= 2 && /shield|health|heal|durability|resist/.test(desc))
-      return "tank";
-    return /physical damage/.test(desc) && !/magic damage/.test(desc)
-      ? "ad"
-      : "ap";
-  }
-  function itemRole(id) {
-    if (
-      /Steadfast|SpiritVisage|Warmog|Gargoyle|Dragon|Bramble|Redemption|Sunfire|AdaptiveHelm/.test(
-        id,
-      )
-    )
-      return "tank";
-    if (/InfinityEdge|Deathblade|LastWhisper|Runaans|GiantSlayer/.test(id))
-      return "ad";
-    if (/Rabadon|Archangel|Jeweled|VoidStaff|Nashor|Shojin|BlueBuff/.test(id))
-      return "ap";
-    return "flex";
-  }
   const equippedItems = [...own.values()].flatMap((u) => u.items);
-  const ownedItems = [...equippedItems, ...(options.inventory ?? [])];
+  const ownedItems = ownedOf(equippedItems, options.inventory ?? []);
   // Estoque para medir builds: itens completos e componentes, equipados ou no banco (componente equipado
-  // ainda vira metade de um item da build).
-  const isComponent = (id) => id.startsWith("DA_Component_");
-  const itemStock = {
-      completed: ownedItems.filter((id) => !isComponent(id)),
-      components: ownedItems.filter(isComponent),
-    },
-    recipes = new Map(
-      catalog.items
-        .filter((i) => i.composition?.length === 2)
-        .map((i) => [i.apiName, i.composition]),
-    );
+  // ainda vira metade de um item da build). Partição e receitas: core/items/owned.mjs e core/catalog/items.mjs.
+  const itemStock = stockOf(ownedItems),
+    recipes = recipeMap(catalog.items);
   const itemProfile = { ad: 0, ap: 0, tank: 0, flex: 0 };
   for (const i of ownedItems) {
-    if (/Component_/.test(i)) {
-      if (/BFSword/.test(i)) itemProfile.ad += 1.2;
-      else if (/NeedlesslyLargeRod|TearOfTheGoddess/.test(i))
-        itemProfile.ap += 1.2;
-      else if (/RecurveBow/.test(i)) {
+    if (isComponent(i)) {
+      const family = componentFamily(i);
+      if (family === "ad") itemProfile.ad += 1.2;
+      else if (family === "ap") itemProfile.ap += 1.2;
+      else if (family === "bow") {
         itemProfile.ad += 0.8;
         itemProfile.ap += 0.4;
-      } else if (/GiantsBelt|ChainVest|NegatronCloak/.test(i))
-        itemProfile.tank += 1;
+      } else if (family === "tank") itemProfile.tank += 1;
       else itemProfile.flex += 0.5;
     } else itemProfile[itemRole(i)]++;
   }
   const freeItems = options.inventory ?? [],
     itemCatalog = new Map(catalog.items.map((i) => [i.apiName, i]));
-  const readyRecipes = catalog.items
-    .filter(
-      (i) =>
-        i.apiName.startsWith("DA_") &&
-        i.composition?.length === 2 &&
-        !/Emblem|Radiant/.test(i.apiName),
-    )
-    .filter((i) => {
-      const stock = [...freeItems];
-      for (const id of i.composition) {
-        const at = stock.indexOf(id);
-        if (at < 0) return false;
-        stock.splice(at, 1);
-      }
-      return true;
-    });
+  const readyRecipes = readyRecipesOf(catalog.items, freeItems);
   const freeProfile = { ad: 0, ap: 0, tank: 0, flex: 0 };
-  for (const id of freeItems)
-    if (!/Component_/.test(id)) freeProfile[itemRole(id)]++;
+  for (const id of freeItems) if (!isComponent(id)) freeProfile[itemRole(id)]++;
   // Recipes represent alternatives, not simultaneously spendable items.
   for (const r of ["ad", "ap", "tank"])
     if (readyRecipes.some((i) => itemRole(i.apiName) === r))
@@ -250,17 +231,8 @@ export function analyze(snapshot, catalog, options) {
       /Bramble|Gargoyle|Steadfast/.test(i),
     ).length,
     mrCount = rivalItems.filter((i) => /Dragon|Gargoyle/.test(i)).length;
-  // Cada item seu precisa de um portador de papel compatível com slot livre na comp alvo; componente livre vale meio item.
-  const holderRole = (id) =>
-    /Component_/.test(id)
-      ? /BFSword|RecurveBow/.test(id)
-        ? "ad"
-        : /NeedlesslyLargeRod|TearOfTheGoddess/.test(id)
-          ? "ap"
-          : /GiantsBelt|ChainVest|NegatronCloak/.test(id)
-            ? "tank"
-            : "flex"
-      : itemRole(id);
+  // Cada item seu precisa de um portador de papel compatível com slot livre na comp alvo (holderRole, de core/catalog/items.mjs);
+  // componente livre vale meio item.
   function itemFit(board) {
     const names = new Set(board.map(key)),
       demand = { ad: 0, ap: 0, tank: 0, flex: 0 },
@@ -270,7 +242,7 @@ export function analyze(snapshot, catalog, options) {
     for (const [k, u] of own)
       if (!names.has(k)) for (const id of u.items) demand[holderRole(id)]++;
     for (const id of freeItems)
-      demand[holderRole(id)] += /Component_/.test(id) ? 0.5 : 1;
+      demand[holderRole(id)] += isComponent(id) ? 0.5 : 1;
     let placed = 0,
       spare = 0;
     for (const r of ["ad", "ap", "tank"]) {
@@ -327,26 +299,18 @@ export function analyze(snapshot, catalog, options) {
     if (!m) {
       const here = new Set(board.map(key)),
         leaving = [...own]
-          .filter(
-            ([k, u]) => !here.has(k) && !u.champion.traits.includes("Avatar"),
-          )
-          .flatMap(([, u]) => u.items.map(baseItem));
-      m = {
-        all: [
-          ...bankFree.map((id) => ({ id, leaving: false })),
-          ...leaving.map((id) => ({ id, leaving: true })),
-        ],
-      };
+          .filter(([k, u]) => !here.has(k) && !isAvatar(u.champion))
+          .flatMap(([, u]) => u.items);
+      m = { all: movableItems(bankFree, leaving) };
       m.ids = m.all.map((x) => x.id);
       movableCache.set(board, m);
     }
     return m;
   }
-  const isTool = (id) => /Component_(Spatula|FryingPan)/.test(id);
   function emblemEdge(board) {
     const pool = movable(board).all,
-      emblemTools = pool.filter((x) => isTool(x.id)).map((x) => x.id),
-      readyEmblems = pool.filter((x) => /Emblem/.test(x.id)).map((x) => x.id);
+      emblemTools = pool.filter((x) => isEmblemTool(x.id)).map((x) => x.id),
+      readyEmblems = pool.filter((x) => isEmblemItem(x.id)).map((x) => x.id);
     if (!emblemTools.length && !readyEmblems.length) return null;
     const ts = new Map(traits(board).map((t) => [t.name, t]));
     // Quem recebe: peça da comp sem a sinergia, de preferência sua e com menos itens (o carry quer 3 itens).
@@ -370,10 +334,7 @@ export function analyze(snapshot, catalog, options) {
     const picks = [],
       stock = [...pool];
     // Gasta uma unidade do item (banco primeiro, depois peça que sai) e devolve de onde veio; null se não há.
-    const use = (id) => {
-      const at = stock.findIndex((x) => x.id === id);
-      return at < 0 ? null : stock.splice(at, 1)[0];
-    };
+    const use = (id) => takeOne(stock, (x) => x.id === id);
     const moved = (...src) =>
       src.some((x) => x?.leaving) ? HOLD_VALUE.move : 1;
     for (const id of readyEmblems) {
@@ -537,7 +498,7 @@ export function analyze(snapshot, catalog, options) {
     (c) =>
       own.has(key(c)) ||
       (upper(key(c)) > 0 &&
-        ODDS[boardLevel][c.cost - 1] >= 10 &&
+        isBuyable(boardLevel, c.cost) &&
         (c.cost < 5 || boardLevel >= 9)),
   );
   if (!options.metaComps?.length && available.length < boardLevel)
@@ -560,11 +521,7 @@ export function analyze(snapshot, catalog, options) {
       metaBuilds: options.metaBuilds,
       baseAvg: options.baseAvg ?? 4.466,
     }),
-    planRecipes = new Map(
-      catalog.items
-        .filter((i) => i.composition?.length === 2 && isPlanItem(i.apiName))
-        .map((i) => [i.apiName, i.composition]),
-    ),
+    planRecipes = recipeMap(catalog.items, (i) => isPlanItem(i.apiName)),
     planCache = new WeakMap();
   // O plano não depende da evidência: as rodadas de análise do servidor (até 4 por pedido) repetem as mesmas entradas, então
   // o resultado fica guardado por entrada (jogo, banco e cópias das estatísticas de meta, por identidade).
@@ -589,9 +546,7 @@ export function analyze(snapshot, catalog, options) {
             };
           }),
           leaving: [...own]
-            .filter(
-              ([k, u]) => !here.has(k) && !u.champion.traits.includes("Avatar"),
-            )
+            .filter(([k, u]) => !here.has(k) && !isAvatar(u.champion))
             .map(([, u]) => ({ name: u.champion.name, items: u.items })),
           bank: options.inventory ?? [],
           bankRead: options.bankRead !== false,
@@ -641,7 +596,7 @@ export function analyze(snapshot, catalog, options) {
         name: u.champion.name,
         stars: u.stars,
         items: u.items,
-        keeps: u.champion.traits.includes("Avatar"),
+        keeps: isAvatar(u.champion),
       })),
       goalIds,
       bank: options.inventory ?? [],
@@ -699,7 +654,7 @@ export function analyze(snapshot, catalog, options) {
             !out.includes(c) &&
             legal([...out, c]) &&
             (own.has(key(c)) ||
-              (upper(key(c)) > 0 && ODDS[level][c.cost - 1] >= 10)),
+              (upper(key(c)) > 0 && isBuyable(level, c.cost))),
         )
         .map((c) => {
           const gained = traits([...out, c])
@@ -744,7 +699,7 @@ export function analyze(snapshot, catalog, options) {
       .map((m) => {
         const core = m.units
           .map((id) => byId.get(id))
-          .filter((c) => c && !c.traits.includes("Avatar"));
+          .filter((c) => c && !isAvatar(c));
         if (core.length < 5 || !legal(core)) return null;
         const grown =
             core.length < growTo
@@ -821,31 +776,19 @@ export function analyze(snapshot, catalog, options) {
   // MetaTFT diz quais peças e sinergias rendem mais junto com ela (options.conditional); o tabuleiro é montado
   // com as que mais melhoram a colocação esperada, pesadas pela chance de você conseguir cada peça.
   const baseAvg = options.baseAvg ?? 4.466;
-  // Lojas ao alcance: o ouro de agora mais a renda das próximas 4 rodadas (base + juros), guardando 10g.
-  const goldNow = options.gold ?? 30,
-    income =
-      GAME.baseIncome +
-      Math.min(GAME.interestMax, Math.floor(goldNow / GAME.interestStep)),
-    shops =
-      3 + Math.floor(Math.max(0, goldNow + 4 * income - 10) / GAME.shopCost);
+  // Lojas ao alcance: o ouro de agora mais a renda das próximas rodadas (base + juros), guardando uma reserva; a conta e a
+  // suposição para ouro não lido (D14) são de core/economy (shopsAhead, POLICY.shopsAhead). O grafo de fatos entrega o
+  // número já pronto em `options.shopsAhead` (fato `economy.shopsAhead`, app/recommend-facts.mjs): a base declara a
+  // loja e as lojas ao alcance, não o ouro. Quem chama o motor direto (testes) continua passando `options.gold`.
+  const shops = options.shopsAhead ?? shopsAhead(options.gold);
   const evidence = options.evidence ?? null,
     requests = new Map(),
     conditionalRequests = new Set();
   // Chance de ter a peça: sua já é certa; senão, ao menos uma cópia nas lojas que o ouro paga (as perguntas de
   // evidência pedem a peça presente, em qualquer estrela).
   const stats = options.stats ?? null;
-  // Chance de ver ao menos k cópias em n vagas de loja com chance p por vaga.
-  const atLeast = (n, p, k) => {
-    if (k <= 0) return 1;
-    if (p <= 0) return 0;
-    let term = (1 - p) ** n,
-      below = 0;
-    for (let i = 0; i < k; i++) {
-      below += term;
-      term *= ((n - i) / (i + 1)) * (p / (1 - p));
-    }
-    return Math.max(0, 1 - below);
-  };
+  // Chance de ver ao menos k cópias nas lojas ao alcance: core/pool (chanceAtLeast).
+  const atLeast = (p, k) => chanceAtLeast(slotsIn(shops), p, k);
   // Estrela em que a peça mais aparece nos tabuleiros medidos (Rengar: 3★; a maioria: 2★).
   const typicalStar = (c) => {
     const n = [1, 2, 3].map(
@@ -859,11 +802,11 @@ export function analyze(snapshot, catalog, options) {
   const reachStar = (c) => {
     const have = own.get(key(c))?.copies ?? 0;
     for (const st of [3, 2]) {
-      const need = 3 ** (st - 1) - have;
+      const need = starCopies(st) - have;
       if (need <= 0) return st;
       if (
         upper(key(c)) >= need &&
-        atLeast(5 * shops, probability(c, boardLevel), need) >= 0.5
+        atLeast(probability(c, boardLevel), need) >= 0.5
       )
         return st;
     }
@@ -878,7 +821,7 @@ export function analyze(snapshot, catalog, options) {
     own.has(key(c))
       ? 1
       : upper(key(c)) > 0
-        ? 1 - (1 - probability(c, boardLevel)) ** (5 * shops)
+        ? shopChance(probability(c, boardLevel), shops)
         : 0;
   const shrinkTo = (stat, prior, k = MIN_GAMES) =>
     stat ? (stat[0] * stat[1] + prior * k) / (stat[1] + k) : prior;
@@ -903,13 +846,13 @@ export function analyze(snapshot, catalog, options) {
       const option = (st) => {
         const m = st === u.stars ? now : stats?.unit?.[`${c.apiName}|${st}`];
         if (!m) return null;
-        const need = 3 ** (st - 1) - u.copies,
+        const need = starCopies(st) - u.copies,
           p =
             st === u.stars || need <= 0
               ? 1
               : upper(key(c)) < need
                 ? 0
-                : atLeast(5 * shops, probability(c, boardLevel), need);
+                : atLeast(probability(c, boardLevel), need);
         return { st, m, p, value: p * m[0] + (1 - p) * avgNow };
       };
       const best = [u.stars, u.stars + 1, u.stars + 2]
@@ -1191,9 +1134,7 @@ export function analyze(snapshot, catalog, options) {
     myItemsFor = (board) =>
       [
         ...new Set([
-          ...movable(board).ids.filter(
-            (id) => itemCat.get(id)?.composition?.length === 2,
-          ),
+          ...movable(board).ids.filter((id) => !!recipeOf(itemCat.get(id))),
           ...(options.augmentEmblems ?? []),
         ]),
       ]
@@ -1203,7 +1144,7 @@ export function analyze(snapshot, catalog, options) {
   // este tabuleiro, pelo efeito medido do patamar de sinergia que ele fecha (meta-stats: sinergia × patamar).
   function emblemFor(board) {
     const have = movable(board).ids,
-      tools = have.filter(isTool);
+      tools = have.filter(isEmblemTool);
     if (!tools.length || !stats) return null;
     const ts = new Map(traits(board).map((t) => [t.name, t]));
     let best = null;
@@ -1422,7 +1363,7 @@ export function analyze(snapshot, catalog, options) {
       own.has(key(c))
         ? 1
         : upper(key(c)) > 0
-          ? 1 - (1 - probability(c, atLevel)) ** (5 * shops)
+          ? shopChance(probability(c, atLevel), shops)
           : 0,
     // Chance de montar a comp com o nível dado: TODA peça que falta entra, inclusive as de custo baixo (no nível 6 uma
     // peça de custo 1 tem só 30% por vaga e a pool dela é grande). As principais (carry e núcleo) contam inteiras; as
@@ -1448,14 +1389,14 @@ export function analyze(snapshot, catalog, options) {
       const u = own.get(key(c));
       if (!u) continue;
       const base = u.stars >= 3 ? 1 : u.stars === 2 ? 0.65 : 0.35,
-        need = 3 ** u.stars - u.copies,
+        need = starCopies(u.stars + 1) - u.copies,
         up =
           u.stars >= 3 || need <= 0
             ? u.stars >= 3
               ? 0
               : 1
             : upper(key(c)) >= need
-              ? atLeast(5 * shops, probability(c, level), need)
+              ? atLeast(probability(c, level), need)
               : 0;
       got += c.cost * Math.min(1, base + (1 - base) * 0.5 * up);
     }
@@ -1663,7 +1604,7 @@ export function analyze(snapshot, catalog, options) {
   const poolByKey = new Map(pool.map((p) => [p.name, p]));
   const traitTiers = (board) =>
     traits(board).filter((t) => t.active && !t.solo);
-  const shopOk = (c) => ODDS[boardLevel][c.cost - 1] >= 10;
+  const shopOk = (c) => isBuyable(boardLevel, c.cost);
   const reachable = (c) => own.has(key(c)) || (upper(key(c)) > 0 && shopOk(c));
   const access = (c) => Math.log(1 + probability(c, boardLevel) * 100);
   // Contexto das trocas: quanto cada peça rende junto com o seu trunfo principal (MetaTFT), encolhido para a
@@ -1809,21 +1750,11 @@ export function analyze(snapshot, catalog, options) {
         id: c.apiName,
         name: c.name,
         cost: c.cost,
-        chancePerShop: 1 - (1 - probability(c)) ** 5,
+        chancePerShop: shopChance(probability(c)),
         enemyCopies: enemy.get(key(c)) ?? 0,
         hiddenCopies: Math.round((held.get(key(c)) ?? 0) * 10) / 10,
         remainingUpper: upper(key(c)),
       }));
-    const carryOwn = own.get(key(r.carry))?.copies ?? 0,
-      needed = Math.max(0, 3 - carryOwn),
-      p = probability(r.carry);
-    const rollLevel = rollLevelOf({ carryCost: r.carry.cost });
-    const rollBudget =
-      options.gold === null
-        ? null
-        : Math.floor(
-            Math.max(0, options.gold - (self.health <= 35 ? 20 : 50)) / 2,
-          );
     const keep = r.board.filter((c) => own.has(key(c))).map((c) => c.name);
     return {
       rank: index + 1,
@@ -1893,14 +1824,6 @@ export function analyze(snapshot, catalog, options) {
       benchInstead: (self.boardPieces ?? [])
         .filter((u) => !r.board.some((c) => c.apiName === u.championName))
         .map((u) => byId.get(u.championName)?.name ?? u.championName),
-      roll: {
-        level: rollLevel,
-        budget: rollBudget,
-        neededForTwoStar: needed,
-        availableUpper: upper(key(r.carry)),
-        chanceOneCopy:
-          rollBudget === null ? null : 1 - (1 - p) ** (rollBudget * 5),
-      },
       grown: r.component.grown ?? [],
       reasons: [
         ...(r.component.grown?.length
@@ -2063,7 +1986,7 @@ export function analyze(snapshot, catalog, options) {
       note: "Equipados permanecem no portador; receitas livres são alternativas e podem compartilhar componentes. Inventário oculto não é inferido.",
     },
     unknown: [...unknown],
-    odds: ODDS[level],
+    odds: levelOdds(level),
     rules: {
       pool: POOL,
       source: "https://tftsense.gg/study-hall/tft-champion-pool-and-odds/",

@@ -1,5 +1,6 @@
 import {
   analysisKey,
+  decisionsOf,
   loadCatalog,
   loadComps,
   loadHistory,
@@ -12,11 +13,13 @@ import {
 import { flip, publishMotion, reducedMotion } from "./dom.js";
 import { goalStore, matchKeyOf, swapStore } from "./comps.js";
 import { buildModel } from "./model.js";
+import { wispsView } from "./wisps.js";
 import { bankReading } from "./items.js";
 import { equippedBy } from "./comp-items.js";
-import { setCatalog } from "./ui/glyphs.js";
+import { getCatalog, setCatalog } from "./ui/glyphs.js";
 import { mountBoard } from "./ui/board.js";
 import { mountComps } from "./ui/comps.js";
+import { mountCompModal } from "./ui/comp-modal.js";
 import { mountHistory } from "./ui/history.js";
 import { mountItems } from "./ui/items.js";
 import { mountEnded } from "./ui/ended.js";
@@ -51,7 +54,7 @@ document.addEventListener(
   true,
 );
 
-const hud = mountHud($("hud")),
+const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
   board = mountBoard($("board"), $("traits"), {
     onSelect(id) {
       selectedCell = id;
@@ -78,6 +81,7 @@ const hud = mountHud($("hud")),
   augs = mountAugs($("augs-sec"), {
     onChoose(id) {
       if (replayOf()) return; // partida revista: só leitura
+      seedManualPicks(); // a marcação à mão soma ao que o GEP já leu e passa a valer sobre ele
       const name = last?.rec?.augmentAdvice?.choices?.find(
         (c) => c.id === id,
       )?.name;
@@ -92,6 +96,7 @@ const hud = mountHud($("hud")),
     },
     onRemove(id) {
       if (replayOf()) return;
+      seedManualPicks(); // corrigir uma escolha do GEP mantém as demais
       augPicks.remove(matchKeyOf(latestState), id);
       lastKey = "";
       void refresh();
@@ -140,19 +145,12 @@ const hud = mountHud($("hud")),
   }),
   contest = mountContest($("contest")),
   compsView = mountComps($("comps"), {
-    onPick(id) {
-      goals.set(matchKeyOf(latestState), id);
-      lastKey = "";
-      location.hash = ""; // a escolha vale para o Ao vivo: volta para ele
-      void refresh();
-    },
-    onRelease() {
-      goals.clear();
-      lastKey = "";
-      drawComps();
-      void refresh();
-    },
-  });
+    // A escolha vale para o Ao vivo: volta para ele.
+    onPick: (id) => pickComp(id, { leave: true }),
+    onRelease: releaseComp,
+  }),
+  // Modal da célula "Meta" do HUD: vê a comp sugerida (e as outras sugestões) e a escolhe pelo mesmo caminho da aba Comps.
+  compModal = mountCompModal({ onPick: pickComp, onRelease: releaseComp });
 // Comp fixada e aprimoramentos, por partida; sem localStorage (bloqueado), valem só com a página aberta.
 const memory = new Map(),
   storage = (() => {
@@ -169,6 +167,24 @@ const memory = new Map(),
   goals = goalStore(storage),
   autoSwaps = swapStore(storage),
   augPicks = augStore(storage);
+
+// Aprimoramentos escolhidos: o servidor lê os do GEP (chosenAugments com source "gep"); o registro manual da partida,
+// se existe (mesmo vazio), prevalece e é o único que o servidor recebe como decisão do usuário.
+function gepPicks() {
+  return (last?.rec?.chosenAugments ?? [])
+    .filter((a) => a.source === "gep")
+    .map((a) => ({ id: a.id, stage: a.stage ?? null, name: a.name ?? null }));
+}
+function augRecords() {
+  const key = matchKeyOf(latestState);
+  return augPicks.has(key) ? augPicks.get(key) : gepPicks();
+}
+/** Antes de editar à mão, copia as escolhas do GEP para o registro manual: a edição vale sobre elas. */
+function seedManualPicks() {
+  const key = matchKeyOf(latestState);
+  if (augPicks.has(key)) return;
+  for (const p of gepPicks()) augPicks.add(key, p.id, p.stage, p.name);
+}
 
 function showNotice(kind, text) {
   notice.hidden = !text;
@@ -211,8 +227,21 @@ function render(model) {
       status.waiting || status.replay ? null : bankReading(latestState?.screen),
     );
     lastModel = model;
+    if (status.replay) compModal.close();
+    else drawCompModal();
     drawChampItems();
-    panel.update(model.plan?.panel ?? null);
+    // Wisps (fogos-fátuos) da loja: só ao vivo; o painel os marca e recomenda, o motor nunca os lê como campeões.
+    panel.update(
+      model.plan?.panel ?? null,
+      status.replay || status.ended || status.waiting
+        ? []
+        : wispsView(latestState?.screen, {
+            catalog: getCatalog(),
+            hero: model.hero,
+            rec: last?.rec,
+            roll: model.plan?.panel?.roll,
+          }),
+    );
     planSec.update(
       status.waiting || status.replay || status.ended
         ? null
@@ -230,7 +259,7 @@ function render(model) {
       chosen,
       records: replay
         ? chosen.map((a) => ({ id: a.id, stage: null, name: a.name }))
-        : augPicks.get(matchKeyOf(latestState)),
+        : augRecords(),
       stage: replay ? null : (latestState?.screen?.stage ?? null),
       live: replay ? false : status.live,
       readonly: replay,
@@ -349,22 +378,13 @@ const setTitle = () =>
   (document.title = TITLES[view()]
     ? `${TITLES[view()]} · TFT Compass`
     : liveTitle);
-function drawComps() {
-  // Sem estado ainda, a chave seria "lobby" e apagaria a comp fixada da partida: espera o refresh().
-  if (view() !== "comps" || !compsData || !latestState) return;
+// Dados dos cartões de comp (aba Comps e modal do HUD): as comps de meta, o encaixe da partida, o banco lido da tela e a
+// comp fixada. `compsData` precisa estar carregado.
+function compCardsData() {
   const rec = last?.rec;
-  compsView.update({
+  return {
     comps: compsData.comps,
-    source: [
-      compsData.source?.trim(),
-      compsData.fetchedAt &&
-        `atualizada ${new Date(compsData.fetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
-    ]
-      .filter(Boolean)
-      .join(" · "),
     ranking: rec?.compRanking ?? [],
-    // Plano que o Ao vivo mostra (mesma escolha de model.js); pode ser um tabuleiro de vantagem fora da lista.
-    autoTitle: (rec?.preview ?? rec?.recommendations?.[0])?.title ?? null,
     ownedIds: (rec?.self?.units ?? []).map((u) => u.championName),
     // Banco lido da tela (a análise do servidor não é necessária) e o que cada peça sua já leva equipado.
     bank: replayOf() ? null : (bankReading(latestState?.screen)?.items ?? null),
@@ -372,19 +392,79 @@ function drawComps() {
     goalId: goals.get(matchKeyOf(latestState))?.id ?? null,
     swapCount: goals.get(matchKeyOf(latestState))?.swaps.length ?? 0,
     lobby: matchKeyOf(latestState) === "lobby",
+  };
+}
+function drawComps() {
+  // Sem estado ainda, a chave seria "lobby" e apagaria a comp fixada da partida: espera o refresh().
+  if (view() !== "comps" || !compsData || !latestState) return;
+  const rec = last?.rec;
+  compsView.update({
+    ...compCardsData(),
+    source: [
+      compsData.source?.trim(),
+      compsData.fetchedAt &&
+        `atualizada ${new Date(compsData.fetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    // Plano que o Ao vivo mostra (mesma escolha de model.js); pode ser um tabuleiro de vantagem fora da lista.
+    autoTitle: (rec?.preview ?? rec?.recommendations?.[0])?.title ?? null,
   });
 }
 // A lista de meta muda no máximo a cada poucas horas no servidor: relê ao abrir a tela, no máximo a cada 10 min.
+async function ensureComps() {
+  if (!compsData || Date.now() - compsAt > 10 * 60 * 1000) {
+    compsData = await loadComps();
+    compsAt = Date.now();
+  }
+}
 async function showComps() {
-  if (!compsData || Date.now() - compsAt > 10 * 60 * 1000)
-    try {
-      compsData = await loadComps();
-      compsAt = Date.now();
-    } catch (e) {
-      compsView.error(e.message);
-      return;
-    }
+  try {
+    await ensureComps();
+  } catch (e) {
+    compsView.error(e.message);
+    return;
+  }
   drawComps();
+}
+
+/* ---------- Modal da comp sugerida (célula "Meta" do HUD) ---------- */
+// Escolher uma comp é sempre o mesmo ato: fixa o id na partida e refaz a análise (aba Comps e modal do HUD).
+function pickComp(id, { leave = false } = {}) {
+  if (replayOf()) return; // partida revista: a escolha valeria para a partida de agora
+  goals.set(matchKeyOf(latestState), id);
+  lastKey = "";
+  if (leave) location.hash = ""; // a escolha vale para o Ao vivo: volta para ele
+  drawCompModal(); // o estado "escolhida" aparece já, sem esperar a análise
+  void refresh();
+}
+function releaseComp() {
+  goals.clear();
+  lastKey = "";
+  drawComps();
+  drawCompModal();
+  void refresh();
+}
+// A comp que o Ao vivo mostra (`planId`) e a fixada (`goalId`) orientam onde o modal abre e o que ele marca.
+function compModalData() {
+  return { ...compCardsData(), planId: lastModel?.plan?.compId ?? null };
+}
+// Só redesenha com o modal aberto (fechado, nada é calculado).
+function drawCompModal() {
+  if (compModal.isOpen && compsData && latestState)
+    compModal.update(compModalData());
+}
+async function openGoalModal(trigger) {
+  if (replayOf()) return;
+  try {
+    await ensureComps();
+  } catch {
+    location.hash = "#comps"; // sem a lista de meta o modal não tem o que mostrar: a aba Comps mostra o erro
+    return;
+  }
+  if (!latestState) return;
+  compModal.update(compModalData());
+  compModal.open(trigger);
 }
 async function showHistory() {
   try {
@@ -442,7 +522,13 @@ async function refresh() {
       let rec = last?.replay === replay ? last.rec : null;
       if (!rec)
         rec = await loadRecommendation({
-          ...recommendPayload({ ...state, screen: {} }, null, []),
+          ...recommendPayload(
+            { ...state, screen: {} },
+            null,
+            [],
+            {},
+            { replay: true },
+          ),
           replayGameId: replay,
         });
       lastKey = "";
@@ -482,11 +568,23 @@ async function refresh() {
           goal,
           augPicks.get(matchKeyOf(state)),
           autoSwaps.all(matchKeyOf(state)),
+          { legacyServer: true },
         ),
         // Registro desta partida na tela: lista vazia apaga o que o servidor guardou (remoção explícita).
         augmentsKnown: augPicks.has(matchKeyOf(state)),
       },
-      key = analysisKey(state, payload);
+      // A chave usa só as decisões (a mesma regra e o mesmo formato que o servidor usa para renovar a análise sozinho,
+      // core/state/analysis-key.mjs); os campos do servidor legado do `payload` derivam do estado e já estão na chave.
+      key = analysisKey(
+        state,
+        decisionsOf(
+          state,
+          goal,
+          augPicks.get(matchKeyOf(state)),
+          autoSwaps.all(matchKeyOf(state)),
+          augPicks.has(matchKeyOf(state)),
+        ),
+      );
     let rec = last?.rec;
     if (key !== lastKey || !rec) {
       // A análise pode levar segundos: o banco lido da tela já aparece, sem esperá-la.

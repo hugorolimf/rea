@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { contestAlert } from "../contest.mjs";
-import { replaySnapshot } from "../replay.mjs";
+import { gameRows, replayCacheStats, replaySnapshot } from "../replay.mjs";
 
 const plan = {
   carry: "Aphelios",
@@ -181,5 +181,47 @@ test("rever partida: último tabuleiro de cada jogador, colocação do históric
     price: 1,
   });
   assert.equal(await replaySnapshot(file, "999", {}), null);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("capturas: só a partida corrente fica em memória; as anteriores vêm do arquivo sob demanda", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "replay-mem-")),
+    file = path.join(dir, "captures.jsonl");
+  const row = (gameId, id, health) =>
+    JSON.stringify({ gameId, id, name: `P${id}`, health, units: [] }) + "\n";
+  fs.writeFileSync(file, row(1, "a", 80) + row(1, "a", 70) + row(2, "a", 60));
+  // Partida 2 é a corrente: a 1 foi descartada do Map, mas continua legível (relida do arquivo).
+  assert.equal((await gameRows(file, "2")).length, 1);
+  assert.deepEqual(
+    { ...replayCacheStats(), pinned: null },
+    { games: 1, evicted: 1, pinned: null },
+  );
+  const old = await gameRows(file, "1");
+  assert.deepEqual(
+    old.map((r) => r.health),
+    [80, 70],
+  );
+  assert.equal(
+    replayCacheStats().games,
+    1,
+    "reler a antiga não a devolve ao cache",
+  );
+  assert.equal(replayCacheStats().pinned, "1");
+  assert.equal((await replaySnapshot(file, "1", {})).endedAt, "");
+  assert.deepEqual(await gameRows(file, "999"), []);
+  // O arquivo cresce: linhas novas da partida corrente entram; uma partida nova passa a ser a corrente.
+  fs.appendFileSync(file, row(2, "b", 50));
+  assert.equal((await gameRows(file, "2")).length, 2);
+  fs.appendFileSync(file, row(3, "a", 90));
+  assert.equal((await gameRows(file, "3")).length, 1);
+  assert.equal(
+    (await gameRows(file, "2")).length,
+    2,
+    "a 2 saiu do Map e volta do arquivo inteira",
+  );
+  assert.deepEqual(
+    { ...replayCacheStats(), pinned: null },
+    { games: 1, evicted: 2, pinned: null },
+  );
   fs.rmSync(dir, { recursive: true });
 });

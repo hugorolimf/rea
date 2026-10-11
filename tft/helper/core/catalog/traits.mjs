@@ -151,6 +151,68 @@ export const soloTraitNames = (traits, exempt = []) =>
   );
 
 /**
+ * Regra do emblema que um aprimoramento dá (M9 da migração). Aprimoramento do set atual (`DA_…`) que dá o emblema de uma
+ * sinergia: pelo nome em inglês ("X Crest/Crown/Circlet/Emblem") ou pelo texto ("Recebe um Emblema de X."); sem nome
+ * reconhecível, a única sinergia que ele lista. Devolve `(a) => { trait, item } | null`, com `trait` o apiName da sinergia
+ * e `item` o id do item de emblema (ou null). Aprimoramentos de sets antigos têm nomes de sinergia que não são os do set
+ * atual, por isso só os `DA_` valem. No Set 18 o item de emblema se chama "X Emblem" e vem sem traits; há outro item de
+ * mesmo nome com o id do próprio aprimoramento (`…Augment`): o emblema é o outro.
+ */
+function augmentEmblemRule(catalog, nameByApi, apiByName) {
+  return (a) => {
+    if (!a.id.startsWith("DA_")) return null;
+    const named = /^(.+) (?:Crest|Crown|Circlet|Emblem)$/.exec(
+        a.nameEn ?? "",
+      )?.[1],
+      given = /Recebe um Emblema de (.+?)[.,]/.exec(a.desc ?? "")?.[1],
+      trait =
+        apiByName.get(named) ??
+        apiByName.get(given) ??
+        (given && a.traits.length === 1 ? a.traits[0] : null),
+      name = nameByApi.get(trait),
+      item = name
+        ? (catalog.items ?? []).find(
+            (i) =>
+              i.name === `${name} Emblem` &&
+              i.apiName.startsWith("DA_") &&
+              !i.apiName.endsWith("Augment"),
+          )?.apiName
+        : null;
+    return trait ? { trait, item: item ?? null } : null;
+  };
+}
+
+/**
+ * Sinergias que os aprimoramentos escolhidos (`chosen`: entradas de augments.json) concedem, na forma que o motor lê das
+ * opções: as próprias sinergias do aprimoramento mais a do emblema que ele dá (`traitsOf`, apiNames, sem repetir).
+ *  - `traits`: nomes das sinergias de todos os escolhidos (`options.augmentTraits`; libera o traço solo, ex. Rival);
+ *  - `traitsById`: apiNames por aprimoramento (`options.augmentTraitsById`; o motor não soma o tier de quem a sinergia já mediu);
+ *  - `emblems`: ids dos itens de emblema que o jogador passa a ter (`options.augmentEmblems`);
+ *  - `emblemOf`: Map id do aprimoramento -> `{ trait, item }` ou null.
+ */
+function augmentGrants(chosen, augmentEmblem, nameByApi) {
+  const emblemOf = new Map(chosen.map((a) => [a.id, augmentEmblem(a)])),
+    traitsOf = (a) => [
+      ...new Set([...a.traits, emblemOf.get(a.id)?.trait].filter(Boolean)),
+    ];
+  return {
+    emblemOf,
+    traitsOf,
+    traits: [
+      ...new Set(
+        chosen.flatMap((a) =>
+          traitsOf(a)
+            .map((t) => nameByApi.get(t))
+            .filter(Boolean),
+        ),
+      ),
+    ],
+    traitsById: Object.fromEntries(chosen.map((a) => [a.id, traitsOf(a)])),
+    emblems: chosen.map((a) => emblemOf.get(a.id)?.item).filter(Boolean),
+  };
+}
+
+/**
  * Livro de sinergias de um catálogo: tudo que o motor, o plano e o servidor precisam saber de traços e emblemas, num
  * objeto só. `maxUnits` limita os patamares considerados (o motor ignora patamares acima do tabuleiro); `exempt` lista
  * as sinergias solo liberadas por aprimoramento.
@@ -172,6 +234,15 @@ export function traitBook(catalog, { maxUnits = Infinity, exempt = [] } = {}) {
   };
   /** Sinergias de uma peça com os itens dela (`traits` já inclui os emblemas; `added` lista só os vindos deles). */
   const of = (base, items) => traitsWithEmblems(base, items, emblems);
+  // apiName <-> nome pt-BR da sinergia (apiName é único no catálogo; o primeiro vence, como o `find` de antes).
+  const nameByApi = new Map(),
+    apiByName = new Map();
+  for (const t of traits) {
+    if (!nameByApi.has(t.apiName)) nameByApi.set(t.apiName, t.name);
+    if (!apiByName.has(t.name)) apiByName.set(t.name, t.apiName);
+  }
+  const augmentEmblem = augmentEmblemRule(catalog, nameByApi, apiByName),
+    grants = (chosen) => augmentGrants(chosen, augmentEmblem, nameByApi);
   return {
     byName,
     emblems,
@@ -179,6 +250,12 @@ export function traitBook(catalog, { maxUnits = Infinity, exempt = [] } = {}) {
     solo,
     thresholds,
     of,
+    /** Nome da sinergia a partir do apiName do catálogo (`undefined` se desconhecido). */
+    nameOf: (api) => nameByApi.get(api),
+    /** O que um aprimoramento dá em emblema: `{ trait (apiName), item (id do emblema ou null) }` ou null. */
+    augmentEmblem,
+    /** Sinergias e emblemas dos aprimoramentos escolhidos (ver `augmentGrants`). */
+    grants,
     /** Situação da sinergia `name` com `count` peças (ver `traitStatus`). */
     status: (name, count) => traitStatus(thresholds(name), count),
     /** Contagem por sinergia de `[{ traits, items }]` (ver `tallyTraits`). */

@@ -319,7 +319,7 @@ test("fusão: rodada do jogo vale mais que a da tela; demais campos seguem da te
     xp: "screen",
     items: "screen",
     shop: null,
-    bench: "manual",
+    bench: null,
   });
   // Arquivo do jogo indisponível: a tela continua valendo.
   const fallback = mergeSources(screen, { available: false, stage: null });

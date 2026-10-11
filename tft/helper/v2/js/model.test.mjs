@@ -577,3 +577,42 @@ test("fonte GEP: obsoleto, ausente e esquema desconhecido dizem que a tela assum
   );
   assert.equal(gepNote({ state: "esquema-desconhecido" }).short, "GEP ?");
 });
+
+test("fonte GEP: gravação desligada no TFTAcademy diz como ligar, no chip e na dica", () => {
+  const off = gepNote({
+    state: "ausente",
+    reason: "gravacao-desligada",
+    recordGames: false,
+    was: "sem-partida",
+  });
+  assert.match(
+    off.label,
+    /ausente: gravação de partidas desligada no TFTAcademy/,
+  );
+  assert.match(
+    off.label,
+    /Ligue "gravar partidas" nas configurações do TFTAcademy/,
+  );
+  assert.match(off.label, /leitura de tela/);
+  assert.equal(off.short, "GEP off · ligar gravação");
+  assert.match(off.hint, /gravar partidas/);
+  // Fora de partida (motivo próprio) com a gravação desligada: o motivo fica, a instrução também.
+  const outside = gepNote({
+    state: "ausente",
+    reason: "fora-de-partida",
+    recordGames: false,
+  });
+  assert.match(outside.label, /fora de partida.*gravar partidas/);
+  assert.equal(outside.short, "GEP off");
+  // Ativo (partida que já estava sendo gravada) ou configuração desconhecida/ligada: sem a instrução.
+  assert.equal(gepNote({ state: "ativo", recordGames: false }).hint, undefined);
+  assert.equal(
+    gepNote({ state: "ausente", reason: "sem-partida", recordGames: true })
+      .hint,
+    undefined,
+  );
+  assert.doesNotMatch(
+    gepNote({ state: "ausente", reason: "sem-partida" }).label,
+    /gravar partidas/,
+  );
+});

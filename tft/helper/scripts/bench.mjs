@@ -2,11 +2,12 @@
 //
 //   node scripts/bench.mjs [--runs 4] [--scenario id[,id]] [--event shop|gold] [--json]
 //
-// A 1ª execução de cada cenário é a "fria" (JIT e `SIMS` da rolagem vazios); as demais, "quente". Sem `--event`, cada
-// execução recomeça do zero e inclui todos os passos do cenário (a base é recalculada: evento que a invalida).
-// Com `--event`, o 1º passo roda duas vezes (plano adotado e base em cache) e se mede uma 3ª leitura em que muda só:
-//   shop  a loja (não entra na chave da base: acerta o cache, só a tática refaz);
-//   gold  -2 g (o ouro entra na chave da base: recalcula a base inteira, como uma rolagem).
+// A 1ª execução de cada cenário é a "fria" (JIT, histórico do grafo e simulação de rolagem vazios); as demais, "quente".
+// Sem `--event`, cada execução recomeça do zero e inclui todos os passos do cenário (a base é recalculada).
+// Com `--event`, o 1º passo roda duas vezes (plano adotado e fatos no histórico do grafo) e se mede uma 3ª leitura em que muda só:
+//   shop  a loja (entra na base desde o M8b/D1: a base e o que depende dela recalculam);
+//   gold  -2 g (as lojas ao alcance mudam: a base recalcula, como uma rolagem).
+// Os fatos recalculados por leitura saem do grafo (tests/recommend-graph.test.mjs tem a tabela de eventos).
 // Evidência congelada: a medição é piso do custo ao vivo.
 import {
   loadContext,
@@ -32,12 +33,10 @@ const STAGES = [
   "analyze",
   "clone",
   "tactics",
-  "playbook",
   "stagePlan",
   "strategy",
   "planTrack",
   "augmentAdvice",
-  "decide",
   "contest",
   "json",
 ];

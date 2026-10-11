@@ -436,13 +436,6 @@
         ],
         "keep": ["Varus", "Amumu", "Sentinel", "Diana"],
         "benchInstead": ["Vi", "Nidalee"],
-        "roll": {
-          "level": 8,
-          "budget": 5,
-          "neededForTwoStar": 3,
-          "availableUpper": 10,
-          "chanceOneCopy": 0.477634194694592
-        },
         "grown": [
           {
             "id": "DA_18_Diana",
@@ -2471,32 +2464,6 @@
           }
         ],
         "positionNote": "Proposta heurística; posições reais dos adversários, alcance de todas as habilidades e regras especiais de adjacency não foram capturados. Espelhe para proteger o carry após observar a arena.",
-        "playbook": {
-          "style": "Fast 8",
-          "headline": "Hero está eliminado: análise de planejamento",
-          "actions": [
-            "Não execute decisões de gasto com base em um snapshot antigo ou de outra sessão.",
-            "Comprar se aparecer: Aphelios, Rakan, Xayah, Brambleback, Mama Beak. Prepare a substituta antes de reservar a unidade que sai.",
-            "Itens para Aphelios: Deathblade, Infinity Edge, Striker's Flail. Confira os componentes livres antes de combinar.",
-            "Itens para Rakan: Gargoyle Stoneplate, Protector's Vow, Spirit Visage. Confira os componentes livres antes de combinar."
-          ],
-          "targetLevel": 9,
-          "rollLevel": 8,
-          "carry": "Aphelios",
-          "gold": 30,
-          "currentLevel": 8,
-          "levelEstimated": true,
-          "alive": false,
-          "actionable": false,
-          "progress": {
-            "owned": 0,
-            "target": 3,
-            "enemy": 0,
-            "remainingUpper": 10
-          },
-          "odds": [15, 20, 32, 30, 3],
-          "note": "Plano heurístico usando HP/cópias observados e nível/ouro informados ou estimados. Não simula dano por rodada, streak, experiência restante ou augments de economia."
-        },
         "stage": {
           "level": 8,
           "board": [
@@ -2980,13 +2947,6 @@
         ],
         "keep": ["Diana", "Varus", "Amumu", "Nidalee", "Sentinel", "Vi"],
         "benchInstead": [],
-        "roll": {
-          "level": 8,
-          "budget": 5,
-          "neededForTwoStar": 3,
-          "availableUpper": 10,
-          "chanceOneCopy": 0.477634194694592
-        },
         "grown": [
           {
             "id": "DA_18_Akali_AD",
@@ -4850,32 +4810,6 @@
           }
         ],
         "positionNote": "Proposta heurística; posições reais dos adversários, alcance de todas as habilidades e regras especiais de adjacency não foram capturados. Espelhe para proteger o carry após observar a arena.",
-        "playbook": {
-          "style": "Fast 8",
-          "headline": "Hero está eliminado: análise de planejamento",
-          "actions": [
-            "Não execute decisões de gasto com base em um snapshot antigo ou de outra sessão.",
-            "Comprar se aparecer: Aphelios, Kog'Maw, Akali. Prepare a substituta antes de reservar a unidade que sai.",
-            "Itens para Aphelios: Deathblade, Guinsoo's Rageblade, Kraken's Fury. Confira os componentes livres antes de combinar.",
-            "Itens para Vi: Gargoyle Stoneplate, Warmog's Armor. Confira os componentes livres antes de combinar."
-          ],
-          "targetLevel": 9,
-          "rollLevel": 8,
-          "carry": "Aphelios",
-          "gold": 30,
-          "currentLevel": 8,
-          "levelEstimated": true,
-          "alive": false,
-          "actionable": false,
-          "progress": {
-            "owned": 0,
-            "target": 3,
-            "enemy": 0,
-            "remainingUpper": 10
-          },
-          "odds": [15, 20, 32, 30, 3],
-          "note": "Plano heurístico usando HP/cópias observados e nível/ouro informados ou estimados. Não simula dano por rodada, streak, experiência restante ou augments de economia."
-        },
         "stage": {
           "level": 8,
           "board": [
@@ -5373,13 +5307,6 @@
         ],
         "keep": ["Sentinel", "Diana"],
         "benchInstead": ["Varus", "Vi", "Nidalee", "Amumu"],
-        "roll": {
-          "level": 7,
-          "budget": 5,
-          "neededForTwoStar": 3,
-          "availableUpper": 18,
-          "chanceOneCopy": 0.4524148027737228
-        },
         "grown": [
           {
             "id": "DA_Sentinel18",
@@ -7558,32 +7485,6 @@
           }
         ],
         "positionNote": "Proposta heurística; posições reais dos adversários, alcance de todas as habilidades e regras especiais de adjacency não foram capturados. Espelhe para proteger o carry após observar a arena.",
-        "playbook": {
-          "style": "Flex e estabilização",
-          "headline": "Hero está eliminado: análise de planejamento",
-          "actions": [
-            "Não execute decisões de gasto com base em um snapshot antigo ou de outra sessão.",
-            "Comprar se aparecer: Azir, Rammus, Soraka, Teemo, Veigar. Prepare a substituta antes de reservar a unidade que sai.",
-            "Itens para Azir: Guinsoo's Rageblade, Hextech Gunblade, Rabadon's Deathcap. Confira os componentes livres antes de combinar.",
-            "Itens para Rammus: Crownguard, Gargoyle Stoneplate, Warmog's Armor. Confira os componentes livres antes de combinar."
-          ],
-          "targetLevel": 9,
-          "rollLevel": 7,
-          "carry": "Azir",
-          "gold": 30,
-          "currentLevel": 8,
-          "levelEstimated": true,
-          "alive": false,
-          "actionable": false,
-          "progress": {
-            "owned": 0,
-            "target": 3,
-            "enemy": 0,
-            "remainingUpper": 18
-          },
-          "odds": [15, 20, 32, 30, 3],
-          "note": "Plano heurístico usando HP/cópias observados e nível/ouro informados ou estimados. Não simula dano por rodada, streak, experiência restante ou augments de economia."
-        },
         "stage": {
           "level": 8,
           "board": [
@@ -11965,20 +11866,6 @@
     "currentLevel": 8,
     "chosenAugments": [],
     "augmentAdvice": null,
-    "decision": {
-      "verdict": "encerrado",
-      "label": "Partida encerrada",
-      "rank": 0,
-      "title": "Rapidfire · Aphelios",
-      "carry": "Aphelios",
-      "kept": 6,
-      "leaving": 2,
-      "current": 8,
-      "reasons": [
-        "Hero está eliminado neste snapshot; as rotas abaixo servem só para revisão."
-      ],
-      "note": "Aguardando a próxima partida."
-    },
     "buildSource": {
       "label": "MetaTFT 18.4b",
       "fetchedAt": "2026-10-09T09:30:00.588Z",

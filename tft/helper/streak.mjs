@@ -1,7 +1,8 @@
 // Sequência de vitórias/derrotas inferida pelo HP entre rodadas: o arquivo do jogo não grava resultados.
 // Cada leitura (estágio da tela + HP do arquivo) guarda o menor HP visto em cada rodada; uma rodada contra
 // jogador foi derrota se o HP da rodada seguinte caiu. Uma rodada sem leitura interrompe a contagem.
-import { isPvp } from "./economy.mjs";
+import { POLICY, isPvp } from "./economy.mjs";
+import { HP } from "./core/economy/tables.mjs";
 
 const parse = (text) => {
   const m = /^(\d)-(\d)$/.exec(text ?? "");
@@ -25,7 +26,7 @@ export function streakTracker() {
         seen.clear();
         hpLog.length = 0;
       }
-      if (hp > 0 && hp <= 100 && (!hpLog.length || hpLog.at(-1).hp !== hp))
+      if (hp > 0 && hp <= HP.max && (!hpLog.length || hpLog.at(-1).hp !== hp))
         hpLog.push({ at: now, hp });
       const round = typeof stage === "string" ? parse(stage) : stage;
       if (!round) return;
@@ -50,20 +51,21 @@ export function streakTracker() {
       return kind ? { kind, length, inferred: true } : null;
     },
     /**
-     * Tendência da vida: queda média das últimas 3 perdas e quantas perdas houve nos últimos 5 minutos (~4 rodadas).
-     * Não depende do estágio lido da tela.
+     * Tendência da vida: queda média das últimas perdas e quantas perdas houve na janela recente (~4 rodadas); os
+     * tamanhos são `POLICY.trend.drops` e `POLICY.trend.windowMs`. Não depende do estágio lido da tela.
      */
     trend(now = Date.now()) {
       const drops = [];
       for (let i = 1; i < hpLog.length; i++)
         if (hpLog[i].hp < hpLog[i - 1].hp)
           drops.push({ at: hpLog[i].at, loss: hpLog[i - 1].hp - hpLog[i].hp });
-      const last = drops.slice(-3);
+      const last = drops.slice(-POLICY.trend.drops);
       return {
         avgLoss: last.length
           ? last.reduce((n, d) => n + d.loss, 0) / last.length
           : 0,
-        recentLosses: drops.filter((d) => now - d.at <= 5 * 60 * 1000).length,
+        recentLosses: drops.filter((d) => now - d.at <= POLICY.trend.windowMs)
+          .length,
       };
     },
   };

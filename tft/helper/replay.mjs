@@ -5,6 +5,12 @@ import fsp from "node:fs/promises";
 
 // O arquivo só cresce (capture.mjs anexa a cada mudança de tabuleiro): guarda o offset já lido e o resto de
 // linha incompleta para ler apenas os bytes novos, em vez de reparsear todas as partidas a cada recomendação.
+//
+// Memória: só a partida corrente (a da última linha lida) fica em `games`. Ao começar outra partida a anterior sai
+// do Map e vai para `evicted` (o arquivo em disco continua inteiro); as linhas tardias de uma partida já descartada
+// são ignoradas para ela nunca ficar parcial. Quem pede uma partida descartada (rever partida passada) a relê do
+// arquivo (`scanGame`) e ela fica na vaga `pinned` até pedirem outra. Antes todas as partidas ficavam para sempre
+// (~700 linhas cada; 18,7 MB de heap com 33 partidas).
 const emptyCache = () => ({
   file: null,
   id: null,
@@ -12,12 +18,15 @@ const emptyCache = () => ({
   mtimeMs: 0,
   tail: Buffer.alloc(0),
   games: new Map(),
+  current: null,
+  evicted: new Set(),
+  pinned: null,
 });
 let cache = emptyCache(),
   queue = Promise.resolve();
 
-/** Acrescenta uma linha ao Map de partidas; devolve false se ela não é JSON válido. */
-function ingest(games, line) {
+/** Acrescenta uma linha à partida corrente do cache; devolve false se ela não é JSON válido. */
+function ingest(state, line) {
   let row;
   try {
     row = JSON.parse(line);
@@ -25,11 +34,38 @@ function ingest(games, line) {
     return false; // linha truncada não invalida o restante
   }
   if (row?.gameId == null || row.id == null) return true;
-  const game = games.get(String(row.gameId)) ?? { last: new Map(), rows: [] };
+  const gameId = String(row.gameId);
+  if (state.evicted.has(gameId)) return true;
+  if (gameId !== state.current) {
+    if (state.current !== null) {
+      state.games.delete(state.current);
+      state.evicted.add(state.current);
+    }
+    state.current = gameId;
+  }
+  const game = state.games.get(gameId) ?? { last: new Map(), rows: [] };
   game.last.set(String(row.id), row);
   game.rows.push(row);
-  games.set(String(row.gameId), game);
+  state.games.set(gameId, game);
   return true;
+}
+
+/** Relê o arquivo inteiro só para a partida `gameId` (ordem gravada); não toca no cache incremental. */
+async function scanGame(file, gameId) {
+  const game = { last: new Map(), rows: [] };
+  for (const line of (await fsp.readFile(file, "utf8")).split("\n")) {
+    if (!line.includes(gameId)) continue; // filtro barato antes do parse
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (String(row?.gameId) !== gameId || row.id == null) continue;
+    game.last.set(String(row.id), row);
+    game.rows.push(row);
+  }
+  return game;
 }
 
 /** Lê o arquivo do offset em cache até `stat.size`, ou do zero se ele foi trocado, truncado ou regravado. */
@@ -63,13 +99,13 @@ async function refresh(file) {
     end = data.lastIndexOf(0x0a);
   if (end >= 0)
     for (const line of data.toString("utf8", 0, end).split("\n"))
-      if (line) ingest(cache.games, line);
+      if (line) ingest(cache, line);
   let tail = Buffer.from(data.subarray(end + 1));
   // Última linha sem \n: um objeto JSON que já parseia está completo (nenhum prefixo de objeto é JSON válido).
   if (
     tail.length &&
     tail.toString("utf8").trimStart().startsWith("{") &&
-    ingest(cache.games, tail.toString("utf8"))
+    ingest(cache, tail.toString("utf8"))
   )
     tail = Buffer.alloc(0);
   Object.assign(cache, {
@@ -81,14 +117,29 @@ async function refresh(file) {
 }
 
 /**
- * Lê as capturas agrupando por partida: Map gameId → {last: Map playerId → último registro, rows: todos na
- * ordem gravada}. Incremental e serializado (duas leituras simultâneas não duplicam as mesmas linhas).
+ * Lê as capturas da partida `gameId`: {last: Map playerId → último registro, rows: todos na ordem gravada}, ou
+ * undefined se ela não está no arquivo. Incremental e serializado (duas leituras simultâneas não duplicam as mesmas
+ * linhas). A partida corrente sai do cache incremental; uma já descartada vem de `scanGame` (vaga `pinned`).
  */
-function load(file) {
-  const run = queue.then(() => refresh(file));
+function load(file, gameId) {
+  const run = queue.then(async () => {
+    const id = String(gameId),
+      hit = (await refresh(file)).get(id);
+    if (hit || !cache.evicted.has(id)) return hit;
+    if (cache.pinned?.gameId !== id)
+      cache.pinned = { gameId: id, game: await scanGame(file, id) };
+    return cache.pinned.game;
+  });
   queue = run.catch(() => {});
   return run;
 }
+
+/** Quantas partidas o cache guarda em memória, quantas já foram descartadas e a vaga fixada (para teste e log). */
+export const replayCacheStats = () => ({
+  games: cache.games.size,
+  evicted: cache.evicted.size,
+  pinned: cache.pinned?.gameId ?? null,
+});
 
 /**
  * Snapshot no formato do arquivo do jogo para a partida `gameId`, ou null se ela não foi capturada.
@@ -99,7 +150,7 @@ export async function replaySnapshot(
   gameId,
   { heroId, set, record = null } = {},
 ) {
-  const players = (await load(file)).get(String(gameId))?.last;
+  const players = (await load(file, gameId))?.last;
   if (!players?.size) return null;
   const rows = [...players.values()],
     endedAt = rows.reduce((t, r) => (r.sourceAt > t ? r.sourceAt : t), "");
@@ -135,7 +186,7 @@ export async function replaySnapshot(
 export async function gameRows(file, gameId) {
   try {
     // Cópia: o array em cache continua crescendo nas próximas leituras incrementais.
-    return (await load(file)).get(String(gameId))?.rows.slice() ?? [];
+    return (await load(file, gameId))?.rows.slice() ?? [];
   } catch {
     return [];
   }

@@ -9,7 +9,7 @@
 // - a fonte não separa o 1º, 2º e 3º item de um campeão de modo monótono (contagens por quantidade de itens
 //   misturam o nível da partida), então os valores são aditivos; o único rendimento decrescente é o limite de 3 itens.
 
-import { baseItem } from "./v2/js/item-source.js";
+import { baseItemId, isPlanItem } from "./core/catalog/items.mjs";
 
 /** Partidas que valem metade do peso: o valor medido é multiplicado por n / (n + SHRINK_K). */
 export const SHRINK_K = 5000;
@@ -20,10 +20,8 @@ export const META_BUILD_TRUST = 0.5;
 
 const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
-/** Item que entra no plano: completo e equipável (fora componentes, emblemas, artefatos, consumíveis e ferramentas). */
-export const isPlanItem = (id) =>
-  /^DA_/.test(id ?? "") &&
-  !/Component|Emblem|Artifact|Consumable|Spatula|FryingPan|Upgrade/.test(id);
+// Item que entra no plano (completo e equipável): regra em core/catalog/items.mjs; reexportada para quem importava daqui.
+export { isPlanItem };
 
 /**
  * Tabela de valores. `stats` = meta-stats.json (`unit`, `unitItem`); `itemStats` = meta-builds.json `items`
@@ -56,7 +54,7 @@ export function itemValueTable({
     let memo = cache.get(champion);
     if (!memo) cache.set(champion, (memo = new Map()));
     if (memo.has(rawItem)) return memo.get(rawItem);
-    const item = baseItem(rawItem),
+    const item = baseItemId(rawItem),
       k = `${champion}|${item}`;
     let out = null;
     const pair = stats?.unitItem?.[k];
@@ -101,7 +99,7 @@ export function itemValueTable({
     return [
       ...new Set(
         [...(byChampion.get(champion) ?? []), ...builds(champion)].map(
-          baseItem,
+          baseItemId,
         ),
       ),
     ].filter(isPlanItem);

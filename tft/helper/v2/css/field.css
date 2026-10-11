@@ -313,6 +313,19 @@
       font-size: 10px;
       line-height: 17px;
     }
+    /* Nota discreta (ex.: "nenhuma peça do plano na loja agora"); com peça na loja vira um aviso verde. */
+    & .note {
+      margin-left: auto;
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      &[data-state="hit"] {
+        color: var(--go);
+        font-weight: 700;
+      }
+    }
   }
   .rows {
     display: flex;
@@ -445,6 +458,68 @@
     }
     &.is-hold .pt {
       outline: 2px dashed var(--amber);
+    }
+    /* Peça do plano na loja agora (lista Comprar): contorno e brilho de ação; o selo é sobreposto, sem mudar a altura. */
+    &.is-shop {
+      & .pt {
+        outline: 2px solid var(--go);
+        box-shadow: 0 0 0 4px color-mix(in oklab, var(--go), transparent 70%);
+      }
+      &[data-shop="provavel"] .pt {
+        outline-style: dashed;
+      }
+      /* O selo cobre a faixa da barra de chance: ela some (visibility mantém o espaço, sem salto) e a chance fica na dica. */
+      & .meter {
+        visibility: hidden;
+      }
+      /* Sem ouro continua sendo "na loja", mas não some o destaque. */
+      &.is-broke {
+        opacity: 1;
+      }
+      & small.shop-do {
+        max-width: 100%;
+        overflow: hidden;
+        color: var(--go);
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        &[data-conf="provavel"] {
+          font-style: italic;
+        }
+      }
+      &.is-broke small.shop-do {
+        color: var(--danger);
+      }
+    }
+  }
+  .shop-flag {
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    translate: -50% 0;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: var(--go);
+    box-shadow: 0 0 0 2px var(--bg);
+    color: oklch(0.2 0.02 250);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 14px;
+    white-space: nowrap;
+    &[data-conf="provavel"] {
+      border: 1px dashed var(--go);
+      background: var(--bg);
+      color: var(--go);
+      line-height: 12px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      animation: shop-flag 1.6s ease-in-out infinite;
+    }
+  }
+  @keyframes shop-flag {
+    50% {
+      scale: 1.08;
     }
   }
   .cost,

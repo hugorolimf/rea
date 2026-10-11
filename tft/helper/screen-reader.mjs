@@ -1,7 +1,7 @@
 // Mantém um único processo leitor de tela (screen-reader.ps1) vivo só enquanto há partida em andamento.
 // O script emite uma linha JSON apenas quando alguma leitura muda, então o custo em repouso é mínimo.
 import { reconcileLevel } from "./rules.mjs";
-import { CONSUMABLE } from "./item-tiers.mjs";
+import { isConsumable } from "./core/catalog/items.mjs";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,8 +18,6 @@ const HOLD_MS = 15000,
   RETRY_MS = 30000,
   RETRY_MAX_MS = 300000,
   STDERR_TAIL = 600;
-// Consumíveis ocupam espaço no banco, mas não são itens para montar: ficam fora da análise (`items`) e dentro de `bank`.
-const NOT_BUILDABLE = CONSUMABLE;
 // Número vindo do script (às vezes texto, com ponto decimal fixo); null se não for número.
 const number = (v) => {
   const n =
@@ -260,7 +258,7 @@ export function screenReader(
     // Espaços reconhecidos, na ordem do banco e repetidos como estão (dois itens iguais são dois espaços).
     // Espaços não reconhecidos não derrubam os reconhecidos: seguem contados em unknownItems.
     const nextBank = event.items.filter((i) => typeof i === "string"),
-      next = nextBank.filter((i) => !NOT_BUILDABLE.test(i)),
+      next = nextBank.filter((i) => !isConsumable(i)),
       nextRemovers = Number.isInteger(event.removers) ? event.removers : null;
     // O debounce só recomeça quando a leitura do banco muda: outros campos mudando não adiam a aplicação.
     const key = JSON.stringify([nextBank, unknown, nextRemovers]);

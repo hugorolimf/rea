@@ -31,6 +31,9 @@ const emptyState = (gameId = null) => ({
   challenger: null,
   memory: {},
   history: [],
+  // Últimas decisões do usuário recebidas em POST /api/recommend nesta partida (comp fixada e trocas, aprimoramentos
+  // marcados): o servidor as usa para renovar a análise sozinho, sem a interface aberta (app/auto-refresh.mjs).
+  decisions: null,
 });
 
 /** Rodada "2-3" ou, sem leitura de estágio, o minuto corrido (uma rodada dura cerca de um minuto). */
@@ -294,6 +297,28 @@ export function planTracker({ file = null, now = Date.now } = {}) {
           changes: state.history.slice(-6).reverse(),
         },
       };
+    },
+
+    /**
+     * Últimas decisões do usuário desta partida (cópia), ou null (outra partida, ou nenhum POST ainda: valem os padrões).
+     */
+    decisions(gameId) {
+      return state.gameId === String(gameId) && state.decisions
+        ? structuredClone(state.decisions)
+        : null;
+    },
+
+    /**
+     * Guarda as decisões recebidas agora (só o que o usuário decidiu: comp fixada, trocas, aprimoramentos marcados).
+     * Persiste junto do plano (sobrevive ao reinício) e só toca o estado quando algo mudou. Devolve se mudou.
+     */
+    setDecisions(gameId, decisions) {
+      forGame(gameId);
+      const next = JSON.stringify(decisions ?? null);
+      if (JSON.stringify(state.decisions) === next) return false;
+      state.decisions = JSON.parse(next);
+      touch();
+      return true;
     },
 
     /** Estado atual (cópia), para diagnóstico e testes. */

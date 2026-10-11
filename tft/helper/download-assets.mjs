@@ -6,6 +6,11 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const catalog = JSON.parse(
   await fs.readFile(path.join(root, "catalog.json"), "utf8"),
 );
+// Wisps (build-wisps.mjs): todos usam o mesmo ícone de mecânica do Set 18; uma entrada por ícone, com o prefixo "wisp:".
+const wisps = await fs
+  .readFile(path.join(root, "wisps.json"), "utf8")
+  .then((text) => JSON.parse(text).wisps ?? [])
+  .catch(() => []);
 await fs.mkdir(path.join(root, "assets"), { recursive: true });
 const manifest = {};
 const items = catalog.items.filter(
@@ -26,6 +31,10 @@ const queue = [
   ...items.map((i) => ({ id: i.apiName, icon: i.icon })),
   // Sinergias: prefixo próprio no manifesto para nunca colidir com o id de um campeão ou item.
   ...catalog.traits.map((t) => ({ id: "trait:" + t.apiName, icon: t.icon })),
+  ...[...new Map(wisps.map((w) => [w.iconKey, w.icon]))].map(([id, icon]) => ({
+    id,
+    icon,
+  })),
 ];
 let ok = 0,
   failed = 0;

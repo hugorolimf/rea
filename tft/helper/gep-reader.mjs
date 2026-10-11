@@ -1,20 +1,28 @@
-// Fonte GEP (Overwolf Game Events Provider) lida do banco que o TFTAcademy grava: ouro, nível/XP, loja, reserva (bench) e
-// banco de itens DO PRÓPRIO jogador, sem leitura de tela. Esquema, mapeamento, frescor e limites: FONTES-DE-DADOS.md,
-// seção "GEP / TFTAcademy".
+// Fonte GEP (Overwolf Game Events Provider) lida do banco que o TFTAcademy grava: ouro, nível/XP, loja (campeões e Wisps),
+// reserva (bench), banco de itens e aprimoramentos (oferta e escolhidos) DO PRÓPRIO jogador, sem leitura de tela.
+// Esquema, mapeamento, frescor e limites: FONTES-DE-DADOS.md, seção "GEP / TFTAcademy".
 //
 // Regras desta fonte (não negociáveis):
-//  - Somente leitura: o banco é aberto com `readOnly` (ou `immutable=1` se nenhum processo o tem aberto, para não criar
-//    arquivos -wal/-shm na pasta do TFTAcademy). Nunca se grava, nem se executa o Overwolf ou o TFTAcademy.
-//  - Só o jogador local: as consultas pedem apenas as chaves abaixo (`KEYS`). Nunca se lê `opponent_board_pieces`,
-//    `battle_stats`, `round_outcome`, aprimoramentos nem nada de rivais. `item_bench` traz os 8 jogadores: só a linha do
-//    jogador local (identificado por `roster.player_status[].localplayer`) é guardada, o resto é descartado na hora.
+//  - Somente leitura: o banco é aberto com `readOnly` quando existe `-wal`/`-shm` (alguém o tem aberto e as linhas
+//    recentes só estão no WAL: `immutable=1` as perderia) e com `immutable=1` só quando nenhum processo o tem aberto, para
+//    não criar arquivos -wal/-shm na pasta do TFTAcademy (ver `gepOpenMode`). Nunca se grava, nem se executa o Overwolf ou
+//    o TFTAcademy, nem se liga a configuração dele.
+//  - Só o jogador local: as consultas pedem apenas os pares `feature.key` abaixo (`KEYS`). Nunca se lê
+//    `opponent_board_pieces`, `battle_stats`, `round_outcome`, `match_stats` nem nada de rivais. `item_bench` traz os 8
+//    jogadores: só a linha do jogador local (identificado por `roster.player_status[].localplayer`) é guardada, o resto é
+//    descartado na hora. Da tabela `settings` lê-se UMA chave (`record_games`), só para explicar por que não há eventos.
+//  - Aprimoramentos (decisão do usuário, 2026-10-10, uso pessoal e local; o Overwolf os proíbe em apps PÚBLICOS):
+//    `augments.me` (oferta, `augment_1..3`) e `augments.picked_augment` (escolhidos, cumulativo `slot_1..4`). Formato
+//    OBSERVADO na partida completa de 2026-10-11 (`pesquisa/gep-validacao-partida.md`): leitura tolerante, nome fora do
+//    catálogo vira desconhecido.
 //  - Nada é inventado: valor ausente, inválido ou fora do catálogo vira desconhecido (null / contado em `unknown`).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { CONSUMABLE } from "./item-tiers.mjs";
+import { isConsumable } from "./core/catalog/items.mjs";
+import { parseStage, stageText } from "./core/state/clock.mjs";
 
 /** Silêncio máximo (ms) do banco da partida para a fonte ainda valer. Ver "Frescor" em FONTES-DE-DADOS.md. */
 export const GEP_STALE_MS = 60_000;
@@ -23,7 +31,7 @@ const MIN_INTERVAL_MS = 1000,
   ERROR_BACKOFF_MS = 5000,
   BATCH = 2000,
   SHOP_SLOTS = 5;
-/** Eventos lidos (`feature.key`). Qualquer outra chave nunca é selecionada: rivais e aprimoramentos ficam de fora. */
+/** Eventos lidos (`feature.key`). Qualquer outra chave nunca é selecionada: os rivais ficam de fora. */
 const KEYS = new Map([
   ["me.gold", "gold"],
   ["me.xp", "xp"],
@@ -34,12 +42,43 @@ const KEYS = new Map([
   ["match_info.round_type", "roundType"],
   ["match_info.match_state", "matchState"],
   ["roster.player_status", "roster"],
+  // Aprimoramentos: oferta (`augment_1..3.name`, uma linha a cada reroll) e escolhidos (`augments.picked_augment`, lista
+  // cumulativa `slot_1..4.name`). As outras duas features são tolerância ao código do TFTAcademy, nunca vistas nos dados.
+  ["augments.me", "augmentOffer"],
+  ["augments.picked_augment", "augmentPicked"],
+  ["match_info.picked_augment", "augmentPicked"],
+  ["me.picked_augment", "augmentPicked"],
 ]);
-const KEY_NAMES = [...new Set([...KEYS.keys()].map((k) => k.split(".")[1]))];
+/** Sem a coluna `feature` (esquema antigo) só se reconhece pela chave; `me` (oferta) é ambígua e fica de fora. */
+const FALLBACK_KEYS = {
+  gold: "me.gold",
+  xp: "me.xp",
+  shop_pieces: "store.shop_pieces",
+  shop_visible: "store.shop_visible",
+  bench_pieces: "bench.bench_pieces",
+  item_bench: "bench.item_bench",
+  round_type: "match_info.round_type",
+  match_state: "match_info.match_state",
+  player_status: "roster.player_status",
+  picked_augment: "augments.picked_augment",
+};
+const KEY_NAMES = Object.keys(FALLBACK_KEYS);
 const REQUIRED = {
   events: ["id", "game_id", "timestamp", "key", "data"],
   games: ["id", "started_at"],
 };
+/** Única chave lida da tabela `settings`: com ela desligada o TFTAcademy não grava eventos (e apaga a partida no fim). */
+const RECORD_SETTING = "record_games";
+/** Motivos que a gravação desligada explica: sem partida, partida velha ou de outra, sem eventos recentes. */
+const RECORDING_EXPLAINS = new Set([
+  "sem-partida",
+  "sem-eventos-recentes",
+  "outra-partida",
+  "partida-encerrada",
+]);
+/** Etiqueta (hash) que o catálogo de itens do Set 18 põe em todo Wisp (fogo-fátuo): `DA_AbandonShip18`, `DA_BeggarsWisp18`... */
+export const WISP_TAG = "{5b609ae2}";
+const MAX_PICKED = 8;
 
 /** Caminho do banco do TFTAcademy (`TFT_GEP_DB` troca, para testes). */
 export function defaultGepDb() {
@@ -47,6 +86,18 @@ export function defaultGepDb() {
   const base =
     process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
   return path.join(base, "TFTAcademy", "tft-events.db");
+}
+
+/**
+ * Como abrir o banco, só leitura. O TFTAcademy o grava em modo WAL: com `-wal`/`-shm` ao lado há um processo com o banco
+ * aberto e as linhas mais recentes só existem no WAL, então a leitura é normal (`"compartilhado"`, enxerga o WAL).
+ * `immutable=1` ignoraria o WAL e perderia esses dados; por isso só se usa (`"imutavel"`) quando os dois arquivos não
+ * existem, e então não cria nada na pasta do TFTAcademy. `exists` é injetável para teste.
+ */
+export function gepOpenMode(file, exists = fs.existsSync) {
+  return exists(`${file}-wal`) || exists(`${file}-shm`)
+    ? "compartilhado"
+    : "imutavel";
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -117,9 +168,9 @@ export function parseXp(data) {
 export function parseRoundType(data) {
   const v = parseJson(data);
   if (!isPlain(v)) return null;
-  const m = /^(\d+)-(\d+)$/.exec(text(v.stage));
-  return m && m[1] !== "0"
-    ? { stage: `${Number(m[1])}-${Number(m[2])}`, name: text(v.name) || null }
+  const at = parseStage(text(v.stage));
+  return at && at.stage !== 0
+    ? { stage: stageText(at), name: text(v.name) || null }
     : null;
 }
 
@@ -131,22 +182,194 @@ const asBool = (v) =>
       : null;
 
 /**
- * `store.shop_pieces` → 5 espaços. Cada um: carta `{text, id, known}` (`id` null se o nome não está no catálogo),
- * `null` para vendida ("Sold") ou ausente. Devolve null se o payload não é um objeto de espaços.
+ * Catálogo de Wisps (fogos-fátuos) para o leitor: `apiName → {name, nameEn}` dos itens do catálogo com a etiqueta
+ * `WISP_TAG`. `names` (opcional) é a lista de itens traduzidos (`{id, name, nameEn}`) para o nome em português.
  */
-export function parseShop(data, isChampion = () => true) {
+export function wispCatalog(catalogItems = [], names = []) {
+  const byId = new Map((names ?? []).map((n) => [n.id, n]));
+  return new Map(
+    (catalogItems ?? [])
+      .filter((i) => i?.apiName && (i.tags ?? []).includes(WISP_TAG))
+      .map((i) => {
+        const n = byId.get(i.apiName);
+        return [
+          i.apiName,
+          { name: n?.name ?? null, nameEn: n?.nameEn ?? i.name ?? null },
+        ];
+      }),
+  );
+}
+
+/**
+ * Decide se um nome de `shop_pieces` é um Wisp. O GEP o entrega como entrada comum da loja (`slot_5: {name:
+ * "DA_AbandonShip18"}`), então só o catálogo o distingue de um campeão: `wisps` = Map `apiName → {name, nameEn}` (ou
+ * Set/lista de ids). Sem catálogo, só o que traz "Wisp" no id. Devolve `{id, name, known}` ou null.
+ */
+export function wispLookup(wisps = null) {
+  const map =
+    wisps instanceof Map
+      ? wisps
+      : wisps
+        ? new Map([...wisps].map((id) => [id, {}]))
+        : null;
+  return (name) => {
+    const w = map?.get(name);
+    if (w) return { id: name, name: w.name ?? w.nameEn ?? null, known: true };
+    return /wisp/i.test(name) ? { id: name, name: null, known: false } : null;
+  };
+}
+
+/**
+ * `store.shop_pieces` → 5 espaços. Cada um: carta `{text, id, source}` (`id` null se o nome não é um campeão do catálogo),
+ * `null` para vendida ("Sold") ou ausente. Um Wisp NÃO é campeão: a carta vem com `id: null`, `wisp: true` e `wispId`
+ * (o motor e a rolagem só leem `id`, então o ignoram). Devolve null se o payload não é um objeto de espaços.
+ */
+export function parseShop(data, isChampion = () => true, wispOf = () => null) {
   const v = parseJson(data);
   if (!isPlain(v)) return null;
   const slots = [];
   for (let i = 1; i <= SHOP_SLOTS; i++) {
     const name = text(v[`slot_${i}`]?.name);
+    if (!name || name === "Sold") {
+      slots.push(null);
+      continue;
+    }
+    if (isChampion(name)) {
+      slots.push({ text: name, id: name, source: "gep" });
+      continue;
+    }
+    const wisp = wispOf(name);
     slots.push(
-      !name || name === "Sold"
-        ? null
-        : { text: name, id: isChampion(name) ? name : null, source: "gep" },
+      wisp
+        ? {
+            text: name,
+            id: null,
+            wisp: true,
+            wispId: wisp.id,
+            wispName: wisp.name,
+            wispKnown: wisp.known,
+            source: "gep",
+          }
+        : { text: name, id: null, source: "gep" },
     );
   }
   return slots;
+}
+
+/** Wisps da loja (cartas com `wisp: true`) como lista `{slot, id, name, known}`, slot de 1 a 5. */
+export const shopWisps = (cards) =>
+  (cards ?? []).flatMap((c, i) =>
+    c?.wisp
+      ? [
+          {
+            slot: i + 1,
+            id: c.wispId,
+            name: c.wispName ?? null,
+            known: c.wispKnown === true,
+          },
+        ]
+      : [],
+  );
+
+// Aprimoramentos. Formato só pelo código do TFTAcademy: oferta `{augment_1:{name}, augment_2:{name}, augment_3:{name}}`
+// (vazia = tela de escolha fechada); escolhido = último nome não vazio do payload (objeto de slots, `{name}` ou texto).
+
+/** Resolve um nome do GEP para o id do catálogo (`augments.json`): exato, sem caminho/extensão, sem diferenciar caixa. */
+export function augmentResolver(ids = null) {
+  if (!ids) return (name) => name;
+  const exact = new Set(ids),
+    lower = new Map();
+  for (const id of exact) {
+    const k = id.toLowerCase();
+    lower.set(k, lower.has(k) ? null : id);
+  }
+  return (name) => {
+    const raw = text(name)
+      .replace(/^.*[\\/]/, "")
+      .replace(/\..*$/, "");
+    if (!raw) return null;
+    return exact.has(raw) ? raw : (lower.get(raw.toLowerCase()) ?? null);
+  };
+}
+
+/** Itens de campeão do anel de aprimoramentos ("ChampionItem") não são aprimoramentos: o TFTAcademy também os ignora. */
+const notAugment = (name) => !name || /ChampionItem/.test(name);
+
+/** Nomes de um payload de aprimoramentos, na ordem dos espaços `augment_N` (ou na ordem do objeto). */
+function augmentNames(v) {
+  if (typeof v === "string") return [text(v)].filter((n) => !notAugment(n));
+  if (!isPlain(v)) return [];
+  const slots = Object.entries(v)
+    .filter(([key]) => /^augment_\d+$/.test(key))
+    .sort((a, b) => Number(a[0].slice(8)) - Number(b[0].slice(8)))
+    .map(([, entry]) => entry);
+  // Espaços `augment_N`; senão um `{name}` solto; senão os valores na ordem do objeto (regra do TFTAcademy).
+  const list = slots.length
+    ? slots
+    : typeof v.name === "string"
+      ? [v]
+      : Object.values(v);
+  return list
+    .map((entry) => text(typeof entry === "string" ? entry : entry?.name))
+    .filter((n) => !notAugment(n));
+}
+
+/**
+ * `augments.me`: oferta da rodada de aprimoramento. `{cards: [{text, id}], ids, unknown}`; `id` null = fora do catálogo.
+ * Vazia (`{}` ou sem nome) = tela fechada (`cards: []`). null se o payload não é um objeto.
+ */
+export function parseAugmentOffer(data, resolve = (n) => n) {
+  const v = parseJson(data);
+  if (!isPlain(v)) return null;
+  const cards = augmentNames(v)
+    .slice(0, 3)
+    .map((t) => ({ text: t, id: resolve(t) ?? null }));
+  return {
+    cards,
+    ids: cards.flatMap((c) => (c.id ? [c.id] : [])),
+    unknown: cards.filter((c) => !c.id).length,
+  };
+}
+
+/**
+ * `picked_augment`: o aprimoramento escolhido (último nome não vazio, como o TFTAcademy). `{text, id}`; `id` null =
+ * fora do catálogo. null se o payload não traz nome.
+ */
+export function parseAugmentPicked(data, resolve = (n) => n) {
+  let v = parseJson(data);
+  if (
+    v === undefined &&
+    typeof data === "string" &&
+    /^[\w./\\-]{3,120}$/.test(data.trim())
+  )
+    v = data.trim(); // texto puro, sem aspas
+  const names = augmentNames(v);
+  const last = names.at(-1);
+  return last ? { text: last, id: resolve(last) ?? null } : null;
+}
+
+/**
+ * `augments.picked_augment` observado (partida completa de 2026-10-11): é um retrato CUMULATIVO, `{slot_1..slot_4: {name}}`
+ * com os escolhidos até agora na ordem da escolha (os espaços ainda vazios vêm com nome ""), reenviado a cada escolha. Esta
+ * função devolve TODOS os nomes do payload, em ordem (`[{text, id}]`; vazia se não há nenhum): quem começa a ler no meio da
+ * partida não perde os anteriores. Os formatos de um só nome (texto, `{name}`) dão uma lista de um item.
+ */
+export function parseAugmentPickedList(data, resolve = (n) => n) {
+  let v = parseJson(data);
+  if (
+    v === undefined &&
+    typeof data === "string" &&
+    /^[\w./\\-]{3,120}$/.test(data.trim())
+  )
+    v = data.trim();
+  return augmentNames(v).map((t) => ({ text: t, id: resolve(t) ?? null }));
+}
+
+/** `settings.record_games` guardado como texto ("true"/"false"), JSON ou 0/1 → boolean; null se ausente ou ilegível. */
+export function parseRecordGames(value) {
+  const v = typeof value === "string" ? (parseJson(value) ?? value) : value;
+  if (v === 0 || v === 1) return v === 1;
+  return asBool(typeof v === "string" ? v.trim().toLowerCase() : v);
 }
 
 /**
@@ -235,7 +458,7 @@ export function parseItemBench(data, identity, isItem = () => true) {
   return {
     found: true,
     bank,
-    items: bank.filter((id) => !CONSUMABLE.test(id)),
+    items: bank.filter((id) => !isConsumable(id)),
     removers,
     unknown,
   };
@@ -261,6 +484,8 @@ export function emptyGepState() {
     shopVisible: null,
     bench: null,
     items: null,
+    augmentOffer: null, // oferta atual (cartas do `augments.me`); lista vazia = tela de escolha fechada
+    augmentPicked: null, // escolhidos nesta partida, em ordem, sem repetir
   };
 }
 
@@ -278,13 +503,14 @@ function applyItemBench(state, data, ts, env) {
 }
 
 /**
- * Aplica uma linha `{id, ts, feature, key, data}` ao estado. `env` = `{isChampion, isItem}` (catálogo; sem ele aceita tudo).
- * Linhas de chaves fora de `KEYS` são ignoradas aqui também (defesa em profundidade além do filtro da consulta).
+ * Aplica uma linha `{id, ts, feature, key, data}` ao estado. `env` = `{isChampion, isItem, wispOf, resolveAugment}`
+ * (catálogo; sem ele aceita tudo). Linhas de chaves fora de `KEYS` são ignoradas aqui também (defesa em profundidade
+ * além do filtro da consulta).
  */
 export function applyGepEvent(state, row, env = {}) {
   const kind =
     KEYS.get(`${row.feature}.${row.key}`) ??
-    (row.feature == null ? KEYS.get(fallbackKey(row.key)) : undefined);
+    (row.feature == null ? KEYS.get(FALLBACK_KEYS[row.key]) : undefined);
   state.lastId = Math.max(state.lastId, row.id);
   if (!kind) return state;
   state.rows++;
@@ -327,8 +553,31 @@ export function applyGepEvent(state, row, env = {}) {
       state.shopVisible = asBool(parseJson(row.data)) ?? state.shopVisible;
       break;
     case "shop": {
-      const shop = parseShop(row.data, env.isChampion);
+      const shop = parseShop(row.data, env.isChampion, env.wispOf);
       if (shop) state.shop = stamp(shop, ts);
+      break;
+    }
+    case "augmentOffer": {
+      const o = parseAugmentOffer(row.data, env.resolveAugment);
+      if (o)
+        state.augmentOffer = stamp(o.cards, ts, {
+          ids: o.ids,
+          unknown: o.unknown,
+        });
+      break;
+    }
+    case "augmentPicked": {
+      // O payload é cumulativo (todos os escolhidos até agora): entra cada nome ainda não visto, em ordem. O mesmo
+      // aprimoramento reenviado não conta duas vezes; o estágio é o da hora em que o nome apareceu.
+      const list = [...(state.augmentPicked?.value ?? [])];
+      let added = false;
+      for (const p of parseAugmentPickedList(row.data, env.resolveAugment)) {
+        if (list.some((x) => x.text.toLowerCase() === p.text.toLowerCase()))
+          continue;
+        list.push({ ...p, stage: state.stage?.value ?? null, ts });
+        added = true;
+      }
+      if (added) state.augmentPicked = stamp(list.slice(-MAX_PICKED), ts);
       break;
     }
     case "bench": {
@@ -362,19 +611,6 @@ export function applyGepEvent(state, row, env = {}) {
   return state;
 }
 
-const fallbackKey = (key) =>
-  ({
-    gold: "me.gold",
-    xp: "me.xp",
-    shop_pieces: "store.shop_pieces",
-    shop_visible: "store.shop_visible",
-    bench_pieces: "bench.bench_pieces",
-    item_bench: "bench.item_bench",
-    round_type: "match_info.round_type",
-    match_state: "match_info.match_state",
-    player_status: "roster.player_status",
-  })[key];
-
 // ---------------------------------------------------------------------------------------------------------------------
 // Avaliação: dado o estado, a partida e o relógio, o que vale agora (puro).
 
@@ -392,6 +628,9 @@ const ageMs = (ts, now) =>
  *  - `local`: nome e tag do jogador local conforme o servidor; se divergir do roster, o banco de itens fica desconhecido;
  *  - `set`: número do set esperado (18).
  * `state` ∈ ativo | obsoleto | ausente | esquema-desconhecido; `reason` diz o motivo. Só `ativo` traz `fields`.
+ * `snap.recordGames` (a configuração `record_games` do TFTAcademy: true | false | null = desconhecida) vai em
+ * `recordGames`; desligada, ela explica a falta de partida/eventos: `reason: "gravacao-desligada"` (o motivo original fica
+ * em `was`). Com dados frescos (partida que já estava sendo gravada) o estado continua `ativo`.
  */
 export function evaluateGep(
   snap,
@@ -399,6 +638,24 @@ export function evaluateGep(
   now = Date.now(),
   staleMs = GEP_STALE_MS,
 ) {
+  const result = evaluateCore(snap, ctx, now, staleMs),
+    recordGames = snap?.recordGames ?? null;
+  if (
+    recordGames === false &&
+    result.state !== "ativo" &&
+    RECORDING_EXPLAINS.has(result.reason)
+  )
+    return {
+      ...result,
+      recordGames,
+      state: "ausente",
+      reason: "gravacao-desligada",
+      was: result.reason,
+    };
+  return { ...result, recordGames };
+}
+
+function evaluateCore(snap, ctx, now, staleMs) {
   const base = {
     source: "gep",
     confidence: "observed",
@@ -460,7 +717,11 @@ export function evaluateGep(
       ? { ...field(s.stage, s.stage.value), name: s.stage.name }
       : null,
     shop: s.shop
-      ? { ...field(s.shop, s.shop.value), visible: s.shopVisible }
+      ? {
+          ...field(s.shop, s.shop.value),
+          visible: s.shopVisible,
+          wisps: shopWisps(s.shop.value),
+        }
       : null,
     bench: s.bench
       ? { ...field(s.bench, s.bench.value), unknown: s.bench.unknown }
@@ -474,11 +735,41 @@ export function evaluateGep(
             unknown: s.items.unknown,
           }
         : null,
+    // Oferta: só os ids do catálogo; `unknown` > 0 = alguma carta fora do catálogo (o servidor não usa oferta incompleta).
+    augmentOffer: s.augmentOffer
+      ? {
+          ...field(s.augmentOffer, s.augmentOffer.ids),
+          count: s.augmentOffer.value.length,
+          unknown: s.augmentOffer.unknown,
+        }
+      : null,
+    // Escolhidos: `{id, stage}` em ordem, só os do catálogo; `unknown` conta os que não bateram.
+    augmentPicked: s.augmentPicked
+      ? {
+          ...field(
+            s.augmentPicked,
+            s.augmentPicked.value
+              .filter((x) => x.id)
+              .map((x) => ({ id: x.id, stage: x.stage })),
+          ),
+          count: s.augmentPicked.value.length,
+          unknown: s.augmentPicked.value.filter((x) => !x.id).length,
+        }
+      : null,
   };
   return {
     ...out,
     state: "ativo",
     available: true,
+    // O que o GEP entregou de aprimoramentos e Wisps agora (contagens; os valores ficam em `screen`).
+    coverage: {
+      augmentOffer: fields.augmentOffer?.count ?? null,
+      augmentPicked: fields.augmentPicked?.count ?? null,
+      augmentUnknown:
+        (fields.augmentOffer?.unknown ?? 0) +
+        (fields.augmentPicked?.unknown ?? 0),
+      wisps: fields.shop?.wisps?.length ?? null,
+    },
     identity: s.identity
       ? identityOk
         ? "confirmada"
@@ -538,7 +829,8 @@ function columns(db, table) {
 /**
  * Cria o leitor. `status(ctx)` lê o banco no máximo a cada `minIntervalMs` (a leitura é síncrona, de milissegundos, com
  * `busy_timeout` curto) e avalia o frescor a cada chamada. Nunca lança.
- * Opções: `file`, `now`, `staleMs`, `minIntervalMs`, `champions`/`items` (conjuntos de ids do catálogo; sem eles aceita tudo).
+ * Opções: `file`, `now`, `staleMs`, `minIntervalMs`, `champions`/`items`/`augments` (conjuntos de ids do catálogo; sem eles
+ * aceita tudo) e `wisps` (Map `apiName → {name}` de `wispCatalog`; sem ele só reconhece ids com "Wisp").
  */
 export function gepReader({
   file = defaultGepDb(),
@@ -549,10 +841,14 @@ export function gepReader({
   minIntervalMs = MIN_INTERVAL_MS,
   champions = null,
   items = null,
+  augments = null,
+  wisps = null,
 } = {}) {
   const env = {
     isChampion: champions ? (id) => champions.has(id) : () => true,
     isItem: items ? (id) => items.has(id) : () => true,
+    wispOf: wispLookup(wisps),
+    resolveAugment: augmentResolver(augments),
   };
   const sqlite = loadSqlite();
   let readAt = -Infinity,
@@ -563,13 +859,13 @@ export function gepReader({
     maxId = 0,
     catchingUp = false,
     error = null,
-    retryAt = 0;
+    retryAt = 0,
+    recordGames = null; // `settings.record_games` do TFTAcademy (true | false | null = não lida)
 
   function open() {
     // Com -wal/-shm presentes alguém pode estar gravando: leitura normal (enxerga o WAL). Sem eles, ninguém tem o banco
     // aberto: `immutable=1` não cria arquivos novos na pasta do TFTAcademy.
-    const shared = fs.existsSync(`${file}-wal`) || fs.existsSync(`${file}-shm`);
-    return shared
+    return gepOpenMode(file) === "compartilhado"
       ? new sqlite.DatabaseSync(file, {
           readOnly: true,
           timeout: BUSY_TIMEOUT_MS,
@@ -579,7 +875,23 @@ export function gepReader({
         });
   }
 
+  /** Lê SÓ `settings.record_games` (nenhuma outra configuração). Ausente ou ilegível = null; travado propaga. */
+  function readRecordGames(db) {
+    try {
+      const have = columns(db, "settings");
+      if (!have.has("key") || !have.has("value")) return null;
+      const row = db
+        .prepare("SELECT value FROM settings WHERE key = ?")
+        .get(RECORD_SETTING);
+      return row ? parseRecordGames(row.value) : null;
+    } catch (e) {
+      if (classify(e).transient) throw e;
+      return null;
+    }
+  }
+
   function readOnce() {
+    recordGames = null;
     if (!sqlite)
       return {
         state: "ausente",
@@ -600,6 +912,7 @@ export function gepReader({
             detail: `${table}: ${missing.join(", ") || "sem colunas"}`,
           };
       }
+      recordGames = readRecordGames(db);
       const gcols = columns(db, "games"),
         ecols = columns(db, "events"),
         pick = (c) => (gcols.has(c) ? c : "NULL");
@@ -621,14 +934,25 @@ export function gepReader({
         state = emptyGepState();
         maxId = 0;
       }
-      const featureCol = ecols.has("feature") ? "feature" : "NULL AS feature";
-      const marks = KEY_NAMES.map(() => "?").join(",");
+      // Só os pares `feature.key` de KEYS (a chave sozinha, `me`, também existe em `live_client_data`); sem a coluna
+      // `feature`, ou com ela nula, só as chaves inequívocas.
+      const hasFeature = ecols.has("feature"),
+        featureCol = hasFeature ? "feature" : "NULL AS feature",
+        pairs = [...KEYS.keys()],
+        marks = (list) => list.map(() => "?").join(","),
+        where = hasFeature
+          ? `((feature || '.' || key) IN (${marks(pairs)}) OR (feature IS NULL AND key IN (${marks(KEY_NAMES)})))`
+          : `key IN (${marks(KEY_NAMES)})`;
       const rows = db
         .prepare(
           `SELECT id, timestamp AS ts, ${featureCol}, key, data FROM events
-           WHERE game_id = ? AND id > ? AND key IN (${marks}) ORDER BY id LIMIT ${BATCH}`,
+           WHERE game_id = ? AND id > ? AND ${where} ORDER BY id LIMIT ${BATCH}`,
         )
-        .all(latest.id, state.lastId, ...KEY_NAMES);
+        .all(
+          latest.id,
+          state.lastId,
+          ...(hasFeature ? [...pairs, ...KEY_NAMES] : KEY_NAMES),
+        );
       for (const row of rows) applyGepEvent(state, row, env);
       // Passou do lote: o resto vem na próxima leitura (o marcador só avança até onde foi lido).
       catchingUp = rows.length === BATCH;
@@ -657,6 +981,7 @@ export function gepReader({
       }
     } catch (e) {
       error = classify(e);
+      if (!error.transient) recordGames = null;
       retryAt = now() + (error.transient ? 1000 : ERROR_BACKOFF_MS);
     }
   }
@@ -668,8 +993,8 @@ export function gepReader({
       // Travado de passagem: usa o que já foi lido (o frescor cuida de envelhecer); os demais erros não têm dados.
       const snap =
         error && !(error.transient && game)
-          ? { error }
-          : { game, state, lastTs, catchingUp };
+          ? { error, recordGames }
+          : { game, state, lastTs, catchingUp, recordGames };
       const result = evaluateGep(
         game || error ? snap : null,
         ctx,
@@ -697,10 +1022,14 @@ export function gepSummary(gep) {
  * Precedência por campo: GEP fresco > leitor de tela > estimativa. `seen` é o estado já mesclado (tela + arquivos do
  * jogo + nível validado). Com a fonte ativa troca ouro, nível, XP, banco de itens e loja pelos do GEP; o estágio do
  * arquivo do jogo continua valendo (GEP só preenche se faltar). Sem GEP fresco devolve `seen` com `gepStatus` apenas.
- * `sources.<campo>` = origem ("gep", "screen", "game-log", "derived", "manual"|null); `sourcesDetail.<campo>` traz
+ * `sources.<campo>` = origem ("gep", "screen", "game-log", "derived"|null); `sourcesDetail.<campo>` traz
  * `{source, ageMs, confidence}`. `gepBench` (reserva do GEP) só existe com a fonte ativa; o servidor o usa no motor.
+ * Também só com a fonte ativa: `wisps` (`[{slot, id, name, known}]`, da loja do GEP; o Wisp nunca entra como campeão em
+ * `shop`), `augments` (oferta, ids do catálogo; vence a da tela) e `pickedAugments` (`[{id, stage}]`).
+ * `pick(campo)` diz se o GEP vale para o campo agora (gold, level, xp, stage, shop, items, bench): a precedência com
+ * histerese e divergência mora em core/state/precedence.mjs e o servidor passa a decisão; sem `pick` o GEP vale em tudo.
  */
-export function mergeGep(seen, gep) {
+export function mergeGep(seen, gep, pick = () => true) {
   const gepStatus = gepSummary(gep);
   if (!gep?.available) return { ...seen, gepStatus };
   const f = gep.fields,
@@ -708,8 +1037,10 @@ export function mergeGep(seen, gep) {
     sources = { ...seen.sources },
     detail = {},
     stale = { ...seen.stale },
-    take = (name, field, apply) => {
+    // `forced`: campos que só o GEP observa (ou em que ele vence sempre) não passam pela precedência com histerese.
+    take = (name, field, apply, forced = false) => {
       if (!field || field.value === null || field.value === undefined) return;
+      if (!forced && !pick(name)) return;
       apply(field.value);
       sources[name] = "gep";
       detail[name] = {
@@ -744,7 +1075,7 @@ export function mergeGep(seen, gep) {
     stale.xp = false;
   });
   // Sem XP no GEP (nível máximo): a barra antiga da tela seria de outro momento.
-  if (f.level && !f.xp && out.xp != null) {
+  if (f.level && !f.xp && out.xp != null && pick("level")) {
     out.xp = null;
     sources.xp = null;
   }
@@ -753,10 +1084,19 @@ export function mergeGep(seen, gep) {
       out.stage = v;
     });
   // Loja escondida (shop_visible false) não sobrescreve: o que a tela vê continua valendo.
-  if (f.shop && f.shop.visible !== false)
+  if (f.shop && f.shop.visible !== false) {
+    let shopTaken = false;
     take("shop", f.shop, (v) => {
       out.shop = v;
+      // Wisps da mesma loja: separados dos campeões (a carta do Wisp tem `id: null`). Só quando a loja é a do GEP.
+      out.wisps = f.shop.wisps ?? [];
+      shopTaken = true;
     });
+    if (shopTaken) {
+      sources.wisps = "gep";
+      detail.wisps = detail.shop;
+    }
+  }
   take("items", f.items, (v) => {
     out.items = v;
     out.bank = f.items.bank;
@@ -767,13 +1107,47 @@ export function mergeGep(seen, gep) {
     take("bench", f.bench, (v) => {
       out.gepBench = v;
     });
-  else sources.bench = seen.sources?.bench ?? "manual";
+  else sources.bench = seen.sources?.bench ?? null;
+  // Aprimoramentos (GEP fresco > leitor de tela): a oferta troca a da tela só quando completa (nenhuma carta fora do
+  // catálogo) e com 2 ou 3 cartas (oferta vazia = tela de escolha fechada: a da tela continua, como sempre); os escolhidos
+  // só existem aqui (`pickedAugments: [{id, stage}]`) e o servidor os usa quando o usuário não marcou nenhum à mão.
+  const offer = f.augmentOffer;
+  if (offer && offer.unknown === 0 && offer.value?.length >= 2)
+    take("augments", offer, (v) => (out.augments = v), true);
+  if (f.augmentPicked?.value?.length)
+    take(
+      "pickedAugments",
+      f.augmentPicked,
+      (v) => (out.pickedAugments = v),
+      true,
+    );
   return {
     ...out,
     stale,
     sources,
     sourcesDetail: { ...seen.sourcesDetail, ...detail },
   };
+}
+
+/**
+ * Aprimoramentos escolhidos que a análise usa. O registro do usuário (marcado ou corrigido na tela: lista não vazia, ou
+ * `known` com a lista vazia = remoção explícita) PREVALECE; sem ele valem os do GEP (`seen.pickedAugments`, observados),
+ * só os que `valid` (catálogo) aceita. Devolve `{ids, source: "manual"|"gep"|null, stages: Map id → estágio da escolha}`.
+ */
+export function chosenAugmentIds({
+  manual = [],
+  known = false,
+  gepPicked = [],
+  valid = () => true,
+} = {}) {
+  if (manual.length || known)
+    return { ids: manual, source: "manual", stages: new Map() };
+  const stages = new Map();
+  for (const p of gepPicked ?? [])
+    if (p?.id && valid(p.id)) stages.set(p.id, p.stage ?? null);
+  return stages.size
+    ? { ids: [...stages.keys()], source: "gep", stages }
+    : { ids: manual, source: null, stages };
 }
 
 /** Peças da reserva do GEP no formato que o motor lê em `options.bench` (só do jogador local). */

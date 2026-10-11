@@ -1,6 +1,6 @@
 {
   "source": "https://api-hc.metatft.com/tft-comps-api/unit_items_processed",
-  "fetchedAt": "2026-10-10T17:53:23.298Z",
+  "fetchedAt": "2026-10-11T00:23:24.210Z",
   "set": "TFTSet18",
   "patch": "18.4b",
   "units": {
@@ -28,6 +28,18 @@
       "DA_SunfireCape",
       "DA_Evenshroud"
     ],
+    "DA_18_Diana": [
+      "DA_ThiefsGloves",
+      "DA_IonicSpark",
+      "DA_HandOfJustice",
+      "DA_JeweledGauntlet",
+      "DA_Bloodthirster",
+      "DA_GargoyleStoneplate",
+      "DA_Crownguard",
+      "DA_TitansResolve",
+      "DA_18_EmblemExecutioner",
+      "DA_EdgeOfNight"
+    ],
     "DA_Taric18": [
       "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
@@ -39,18 +51,6 @@
       "DA_SunfireCape",
       "DA_Evenshroud",
       "DA_SteadfastHeart"
-    ],
-    "DA_18_Diana": [
-      "DA_ThiefsGloves",
-      "DA_IonicSpark",
-      "DA_HandOfJustice",
-      "DA_JeweledGauntlet",
-      "DA_Bloodthirster",
-      "DA_GargoyleStoneplate",
-      "DA_EdgeOfNight",
-      "DA_Crownguard",
-      "DA_TitansResolve",
-      "DA_SunfireCape"
     ],
     "DA_Fiddlesticks18": [
       "DA_ThiefsGloves",
@@ -72,8 +72,8 @@
       "DA_SunfireCape",
       "DA_Evenshroud",
       "DA_SteadfastHeart",
-      "DA_DragonsClaw",
       "DA_ProtectorsVow",
+      "DA_DragonsClaw",
       "DA_Crownguard"
     ],
     "DA_18_Kennen": [
@@ -110,7 +110,7 @@
       "DA_ThiefsGloves",
       "DA_RedBuff",
       "DA_JeweledGauntlet",
-      "DA_RabadonsDeathcap"
+      "DA_Morellonomicon"
     ],
     "DA_18_Ornn": [
       "DA_GargoyleStoneplate",
@@ -156,8 +156,8 @@
       "DA_Crownguard",
       "DA_DragonsClaw",
       "DA_ThiefsGloves",
-      "DA_ProtectorsVow",
       "DA_SteadfastHeart",
+      "DA_ProtectorsVow",
       "DA_BrambleVest"
     ],
     "DA_18_Ezreal": [
@@ -215,22 +215,10 @@
       "DA_DragonsClaw",
       "DA_SteadfastHeart",
       "DA_BrambleVest",
-      "DA_Crownguard",
       "DA_SteraksGage",
+      "DA_Crownguard",
       "DA_ProtectorsVow",
       "DA_SunfireCape"
-    ],
-    "DA_18_Yorick": [
-      "DA_GargoyleStoneplate",
-      "DA_ThiefsGloves",
-      "DA_WarmogsArmor",
-      "DA_SunfireCape",
-      "DA_SpiritVisage",
-      "DA_Component_GiantsBelt",
-      "DA_ProtectorsVow",
-      "DA_Component_ChainVest",
-      "DA_DragonsClaw",
-      "DA_Evenshroud"
     ],
     "DA_18_Alistar": [
       "DA_GargoyleStoneplate",
@@ -243,6 +231,18 @@
       "DA_ThiefsGloves",
       "DA_ProtectorsVow",
       "DA_BrambleVest"
+    ],
+    "DA_18_Yorick": [
+      "DA_GargoyleStoneplate",
+      "DA_ThiefsGloves",
+      "DA_WarmogsArmor",
+      "DA_SunfireCape",
+      "DA_SpiritVisage",
+      "DA_Component_GiantsBelt",
+      "DA_ProtectorsVow",
+      "DA_Evenshroud",
+      "DA_Component_ChainVest",
+      "DA_DragonsClaw"
     ],
     "DA_18_Morgana": [
       "DA_VoidStaff",
@@ -272,34 +272,34 @@
       "DA_JeweledGauntlet",
       "DA_SpearOfShojin",
       "DA_StrikersFlail",
-      "DA_18_EmblemInvoker",
       "DA_RabadonsDeathcap",
+      "DA_18_EmblemInvoker",
       "DA_BlueBuff",
       "DA_NashorsTooth",
       "DA_ArchangelsStaff",
       "DA_GiantSlayer",
-      "DA_VoidStaff"
+      "DA_18_EmblemExecutioner"
     ],
     "DA_KogMaw18_AD": [
       "DA_RedBuff",
       "DA_SpearOfShojin",
       "DA_GuinsoosRageblade",
-      "DA_InfinityEdge",
       "DA_Morellonomicon",
+      "DA_InfinityEdge",
       "DA_Component_RecurveBow",
       "DA_GiantSlayer",
       "DA_ThiefsGloves",
       "DA_JeweledGauntlet",
-      "DA_BlueBuff"
+      "DA_Component_NeedlesslyLargeRod"
     ],
     "DA_18_Azir": [
-      "DA_HextechGunblade",
       "DA_GuinsoosRageblade",
+      "DA_HextechGunblade",
       "DA_RabadonsDeathcap",
       "DA_ArchangelsStaff",
       "DA_JeweledGauntlet",
-      "DA_VoidStaff",
       "DA_StrikersFlail",
+      "DA_VoidStaff",
       "DA_GiantSlayer",
       "DA_RedBuff",
       "DA_ThiefsGloves"
@@ -308,8 +308,8 @@
       "DA_InfinityEdge",
       "DA_SteraksGage",
       "DA_SpearOfShojin",
-      "DA_GuinsoosRageblade",
       "DA_EdgeOfNight",
+      "DA_GuinsoosRageblade",
       "DA_HandOfJustice",
       "DA_JeweledGauntlet",
       "DA_Bloodthirster",
@@ -368,25 +368,13 @@
       "DA_SpearOfShojin",
       "DA_InfinityEdge",
       "DA_LastWhisper",
-      "DA_GuinsoosRageblade",
       "DA_Deathblade",
-      "DA_GiantSlayer",
+      "DA_GuinsoosRageblade",
       "DA_18_EmblemLunar",
+      "DA_GiantSlayer",
       "DA_RedBuff",
       "DA_BlueBuff",
       "DA_Component_RecurveBow"
-    ],
-    "DA_Draven18": [
-      "DA_GuinsoosRageblade",
-      "DA_KrakensFury",
-      "DA_InfinityEdge",
-      "DA_Deathblade",
-      "DA_LastWhisper",
-      "DA_GiantSlayer",
-      "DA_RedBuff",
-      "DA_18_EmblemExecutioner",
-      "DA_StrikersFlail",
-      "DA_HextechGunblade"
     ],
     "DA_18_Veigar": [
       "DA_JeweledGauntlet",
@@ -399,6 +387,18 @@
       "DA_Artifact_Manazane",
       "DA_SpearOfShojin",
       "DA_Artifact_EternalPact"
+    ],
+    "DA_Draven18": [
+      "DA_GuinsoosRageblade",
+      "DA_KrakensFury",
+      "DA_InfinityEdge",
+      "DA_Deathblade",
+      "DA_LastWhisper",
+      "DA_GiantSlayer",
+      "DA_RedBuff",
+      "DA_18_EmblemExecutioner",
+      "DA_StrikersFlail",
+      "DA_HextechGunblade"
     ],
     "DA_Lux18_Base": [
       "DA_SpearOfShojin",
@@ -420,9 +420,21 @@
       "DA_RedBuff",
       "DA_GiantSlayer",
       "DA_HextechGunblade",
-      "DA_BlueBuff",
       "DA_RabadonsDeathcap",
+      "DA_BlueBuff",
       "DA_ArchangelsStaff"
+    ],
+    "DA_18_Sejuani": [
+      "DA_GargoyleStoneplate",
+      "DA_WarmogsArmor",
+      "DA_SpiritVisage",
+      "DA_Crownguard",
+      "DA_ProtectorsVow",
+      "DA_DragonsClaw",
+      "DA_SteadfastHeart",
+      "DA_ThiefsGloves",
+      "DA_SunfireCape",
+      "DA_BrambleVest"
     ],
     "DA_18_Sivir": [
       "DA_InfinityEdge",
@@ -447,18 +459,6 @@
       "DA_GiantSlayer",
       "DA_BlueBuff",
       "DA_KrakensFury"
-    ],
-    "DA_18_Sejuani": [
-      "DA_GargoyleStoneplate",
-      "DA_WarmogsArmor",
-      "DA_SpiritVisage",
-      "DA_Crownguard",
-      "DA_ProtectorsVow",
-      "DA_DragonsClaw",
-      "DA_SteadfastHeart",
-      "DA_ThiefsGloves",
-      "DA_SunfireCape",
-      "DA_BrambleVest"
     ],
     "DA_Brambleback18": [
       "DA_EdgeOfNight",
@@ -508,18 +508,6 @@
       "DA_Evenshroud",
       "DA_DragonsClaw"
     ],
-    "DA_18_Malphite": [
-      "DA_GargoyleStoneplate",
-      "DA_WarmogsArmor",
-      "DA_Crownguard",
-      "DA_SpiritVisage",
-      "DA_SteadfastHeart",
-      "DA_DragonsClaw",
-      "DA_ProtectorsVow",
-      "DA_BrambleVest",
-      "DA_SunfireCape",
-      "DA_AdaptiveHelm"
-    ],
     "DA_Karma18": [
       "DA_JeweledGauntlet",
       "DA_SpearOfShojin",
@@ -531,6 +519,18 @@
       "DA_Component_RecurveBow",
       "DA_Morellonomicon",
       "DA_HextechGunblade"
+    ],
+    "DA_18_Malphite": [
+      "DA_GargoyleStoneplate",
+      "DA_WarmogsArmor",
+      "DA_Crownguard",
+      "DA_SpiritVisage",
+      "DA_DragonsClaw",
+      "DA_SteadfastHeart",
+      "DA_ProtectorsVow",
+      "DA_BrambleVest",
+      "DA_SunfireCape",
+      "DA_AdaptiveHelm"
     ],
     "DA_18_RekSai": [
       "DA_GargoyleStoneplate",
@@ -595,8 +595,8 @@
     "DA_18_Shen": [
       "DA_GargoyleStoneplate",
       "DA_WarmogsArmor",
-      "DA_ThiefsGloves",
       "DA_SpiritVisage",
+      "DA_ThiefsGloves",
       "DA_ProtectorsVow",
       "DA_SteadfastHeart",
       "DA_Crownguard",
@@ -626,7 +626,7 @@
       "DA_RedBuff",
       "DA_StrikersFlail",
       "DA_GuinsoosRageblade",
-      "DA_Component_RecurveBow"
+      "DA_HextechGunblade"
     ],
     "DA_18_KhaZix": [
       "DA_HandOfJustice",
@@ -658,8 +658,8 @@
       "DA_Deathblade",
       "DA_18_EmblemBlackthorn",
       "DA_InfinityEdge",
-      "DA_RedBuff",
       "DA_StrikersFlail",
+      "DA_RedBuff",
       "DA_GiantSlayer",
       "DA_GuinsoosRageblade",
       "DA_ThiefsGloves"
@@ -732,8 +732,8 @@
       "DA_VoidStaff",
       "DA_GuinsoosRageblade",
       "DA_RedBuff",
-      "DA_ArchangelsStaff",
       "DA_RabadonsDeathcap",
+      "DA_ArchangelsStaff",
       "DA_GiantSlayer"
     ],
     "DA_18_MasterYi_AD": [
@@ -743,8 +743,8 @@
       "DA_TitansResolve",
       "DA_Quicksilver",
       "DA_Artifact_RapidFireCannon",
-      "DA_KrakensFury",
       "DA_Artifact_WitsEnd",
+      "DA_KrakensFury",
       "DA_Artifact_HellfireHatchet",
       "DA_Bloodthirster"
     ],
@@ -769,8 +769,8 @@
       "DA_GuinsoosRagebladeRadiant",
       "DA_GiantSlayer",
       "DA_LastWhisper",
-      "DA_Artifact_NavoriFlickerblade",
-      "DA_RedBuff"
+      "DA_RedBuff",
+      "DA_Artifact_NavoriFlickerblade"
     ],
     "DA_18_Warwick": [
       "DA_SpearOfShojin",
@@ -778,40 +778,38 @@
       "DA_SteraksGage",
       "DA_Quicksilver",
       "DA_Bloodthirster",
-      "DA_InfinityEdge",
       "DA_EdgeOfNight",
       "DA_HandOfJustice",
+      "DA_InfinityEdge",
       "DA_GuinsoosRageblade",
-      "DA_ThiefsGloves"
+      "DA_18_EmblemExecutioner"
     ],
     "DA_Gromp18_AD": [
       "DA_SpearOfShojin",
       "DA_18_EmblemBlossom",
       "DA_InfinityEdge",
-      "DA_RedBuff",
-      "DA_Deathblade",
       "DA_JeweledGauntlet",
       "DA_LastWhisper",
-      "DA_StrikersFlail"
+      "DA_RedBuff"
     ]
   },
   "items": {
     "DA_GargoyleStoneplate": {
-      "count": 1400590,
-      "avg": 4.3383,
-      "pick": 0.9552985823884409,
+      "count": 1458633,
+      "avg": 4.3392,
+      "pick": 0.9561546226860349,
       "units": [
         "DA_Amumu18",
-        "DA_Sentinel18",
-        "DA_18_Sett",
         "DA_18_Rammus",
+        "DA_18_Sett",
+        "DA_Sentinel18",
         "DA_18_Maokai"
       ]
     },
     "DA_WarmogsArmor": {
-      "count": 865981,
-      "avg": 4.2453,
-      "pick": 0.5906585236759683,
+      "count": 901585,
+      "avg": 4.2462,
+      "pick": 0.5910017567780167,
       "units": [
         "DA_Amumu18",
         "DA_18_Maokai",
@@ -821,9 +819,9 @@
       ]
     },
     "DA_SpearOfShojin": {
-      "count": 807736,
+      "count": 841538,
       "avg": 4.2257,
-      "pick": 0.5509314329990287,
+      "pick": 0.5516400964916881,
       "units": [
         "DA_18_Ezreal",
         "DA_18_Ahri",
@@ -833,9 +831,9 @@
       ]
     },
     "DA_GuinsoosRageblade": {
-      "count": 761591,
-      "avg": 4.4199,
-      "pick": 0.5194573734353344,
+      "count": 793914,
+      "avg": 4.4207,
+      "pick": 0.5204218889296764,
       "units": [
         "DA_18_Aphelios",
         "DA_Draven18",
@@ -845,9 +843,9 @@
       ]
     },
     "DA_InfinityEdge": {
-      "count": 637034,
-      "avg": 4.2545,
-      "pick": 0.4345009439830629,
+      "count": 663501,
+      "avg": 4.2519,
+      "pick": 0.43493431747863026,
       "units": [
         "DA_18_ElderDragon",
         "DA_Nidalee18_AP",
@@ -857,9 +855,9 @@
       ]
     },
     "DA_SpiritVisage": {
-      "count": 593250,
-      "avg": 4.1986,
-      "pick": 0.40463724858948197,
+      "count": 618213,
+      "avg": 4.1998,
+      "pick": 0.4052473910535424,
       "units": [
         "DA_Amumu18",
         "DA_18_Maokai",
@@ -869,9 +867,9 @@
       ]
     },
     "DA_JeweledGauntlet": {
-      "count": 568852,
-      "avg": 4.2719,
-      "pick": 0.3879961367629566,
+      "count": 593274,
+      "avg": 4.2732,
+      "pick": 0.3888995227856731,
       "units": [
         "DA_18_Ahri",
         "DA_18_Veigar",
@@ -881,9 +879,9 @@
       ]
     },
     "DA_ThiefsGloves": {
-      "count": 497611,
-      "avg": 4.0217,
-      "pick": 0.33940488142917946,
+      "count": 517826,
+      "avg": 4.026,
+      "pick": 0.3394422885311238,
       "units": [
         "DA_18_Kennen",
         "DA_18_GnarSmall",
@@ -893,9 +891,9 @@
       ]
     },
     "DA_ProtectorsVow": {
-      "count": 477594,
-      "avg": 4.0729,
-      "pick": 0.3257519125205985,
+      "count": 497128,
+      "avg": 4.0722,
+      "pick": 0.32587445592322617,
       "units": [
         "DA_Sentinel18",
         "DA_Amumu18",
@@ -905,21 +903,21 @@
       ]
     },
     "DA_VoidStaff": {
-      "count": 443694,
-      "avg": 4.1512,
-      "pick": 0.3026297840297709,
+      "count": 461810,
+      "avg": 4.153,
+      "pick": 0.3027230059258482,
       "units": [
         "DA_18_Morgana",
         "DA_18_Zyra",
         "DA_18_Soraka",
-        "DA_18_Alune",
-        "DA_18_LeBlanc"
+        "DA_18_LeBlanc",
+        "DA_18_Alune"
       ]
     },
     "DA_HextechGunblade": {
-      "count": 429794,
-      "avg": 4.2101,
-      "pick": 0.2931490292798446,
+      "count": 446417,
+      "avg": 4.2112,
+      "pick": 0.29263267607111015,
       "units": [
         "DA_18_Azir",
         "DA_18_Zyra",
@@ -929,9 +927,9 @@
       ]
     },
     "DA_RedBuff": {
-      "count": 407258,
-      "avg": 4.1319,
-      "pick": 0.27777792934859713,
+      "count": 422022,
+      "avg": 4.1317,
+      "pick": 0.2766414075200587,
       "units": [
         "DA_18_Ashe",
         "DA_18_Ezreal",
@@ -941,9 +939,9 @@
       ]
     },
     "DA_RabadonsDeathcap": {
-      "count": 383702,
-      "avg": 4.0624,
-      "pick": 0.26171111935656366,
+      "count": 400466,
+      "avg": 4.0636,
+      "pick": 0.26251114374115053,
       "units": [
         "DA_18_Azir",
         "DA_18_KhaZix",
@@ -953,21 +951,21 @@
       ]
     },
     "DA_AdaptiveHelm": {
-      "count": 380923,
-      "avg": 3.9472,
-      "pick": 0.25981565047526545,
+      "count": 395699,
+      "avg": 3.9501,
+      "pick": 0.2593863076196969,
       "units": [
         "DA_Sentinel18",
         "DA_18_Alune",
         "DA_18_Soraka",
-        "DA_18_Ivern",
-        "DA_Amumu18"
+        "DA_Amumu18",
+        "DA_18_Ivern"
       ]
     },
     "DA_ArchangelsStaff": {
-      "count": 375907,
-      "avg": 4.174,
-      "pick": 0.25639439394104746,
+      "count": 389068,
+      "avg": 4.1764,
+      "pick": 0.25503959305679375,
       "units": [
         "DA_18_Zyra",
         "DA_18_Sentry",
@@ -977,9 +975,9 @@
       ]
     },
     "DA_Crownguard": {
-      "count": 363195,
-      "avg": 4.089,
-      "pick": 0.24772393679133065,
+      "count": 377850,
+      "avg": 4.0888,
+      "pick": 0.2476860349257958,
       "units": [
         "DA_Amumu18",
         "DA_Sentinel18",
@@ -989,9 +987,9 @@
       ]
     },
     "DA_GiantSlayer": {
-      "count": 357304,
-      "avg": 4.1003,
-      "pick": 0.2437058701559482,
+      "count": 371107,
+      "avg": 4.0999,
+      "pick": 0.24326590277413604,
       "units": [
         "DA_18_Aphelios",
         "DA_18_ElderDragon",
@@ -1001,21 +999,21 @@
       ]
     },
     "DA_LastWhisper": {
-      "count": 351328,
-      "avg": 4.2274,
-      "pick": 0.2396298276821669,
+      "count": 366148,
+      "avg": 4.2272,
+      "pick": 0.24001520792909958,
       "units": [
         "DA_18_Ezreal",
         "DA_18_ElderDragon",
         "DA_18_Sivir",
-        "DA_18_Ashe",
-        "DA_18_Aphelios"
+        "DA_18_Aphelios",
+        "DA_18_Ashe"
       ]
     },
     "DA_Deathblade": {
-      "count": 341170,
-      "avg": 4.1346,
-      "pick": 0.23270137395916318,
+      "count": 355368,
+      "avg": 4.1347,
+      "pick": 0.23294876501127484,
       "units": [
         "DA_18_Aphelios",
         "DA_18_Ezreal",
@@ -1025,9 +1023,9 @@
       ]
     },
     "DA_BlueBuff": {
-      "count": 327402,
-      "avg": 4.0478,
-      "pick": 0.2233106522759268,
+      "count": 341986,
+      "avg": 4.0499,
+      "pick": 0.2241766741832293,
       "units": [
         "DA_18_Veigar",
         "DA_18_Sentry",
@@ -1037,9 +1035,9 @@
       ]
     },
     "DA_StrikersFlail": {
-      "count": 312873,
-      "avg": 4.1074,
-      "pick": 0.21340087632184912,
+      "count": 324935,
+      "avg": 4.108,
+      "pick": 0.21299950180921914,
       "units": [
         "DA_18_Ahri",
         "DA_18_ElderDragon",
@@ -1049,9 +1047,9 @@
       ]
     },
     "DA_SteraksGage": {
-      "count": 306124,
-      "avg": 4.0399,
-      "pick": 0.208797594752982,
+      "count": 318837,
+      "avg": 4.0401,
+      "pick": 0.20900217630709528,
       "units": [
         "DA_Nidalee18_AP",
         "DA_18_ElderDragon",
@@ -1061,9 +1059,9 @@
       ]
     },
     "DA_Morellonomicon": {
-      "count": 299648,
-      "avg": 4.0923,
-      "pick": 0.20438051793567819,
+      "count": 312366,
+      "avg": 4.0944,
+      "pick": 0.20476034401384446,
       "units": [
         "DA_18_Morgana",
         "DA_18_Zyra",
@@ -1073,9 +1071,9 @@
       ]
     },
     "DA_DragonsClaw": {
-      "count": 295527,
-      "avg": 4.1591,
-      "pick": 0.2015697128763655,
+      "count": 307471,
+      "avg": 4.1618,
+      "pick": 0.20155160207666895,
       "units": [
         "DA_Amumu18",
         "DA_Sentinel18",
@@ -1085,9 +1083,9 @@
       ]
     },
     "DA_KrakensFury": {
-      "count": 284410,
-      "avg": 4.2453,
-      "pick": 0.19398715528248556,
+      "count": 296435,
+      "avg": 4.2447,
+      "pick": 0.19431734752740049,
       "units": [
         "DA_18_Aphelios",
         "DA_Draven18",
@@ -1097,21 +1095,21 @@
       ]
     },
     "DA_SunfireCape": {
-      "count": 274966,
-      "avg": 4.1103,
-      "pick": 0.18754569860203202,
+      "count": 285987,
+      "avg": 4.1091,
+      "pick": 0.18746853531910432,
       "units": [
         "DA_Amumu18",
         "DA_Sentinel18",
         "DA_18_Hecarim",
-        "DA_18_Maokai",
-        "DA_Fiddlesticks18"
+        "DA_Fiddlesticks18",
+        "DA_18_Maokai"
       ]
     },
     "DA_HandOfJustice": {
-      "count": 274059,
-      "avg": 4.0469,
-      "pick": 0.18692706230288214,
+      "count": 285402,
+      "avg": 4.0484,
+      "pick": 0.18708505952068802,
       "units": [
         "DA_18_KhaZix",
         "DA_18_Kennen",
@@ -1121,9 +1119,9 @@
       ]
     },
     "DA_SteadfastHeart": {
-      "count": 266384,
-      "avg": 4.088,
-      "pick": 0.1816921851298113,
+      "count": 276267,
+      "avg": 4.0864,
+      "pick": 0.18109693743772615,
       "units": [
         "DA_Amumu18",
         "DA_Sentinel18",
@@ -1133,21 +1131,21 @@
       ]
     },
     "DA_EdgeOfNight": {
-      "count": 238947,
-      "avg": 4.0209,
-      "pick": 0.16297826656335598,
+      "count": 248092,
+      "avg": 4.0203,
+      "pick": 0.16262782526613875,
       "units": [
         "DA_18_Kennen",
-        "DA_18_KhaZix",
         "DA_Brambleback18",
+        "DA_18_KhaZix",
         "DA_Nidalee18_AP",
         "DA_18_Rengar"
       ]
     },
     "DA_BrambleVest": {
-      "count": 210845,
-      "avg": 4.0696,
-      "pick": 0.1438107723200157,
+      "count": 219390,
+      "avg": 4.071,
+      "pick": 0.14381325711888404,
       "units": [
         "DA_Amumu18",
         "DA_Sentinel18",
@@ -1157,21 +1155,21 @@
       ]
     },
     "DA_Evenshroud": {
-      "count": 176274,
-      "avg": 4.0166,
-      "pick": 0.12023097574018093,
+      "count": 183599,
+      "avg": 4.0167,
+      "pick": 0.12035174891184645,
       "units": [
         "DA_Amumu18",
-        "DA_18_Maokai",
         "DA_Sentinel18",
-        "DA_Taric18",
-        "DA_18_Hecarim"
+        "DA_18_Maokai",
+        "DA_18_Hecarim",
+        "DA_Taric18"
       ]
     },
     "DA_IonicSpark": {
-      "count": 171407,
-      "avg": 3.9395,
-      "pick": 0.11691134744033263,
+      "count": 178421,
+      "avg": 3.9415,
+      "pick": 0.1169574964602234,
       "units": [
         "DA_Fiddlesticks18",
         "DA_18_Diana",
@@ -1181,21 +1179,21 @@
       ]
     },
     "DA_TitansResolve": {
-      "count": 148205,
-      "avg": 4.1706,
-      "pick": 0.10108598976351314,
+      "count": 154936,
+      "avg": 4.171,
+      "pick": 0.1015627458178195,
       "units": [
         "DA_18_Elise",
         "DA_18_Rengar",
         "DA_18_GnarSmall",
-        "DA_Brambleback18",
-        "DA_Fiddlesticks18"
+        "DA_18_Warwick",
+        "DA_Brambleback18"
       ]
     },
     "DA_NashorsTooth": {
-      "count": 147062,
-      "avg": 4.0338,
-      "pick": 0.10030638525422064,
+      "count": 153135,
+      "avg": 4.0344,
+      "pick": 0.10038216477004562,
       "units": [
         "DA_18_Soraka",
         "DA_18_Ahri",
@@ -1205,21 +1203,21 @@
       ]
     },
     "DA_Bloodthirster": {
-      "count": 140727,
-      "avg": 3.9566,
-      "pick": 0.09598548012179019,
+      "count": 146436,
+      "avg": 3.9555,
+      "pick": 0.09599087524254026,
       "units": [
         "DA_18_GnarSmall",
         "DA_18_Kennen",
-        "DA_18_ElderDragon",
         "DA_Brambleback18",
+        "DA_18_ElderDragon",
         "DA_Nidalee18_AP"
       ]
     },
     "DA_Quicksilver": {
-      "count": 105068,
-      "avg": 4.0162,
-      "pick": 0.07166359281045039,
+      "count": 109381,
+      "avg": 4.0172,
+      "pick": 0.07170079710524936,
       "units": [
         "DA_Brambleback18",
         "DA_18_ElderDragon",
@@ -1229,9 +1227,9 @@
       ]
     },
     "DA_Component_GiantsBelt": {
-      "count": 99370,
-      "avg": 4.9696,
-      "pick": 0.06777716543166763,
+      "count": 103288,
+      "avg": 4.9617,
+      "pick": 0.06770674917405213,
       "units": [
         "DA_Sentinel18",
         "DA_Amumu18",
@@ -1241,9 +1239,9 @@
       ]
     },
     "DA_18_EmblemExecutioner": {
-      "count": 91811,
-      "avg": 4.2444,
-      "pick": 0.06262140822629401,
+      "count": 95375,
+      "avg": 4.2402,
+      "pick": 0.06251966542555981,
       "units": [
         "DA_18_Zyra",
         "DA_18_Ahri",
@@ -1253,9 +1251,9 @@
       ]
     },
     "DA_18_EmblemInvoker": {
-      "count": 80835,
-      "avg": 4.2745,
-      "pick": 0.05513502231728744,
+      "count": 84020,
+      "avg": 4.2788,
+      "pick": 0.05507630185117206,
       "units": [
         "DA_18_Ahri",
         "DA_18_Alune",
@@ -1265,21 +1263,21 @@
       ]
     },
     "DA_Component_RecurveBow": {
-      "count": 76347,
-      "avg": 4.7725,
-      "pick": 0.05207389804982921,
+      "count": 79384,
+      "avg": 4.7739,
+      "pick": 0.052037338087996224,
       "units": [
         "DA_KogMaw18_AD",
         "DA_18_Ivern",
         "DA_18_Ezreal",
         "DA_18_Soraka",
-        "DA_18_Sivir"
+        "DA_18_Aphelios"
       ]
     },
     "DA_Component_NeedlesslyLargeRod": {
-      "count": 65046,
-      "avg": 4.7819,
-      "pick": 0.04436583981753298,
+      "count": 67826,
+      "avg": 4.7802,
+      "pick": 0.0444609051339871,
       "units": [
         "DA_18_Kennen",
         "DA_18_Ivern",
@@ -1289,9 +1287,9 @@
       ]
     },
     "DA_18_EmblemElderwood": {
-      "count": 63703,
-      "avg": 4.1923,
-      "pick": 0.04344982157083147,
+      "count": 66766,
+      "avg": 4.1929,
+      "pick": 0.04376606009754051,
       "units": [
         "DA_18_Aphelios",
         "DA_18_Soraka",
@@ -1301,9 +1299,9 @@
       ]
     },
     "DA_Component_ChainVest": {
-      "count": 63621,
-      "avg": 4.7081,
-      "pick": 0.04339389193849377,
+      "count": 66101,
+      "avg": 4.711,
+      "pick": 0.04333014316429808,
       "units": [
         "DA_Sentinel18",
         "DA_Amumu18",
@@ -1313,21 +1311,21 @@
       ]
     },
     "DA_Component_TearOfTheGoddess": {
-      "count": 63276,
-      "avg": 4.6652,
-      "pick": 0.04315857824146323,
+      "count": 65805,
+      "avg": 4.6668,
+      "pick": 0.043136110965441295,
       "units": [
         "DA_18_Ivern",
         "DA_Sentinel18",
-        "DA_KogMaw18_AD",
         "DA_18_Soraka",
-        "DA_18_Kennen"
+        "DA_KogMaw18_AD",
+        "DA_18_Alune"
       ]
     },
     "DA_Component_NegatronCloak": {
-      "count": 60891,
-      "avg": 4.6821,
-      "pick": 0.04153184442286076,
+      "count": 63492,
+      "avg": 4.6799,
+      "pick": 0.041619906654780006,
       "units": [
         "DA_Sentinel18",
         "DA_Amumu18",
@@ -1337,9 +1335,9 @@
       ]
     },
     "DA_Component_BFSword": {
-      "count": 60092,
-      "avg": 4.8377,
-      "pick": 0.04098687154191176,
+      "count": 62635,
+      "avg": 4.8359,
+      "pick": 0.04105813099795479,
       "units": [
         "DA_18_Ezreal",
         "DA_KogMaw18_AD",
@@ -1349,9 +1347,9 @@
       ]
     },
     "DA_18_EmblemInferno": {
-      "count": 59866,
-      "avg": 4.4317,
-      "pick": 0.04083272401863957,
+      "count": 61809,
+      "avg": 4.4276,
+      "pick": 0.04051667628087472,
       "units": [
         "DA_18_Ashe",
         "DA_18_Sivir",
@@ -1361,9 +1359,9 @@
       ]
     },
     "DA_18_EmblemLunar": {
-      "count": 56054,
-      "avg": 4.2247,
-      "pick": 0.0382326781836238,
+      "count": 58969,
+      "avg": 4.2252,
+      "pick": 0.03865501599454612,
       "units": [
         "DA_18_Kayle",
         "DA_18_Varus",
@@ -1373,21 +1371,21 @@
       ]
     },
     "DA_Component_SparringGloves": {
-      "count": 53243,
-      "avg": 4.7632,
-      "pick": 0.03631538310434014,
+      "count": 55393,
+      "avg": 4.7662,
+      "pick": 0.036310897267816875,
       "units": [
         "DA_18_Kennen",
         "DA_18_Soraka",
-        "DA_KogMaw18_AD",
         "DA_18_Ezreal",
+        "DA_KogMaw18_AD",
         "DA_18_Sivir"
       ]
     },
     "DA_18_EmblemBlackthorn": {
-      "count": 52677,
-      "avg": 4.3825,
-      "pick": 0.03592933222747263,
+      "count": 54641,
+      "avg": 4.384,
+      "pick": 0.035817950600450996,
       "units": [
         "DA_18_Zyra",
         "DA_18_Yunara",
@@ -1397,9 +1395,9 @@
       ]
     },
     "DA_18_EmblemBrawler": {
-      "count": 49933,
-      "avg": 4.1588,
-      "pick": 0.03405773575022099,
+      "count": 52116,
+      "avg": 4.1621,
+      "pick": 0.034162777282500396,
       "units": [
         "DA_18_MasterYi_AD",
         "DA_Sentinel18",
@@ -1409,9 +1407,9 @@
       ]
     },
     "DA_18_EmblemRapidfire": {
-      "count": 48667,
-      "avg": 4.156,
-      "pick": 0.03319423679242194,
+      "count": 50617,
+      "avg": 4.1569,
+      "pick": 0.03318016151869527,
       "units": [
         "DA_Brambleback18",
         "DA_18_Ezreal",
@@ -1421,9 +1419,9 @@
       ]
     },
     "DA_18_EmblemVanguard": {
-      "count": 47239,
-      "avg": 4.1893,
-      "pick": 0.0322202427073216,
+      "count": 49276,
+      "avg": 4.1895,
+      "pick": 0.032301116996171796,
       "units": [
         "DA_Amumu18",
         "DA_18_Sett",
@@ -1433,33 +1431,33 @@
       ]
     },
     "DA_18_EmblemSpellweaver": {
-      "count": 46376,
-      "avg": 4.2602,
-      "pick": 0.03163161743040171,
+      "count": 48291,
+      "avg": 4.2655,
+      "pick": 0.03165543552362473,
       "units": [
         "DA_18_Morgana",
         "DA_18_Soraka",
         "DA_Lux18_Base",
-        "DA_18_Zyra",
-        "DA_18_Kennen"
+        "DA_18_Lillia",
+        "DA_18_Zyra"
       ]
     },
     "DA_18_EmblemHunter": {
-      "count": 42291,
-      "avg": 4.5198,
-      "pick": 0.02884536684382264,
+      "count": 43760,
+      "avg": 4.5167,
+      "pick": 0.02868530074990823,
       "units": [
         "DA_Nidalee18_AP",
         "DA_18_ElderDragon",
         "DA_18_Rengar",
         "DA_Vi18",
-        "DA_18_GnarSmall"
+        "DA_Draven18"
       ]
     },
     "DA_18_EmblemJuggernaut": {
-      "count": 42079,
-      "avg": 4.2733,
-      "pick": 0.028700768282169088,
+      "count": 43634,
+      "avg": 4.2777,
+      "pick": 0.02860270596255703,
       "units": [
         "DA_18_Kennen",
         "DA_Sentinel18",
@@ -1469,21 +1467,21 @@
       ]
     },
     "DA_TacticiansCrown": {
-      "count": 40185,
-      "avg": 3.934,
-      "pick": 0.027408930188905743,
+      "count": 41877,
+      "avg": 3.9334,
+      "pick": 0.027450967538937544,
       "units": [
         "DA_18_Ivern",
         "DA_18_Ezreal",
-        "DA_18_Soraka",
         "DA_18_Aphelios",
+        "DA_18_Soraka",
         "DA_18_Alune"
       ]
     },
     "DA_18_EmblemSlayer": {
-      "count": 39460,
-      "avg": 4.2834,
-      "pick": 0.026914430390798074,
+      "count": 41055,
+      "avg": 4.2812,
+      "pick": 0.026912134878598774,
       "units": [
         "DA_Nidalee18_AP",
         "DA_18_Elise",
@@ -1493,21 +1491,21 @@
       ]
     },
     "DA_18_EmblemDefender": {
-      "count": 37773,
-      "avg": 4.2428,
-      "pick": 0.02576378051575306,
+      "count": 39215,
+      "avg": 4.2437,
+      "pick": 0.02570598877759715,
       "units": [
         "DA_18_Rengar",
         "DA_Amumu18",
-        "DA_Sentinel18",
         "DA_18_Hecarim",
+        "DA_Sentinel18",
         "DA_18_Kennen"
       ]
     },
     "DA_18_EmblemBlossom": {
-      "count": 37523,
-      "avg": 4.4729,
-      "pick": 0.025593263343991795,
+      "count": 38746,
+      "avg": 4.4813,
+      "pick": 0.0253985526246788,
       "units": [
         "DA_18_Morgana",
         "DA_18_Sivir",
@@ -1517,45 +1515,45 @@
       ]
     },
     "DA_Artifact_Dawncore": {
-      "count": 31075,
-      "avg": 3.8999,
-      "pick": 0.021195284449925245,
+      "count": 32371,
+      "avg": 3.8994,
+      "pick": 0.02121964969321936,
       "units": [
         "DA_18_Veigar",
         "DA_18_Soraka",
         "DA_18_Cassiopeia",
         "DA_18_Alune",
-        "DA_18_Zyra"
+        "DA_18_Ezreal"
       ]
     },
     "DA_18_EmblemFae": {
-      "count": 30627,
-      "avg": 4.6196,
-      "pick": 0.02088971767812906,
+      "count": 31756,
+      "avg": 4.6102,
+      "pick": 0.020816508469243274,
       "units": [
         "DA_18_Rengar",
         "DA_18_Sivir",
         "DA_18_Aphelios",
-        "DA_18_Ashe",
-        "DA_18_Ezreal"
+        "DA_18_Ezreal",
+        "DA_18_Ashe"
       ]
     },
     "DA_18_EmblemFloraFatalis": {
-      "count": 30498,
-      "avg": 4.3005,
-      "pick": 0.020801730817500245,
+      "count": 31622,
+      "avg": 4.3032,
+      "pick": 0.02072866956840946,
       "units": [
         "DA_18_Zyra",
-        "DA_18_Kennen",
         "DA_18_Cassiopeia",
+        "DA_18_Kennen",
         "DA_18_Veigar",
         "DA_18_Alune"
       ]
     },
     "DA_18_EmblemPrimal": {
-      "count": 29494,
-      "avg": 4.503,
-      "pick": 0.020116933855707005,
+      "count": 30581,
+      "avg": 4.5066,
+      "pick": 0.020046279301484084,
       "units": [
         "DA_18_Ashe",
         "DA_18_Aphelios",
@@ -1565,9 +1563,9 @@
       ]
     },
     "DA_Artifact_NavoriFlickerblade": {
-      "count": 25491,
-      "avg": 4.3654,
-      "pick": 0.01738661290146563,
+      "count": 26456,
+      "avg": 4.3748,
+      "pick": 0.017342283287010332,
       "units": [
         "DA_18_Aphelios",
         "DA_18_Kayle",
@@ -1576,22 +1574,10 @@
         "DA_18_MasterYi_AD"
       ]
     },
-    "DA_18_EmblemSprykin": {
-      "count": 23991,
-      "avg": 4.6777,
-      "pick": 0.01636350987089804,
-      "units": [
-        "DA_18_Rengar",
-        "DA_Fiddlesticks18",
-        "DA_18_Lillia",
-        "DA_18_RekSai",
-        "DA_Sentinel18"
-      ]
-    },
     "DA_Artifact_LightshieldCrest": {
-      "count": 23986,
-      "avg": 4.1775,
-      "pick": 0.016360099527462812,
+      "count": 25007,
+      "avg": 4.1804,
+      "pick": 0.016392443232471552,
       "units": [
         "DA_18_Ornn",
         "DA_Amumu18",
@@ -1601,9 +1587,9 @@
       ]
     },
     "DA_Artifact_Manazane": {
-      "count": 23985,
-      "avg": 4.2171,
-      "pick": 0.01635941745877577,
+      "count": 24974,
+      "avg": 4.2181,
+      "pick": 0.016370811264355762,
       "units": [
         "DA_18_Veigar",
         "DA_18_Ahri",
@@ -1612,22 +1598,34 @@
         "DA_18_Soraka"
       ]
     },
+    "DA_18_EmblemSprykin": {
+      "count": 24868,
+      "avg": 4.6819,
+      "pick": 0.016301326760711103,
+      "units": [
+        "DA_18_Rengar",
+        "DA_Fiddlesticks18",
+        "DA_18_Lillia",
+        "DA_18_RekSai",
+        "DA_18_Alistar"
+      ]
+    },
     "DA_Artifact_TheIndomitable": {
-      "count": 22460,
-      "avg": 4.3875,
-      "pick": 0.015319262711032051,
+      "count": 23366,
+      "avg": 4.3816,
+      "pick": 0.015316744454349992,
       "units": [
         "DA_18_Ornn",
         "DA_Amumu18",
-        "DA_Sentinel18",
         "DA_18_Sett",
-        "DA_18_Maokai"
+        "DA_Sentinel18",
+        "DA_18_Alistar"
       ]
     },
     "DA_Artifact_LudensTempest": {
-      "count": 19634,
-      "avg": 3.8705,
-      "pick": 0.013391736601442711,
+      "count": 20534,
+      "avg": 3.8584,
+      "pick": 0.013460328281504012,
       "units": [
         "DA_18_Veigar",
         "DA_18_Ahri",
@@ -1637,21 +1635,21 @@
       ]
     },
     "DA_TacticiansCape": {
-      "count": 18853,
-      "avg": 4.2708,
-      "pick": 0.01285904095686052,
+      "count": 19594,
+      "avg": 4.2598,
+      "pick": 0.01284414494729666,
       "units": [
         "DA_18_Ivern",
         "DA_KogMaw18_AD",
         "DA_18_Varus",
         "DA_Karma18",
-        "DA_18_Sentry"
+        "DA_18_Azir"
       ]
     },
     "DA_Artifact_EternalPact": {
-      "count": 17382,
-      "avg": 4.1555,
-      "pick": 0.011855717918217237,
+      "count": 18098,
+      "avg": 4.1637,
+      "pick": 0.011863495726047512,
       "units": [
         "DA_18_Veigar",
         "DA_18_Ahri",
@@ -1661,9 +1659,9 @@
       ]
     },
     "DA_Artifact_BlightingJewel": {
-      "count": 16330,
-      "avg": 4.2736,
-      "pick": 0.011138181659445833,
+      "count": 17048,
+      "avg": 4.2741,
+      "pick": 0.011175205831454193,
       "units": [
         "DA_18_Morgana",
         "DA_18_Cassiopeia",
@@ -1673,9 +1671,9 @@
       ]
     },
     "DA_Artifact_Fishbones": {
-      "count": 14892,
-      "avg": 4.4639,
-      "pick": 0.010157366887475035,
+      "count": 15520,
+      "avg": 4.4664,
+      "pick": 0.010173580156274582,
       "units": [
         "DA_18_Aphelios",
         "DA_Draven18",
@@ -1685,9 +1683,9 @@
       ]
     },
     "DA_18_EmblemFloraFatalisAugment": {
-      "count": 14449,
-      "avg": 4.5387,
-      "pick": 0.009855210459114075,
+      "count": 15079,
+      "avg": 4.5443,
+      "pick": 0.009884498400545387,
       "units": [
         "DA_18_Veigar",
         "DA_18_Cassiopeia",
@@ -1697,9 +1695,9 @@
       ]
     },
     "DA_Artifact_SeekersArmguard": {
-      "count": 14300,
-      "avg": 4.3317,
-      "pick": 0.00975358222474436,
+      "count": 14783,
+      "avg": 4.3393,
+      "pick": 0.009690466201688605,
       "units": [
         "DA_18_Kayle",
         "DA_18_Morgana",
@@ -1709,33 +1707,33 @@
       ]
     },
     "DA_18_EmblemCoven": {
-      "count": 13817,
-      "avg": 5.1203,
-      "pick": 0.009424143048901596,
+      "count": 14306,
+      "avg": 5.1232,
+      "pick": 0.00937778593528764,
       "units": [
         "DA_18_Diana",
         "DA_Sentinel18",
         "DA_Fiddlesticks18",
-        "DA_18_Hecarim",
-        "DA_Taric18"
+        "DA_Taric18",
+        "DA_18_Hecarim"
       ]
     },
     "DA_Artifact_AegisOfDusk": {
-      "count": 13405,
-      "avg": 4.3432,
-      "pick": 0.009143130749839032,
+      "count": 13977,
+      "avg": 4.3494,
+      "pick": 0.009162121768315067,
       "units": [
         "DA_18_Ornn",
         "DA_18_Alistar",
         "DA_18_Sett",
-        "DA_Amumu18",
-        "DA_Sentinel18"
+        "DA_Sentinel18",
+        "DA_Amumu18"
       ]
     },
     "DA_Artifact_MogulsMail": {
-      "count": 13380,
-      "avg": 4.5065,
-      "pick": 0.009126079032662906,
+      "count": 13866,
+      "avg": 4.5115,
+      "pick": 0.009089359693743772,
       "units": [
         "DA_Amumu18",
         "DA_18_Maokai",
@@ -1744,34 +1742,34 @@
         "DA_18_Rammus"
       ]
     },
-    "DA_ThiefsGlovesRadiant": {
-      "count": 12699,
-      "avg": 3.7108,
-      "pick": 0.00866159025678522,
-      "units": [
-        "DA_18_Kennen",
-        "DA_18_ElderDragon",
-        "DA_18_GnarSmall",
-        "DA_Taric18",
-        "DA_Sentinel18"
-      ]
-    },
     "DA_Artifact_LichBane": {
-      "count": 12632,
-      "avg": 4.1377,
-      "pick": 0.0086158916547532,
+      "count": 13256,
+      "avg": 4.1373,
+      "pick": 0.00868949604069432,
       "units": [
         "DA_18_KhaZix",
         "DA_18_Veigar",
-        "DA_18_Soraka",
         "DA_18_Akali_AD",
+        "DA_18_Soraka",
         "DA_18_Azir"
       ]
     },
+    "DA_ThiefsGlovesRadiant": {
+      "count": 13140,
+      "avg": 3.7199,
+      "pick": 0.008613456395196391,
+      "units": [
+        "DA_18_Kennen",
+        "DA_18_GnarSmall",
+        "DA_Taric18",
+        "DA_18_ElderDragon",
+        "DA_Sentinel18"
+      ]
+    },
     "DA_Artifact_SilvermereDawn": {
-      "count": 12315,
-      "avg": 4.0735,
-      "pick": 0.008399675880959917,
+      "count": 12872,
+      "avg": 4.0699,
+      "pick": 0.008437778593528764,
       "units": [
         "DA_Nidalee18_AP",
         "DA_18_ElderDragon",
@@ -1781,21 +1779,21 @@
       ]
     },
     "DA_Artifact_AegisOfDawn": {
-      "count": 12004,
-      "avg": 4.4486,
-      "pick": 0.008187552519288903,
+      "count": 12473,
+      "avg": 4.4695,
+      "pick": 0.008176228433583304,
       "units": [
         "DA_18_Ornn",
         "DA_Amumu18",
-        "DA_18_Maokai",
         "DA_Sentinel18",
+        "DA_18_Maokai",
         "DA_18_Sett"
       ]
     },
     "DA_GuinsoosRagebladeRadiant": {
-      "count": 11798,
-      "avg": 4.3668,
-      "pick": 0.00804704636975762,
+      "count": 12218,
+      "avg": 4.3747,
+      "pick": 0.008009072316324925,
       "units": [
         "DA_Draven18",
         "DA_18_Caitlyn",
@@ -1805,9 +1803,9 @@
       ]
     },
     "DA_RabadonsDeathcap_Radiant": {
-      "count": 11402,
-      "avg": 3.9622,
-      "pick": 0.007776947169687776,
+      "count": 11874,
+      "avg": 3.9666,
+      "pick": 0.0077835754365724475,
       "units": [
         "DA_18_Ahri",
         "DA_18_Azir",
@@ -1817,9 +1815,9 @@
       ]
     },
     "DA_Artifact_WitsEnd": {
-      "count": 11342,
-      "avg": 4.2865,
-      "pick": 0.007736023048465073,
+      "count": 11741,
+      "avg": 4.2961,
+      "pick": 0.007696392049923961,
       "units": [
         "DA_18_Kayle",
         "DA_18_MasterYi_AD",
@@ -1829,9 +1827,9 @@
       ]
     },
     "DA_Artifact_ForbiddenIdol": {
-      "count": 11242,
-      "avg": 4.5291,
-      "pick": 0.007667816179760567,
+      "count": 11669,
+      "avg": 4.5179,
+      "pick": 0.0076491950285804185,
       "units": [
         "DA_18_Ornn",
         "DA_Sentinel18",
@@ -1841,9 +1839,9 @@
       ]
     },
     "DA_Artifact_RapidFireCannon": {
-      "count": 11201,
-      "avg": 4.4314,
-      "pick": 0.007639851363591719,
+      "count": 11656,
+      "avg": 4.4439,
+      "pick": 0.007640673344171168,
       "units": [
         "DA_18_MasterYi_AD",
         "DA_18_Akali_AD",
@@ -1853,21 +1851,21 @@
       ]
     },
     "DA_Artifact_Mittens": {
-      "count": 10937,
-      "avg": 4.3763,
-      "pick": 0.007459785230211824,
+      "count": 11400,
+      "avg": 4.3766,
+      "pick": 0.007472861712727464,
       "units": [
         "DA_Nidalee18_AP",
-        "DA_18_Kayle",
         "DA_18_Camille",
+        "DA_18_Kayle",
         "DA_18_ElderDragon",
         "DA_Brambleback18"
       ]
     },
     "DA_Artifact_GoldCollector": {
-      "count": 10851,
-      "avg": 4.3335,
-      "pick": 0.007401127323125948,
+      "count": 11302,
+      "avg": 4.3304,
+      "pick": 0.00740862132256542,
       "units": [
         "DA_18_Aphelios",
         "DA_18_Ezreal",
@@ -1877,9 +1875,9 @@
       ]
     },
     "DA_Artifact_VoidGauntlet": {
-      "count": 10739,
-      "avg": 4.3214,
-      "pick": 0.007324735630176902,
+      "count": 11156,
+      "avg": 4.323,
+      "pick": 0.007312916251507683,
       "units": [
         "DA_18_Ornn",
         "DA_18_Alistar",
@@ -1889,9 +1887,9 @@
       ]
     },
     "DA_Item_Artifact_TalismanOfAscension": {
-      "count": 9896,
-      "avg": 4.2757,
-      "pick": 0.006749751726997916,
+      "count": 10277,
+      "avg": 4.2765,
+      "pick": 0.0067367192826052755,
       "units": [
         "DA_18_Kayle",
         "DA_18_Zyra",
@@ -1901,9 +1899,9 @@
       ]
     },
     "DA_Artifact_StatikkShiv": {
-      "count": 9826,
-      "avg": 4.4192,
-      "pick": 0.006702006918904761,
+      "count": 10228,
+      "avg": 4.4169,
+      "pick": 0.006704599087524254,
       "units": [
         "DA_18_Kayle",
         "DA_18_Azir",
@@ -1913,21 +1911,21 @@
       ]
     },
     "DA_Artifact_Hullcrusher": {
-      "count": 9773,
-      "avg": 4.4669,
-      "pick": 0.006665857278491373,
+      "count": 10141,
+      "avg": 4.4741,
+      "pick": 0.006647569353400808,
       "units": [
         "DA_18_Ornn",
         "DA_18_Sett",
         "DA_18_Alistar",
         "DA_Amumu18",
-        "DA_18_Malphite"
+        "DA_18_Rammus"
       ]
     },
     "DA_JeweledGauntletRadiant": {
-      "count": 9684,
-      "avg": 4.0722,
-      "pick": 0.006605153165344363,
+      "count": 10110,
+      "avg": 4.0667,
+      "pick": 0.006627248413655672,
       "units": [
         "DA_18_Ahri",
         "DA_18_Veigar",
@@ -1937,33 +1935,21 @@
       ]
     },
     "DA_Artifact_InfinityForce": {
-      "count": 9547,
-      "avg": 4.2614,
-      "pick": 0.006511709755219189,
+      "count": 9899,
+      "avg": 4.2629,
+      "pick": 0.006488934920551681,
       "units": [
         "DA_Nidalee18_AP",
         "DA_18_ElderDragon",
         "DA_Brambleback18",
         "DA_18_Camille",
-        "DA_18_GnarSmall"
-      ]
-    },
-    "DA_Artifact_GamblersBlade": {
-      "count": 8649,
-      "avg": 4.546,
-      "pick": 0.0058992120742527255,
-      "units": [
-        "DA_Draven18",
-        "DA_18_Aphelios",
-        "DA_18_Azir",
-        "DA_18_Kayle",
-        "DA_18_Xayah"
+        "DA_18_Ezreal"
       ]
     },
     "DA_Artifact_ZhonyasParadox": {
-      "count": 8648,
-      "avg": 4.3823,
-      "pick": 0.005898530005565681,
+      "count": 9057,
+      "avg": 4.3703,
+      "pick": 0.005936991976506371,
       "units": [
         "DA_18_Morgana",
         "DA_18_KhaZix",
@@ -1972,10 +1958,22 @@
         "DA_18_Akali_AD"
       ]
     },
+    "DA_Artifact_GamblersBlade": {
+      "count": 9004,
+      "avg": 4.546,
+      "pick": 0.005902249724684042,
+      "units": [
+        "DA_Draven18",
+        "DA_18_Aphelios",
+        "DA_18_Azir",
+        "DA_18_Kayle",
+        "DA_18_Xayah"
+      ]
+    },
     "DA_BlueBuffRadiant": {
-      "count": 7656,
-      "avg": 3.9445,
-      "pick": 0.005221917868016981,
+      "count": 7952,
+      "avg": 3.9419,
+      "pick": 0.005212648801720069,
       "units": [
         "DA_18_Veigar",
         "DA_18_Ahri",
@@ -1985,9 +1983,9 @@
       ]
     },
     "DA_Artifact_HellfireHatchet": {
-      "count": 7590,
-      "avg": 4.3071,
-      "pick": 0.0051769013346720065,
+      "count": 7895,
+      "avg": 4.3044,
+      "pick": 0.005175284493156432,
       "units": [
         "DA_18_MasterYi_AD",
         "DA_Nidalee18_AP",
@@ -1997,9 +1995,9 @@
       ]
     },
     "DA_Artifact_HorizonFocus": {
-      "count": 7405,
-      "avg": 4.2336,
-      "pick": 0.005050718627568671,
+      "count": 7698,
+      "avg": 4.239,
+      "pick": 0.005046148198647018,
       "units": [
         "DA_Sentinel18",
         "DA_18_RekSai",
@@ -2009,45 +2007,45 @@
       ]
     },
     "DA_GargoyleStoneplate_Radiant": {
-      "count": 7179,
-      "avg": 4.4166,
-      "pick": 0.004896571104296487,
+      "count": 7539,
+      "avg": 4.4227,
+      "pick": 0.00494192144318003,
       "units": [
         "DA_18_Rammus",
-        "DA_18_Malphite",
         "DA_Amumu18",
+        "DA_18_Malphite",
         "DA_Sentinel18",
         "DA_18_Maokai"
       ]
     },
     "DA_AdaptiveHelm_Radiant": {
-      "count": 7142,
-      "avg": 3.9546,
-      "pick": 0.0048713345628758195,
+      "count": 7431,
+      "avg": 3.9713,
+      "pick": 0.004871125911164718,
       "units": [
         "DA_18_Ahri",
         "DA_18_Alune",
-        "DA_18_Zyra",
         "DA_18_Veigar",
+        "DA_18_Zyra",
         "DA_18_Soraka"
       ]
     },
     "DA_InfinityEdgeRadiant": {
-      "count": 6979,
-      "avg": 4.2649,
-      "pick": 0.004760157366887475,
+      "count": 7298,
+      "avg": 4.2606,
+      "pick": 0.00478394252451623,
       "units": [
         "DA_18_ElderDragon",
         "DA_18_Aphelios",
-        "DA_Nidalee18_AP",
         "DA_Draven18",
+        "DA_Nidalee18_AP",
         "DA_18_Ezreal"
       ]
     },
     "DA_DeathbladeRadiant": {
-      "count": 6444,
-      "avg": 4.2755,
-      "pick": 0.004395250619318368,
+      "count": 6692,
+      "avg": 4.2753,
+      "pick": 0.004386700928208086,
       "units": [
         "DA_18_Aphelios",
         "DA_Draven18",
@@ -2057,9 +2055,9 @@
       ]
     },
     "DA_Artifact_TitanicHydra": {
-      "count": 6386,
-      "avg": 4.4571,
-      "pick": 0.004355690635469755,
+      "count": 6642,
+      "avg": 4.4666,
+      "pick": 0.004353925218941738,
       "units": [
         "DA_18_ElderDragon",
         "DA_Nidalee18_AP",
@@ -2069,9 +2067,9 @@
       ]
     },
     "DA_GiantSlayer_Radiant": {
-      "count": 6196,
-      "avg": 4.0194,
-      "pick": 0.004226097584931193,
+      "count": 6423,
+      "avg": 4.0212,
+      "pick": 0.0042103676123551315,
       "units": [
         "DA_18_Aphelios",
         "DA_18_ElderDragon",
@@ -2081,9 +2079,9 @@
       ]
     },
     "DA_WarmogsArmorRadiant": {
-      "count": 6003,
-      "avg": 4.3573,
-      "pick": 0.004094458328331496,
+      "count": 6285,
+      "avg": 4.3559,
+      "pick": 0.004119906654780009,
       "units": [
         "DA_18_Maokai",
         "DA_Sentinel18",
@@ -2093,21 +2091,21 @@
       ]
     },
     "DA_SpearOfShojinRadiant": {
-      "count": 5584,
+      "count": 5803,
       "avg": 4.3727,
-      "pick": 0.0038086715484596163,
+      "pick": 0.0038039488174524097,
       "units": [
         "DA_18_Ahri",
-        "DA_18_Ashe",
         "DA_18_Ezreal",
+        "DA_18_Ashe",
         "DA_18_Alune",
         "DA_18_Zyra"
       ]
     },
     "DA_BlastPotion18": {
-      "count": 5376,
-      "avg": 4.4252,
-      "pick": 0.0036668012615542435,
+      "count": 5647,
+      "avg": 4.434,
+      "pick": 0.0037016886045414025,
       "units": [
         "DA_Sentinel18",
         "DA_Amumu18",
@@ -2117,9 +2115,9 @@
       ]
     },
     "DA_HextechGunbladeRadiant": {
-      "count": 5120,
-      "avg": 4.4137,
-      "pick": 0.003492191677670708,
+      "count": 5280,
+      "avg": 4.4348,
+      "pick": 0.0034611148985264043,
       "units": [
         "DA_18_Azir",
         "DA_18_Zyra",
@@ -2129,9 +2127,9 @@
       ]
     },
     "DA_HandOfJusticeRadiant": {
-      "count": 4745,
-      "avg": 3.9538,
-      "pick": 0.0032364159200288104,
+      "count": 4921,
+      "avg": 3.9486,
+      "pick": 0.003225785305994022,
       "units": [
         "DA_18_KhaZix",
         "DA_18_ElderDragon",
@@ -2141,21 +2139,21 @@
       ]
     },
     "DA_TacticiansShield": {
-      "count": 4659,
-      "avg": 3.6177,
-      "pick": 0.0031777580129429355,
+      "count": 4813,
+      "avg": 3.6221,
+      "pick": 0.003154989773978709,
       "units": [
         "DA_18_Ivern",
         "DA_18_Diana",
         "DA_Fiddlesticks18",
-        "DA_Sentinel18",
-        "DA_18_Yorick"
+        "DA_KogMaw18_AD",
+        "DA_Sentinel18"
       ]
     },
     "DA_ArchangelsStaffRadiant": {
-      "count": 4527,
-      "avg": 4.3327,
-      "pick": 0.0030877249462529874,
+      "count": 4701,
+      "avg": 4.3376,
+      "pick": 0.0030815721852220884,
       "units": [
         "DA_18_Zyra",
         "DA_18_Azir",
@@ -2165,9 +2163,9 @@
       ]
     },
     "DA_StrikersFlailRadiant": {
-      "count": 4234,
-      "avg": 4.1594,
-      "pick": 0.0028878788209487846,
+      "count": 4437,
+      "avg": 4.1364,
+      "pick": 0.002908516440295768,
       "units": [
         "DA_18_Ahri",
         "DA_18_ElderDragon",
@@ -2177,9 +2175,9 @@
       ]
     },
     "DA_SpiritVisage_Radiant": {
-      "count": 3936,
-      "avg": 4.2899,
-      "pick": 0.002684622352209357,
+      "count": 4079,
+      "avg": 4.3003,
+      "pick": 0.0026738423619487124,
       "units": [
         "DA_Sentinel18",
         "DA_18_Maokai",
@@ -2189,9 +2187,9 @@
       ]
     },
     "DA_KrakensFury_Radiant": {
-      "count": 3720,
-      "avg": 4.2188,
-      "pick": 0.002537295515807624,
+      "count": 3921,
+      "avg": 4.2237,
+      "pick": 0.0025702711206670513,
       "units": [
         "DA_18_Aphelios",
         "DA_Draven18",
@@ -2201,33 +2199,33 @@
       ]
     },
     "DA_Component_Spatula": {
-      "count": 3487,
-      "avg": 5.649,
-      "pick": 0.002378373511726125,
+      "count": 3628,
+      "avg": 5.6637,
+      "pick": 0.002378205464366249,
       "units": [
         "DA_18_Soraka",
+        "DA_18_Ivern",
         "DA_18_Zyra",
         "DA_18_Morgana",
-        "DA_18_Ivern",
         "DA_18_Ahri"
       ]
     },
     "DA_RedBuffRadiant": {
-      "count": 3049,
-      "avg": 4.3198,
-      "pick": 0.0020796274268003886,
+      "count": 3146,
+      "avg": 4.3071,
+      "pick": 0.002062247627038649,
       "units": [
         "DA_18_Ashe",
         "DA_18_Aphelios",
         "DA_Draven18",
-        "DA_18_Sivir",
-        "DA_18_Ezreal"
+        "DA_18_Ezreal",
+        "DA_18_Sivir"
       ]
     },
     "DA_SteraksGageRadiant": {
-      "count": 2884,
-      "avg": 4.2195,
-      "pick": 0.0019670860934379534,
+      "count": 2980,
+      "avg": 4.2181,
+      "pick": 0.001953432272274372,
       "units": [
         "DA_18_ElderDragon",
         "DA_Nidalee18_AP",
@@ -2237,9 +2235,9 @@
       ]
     },
     "DA_VoidStaffRadiant": {
-      "count": 2634,
-      "avg": 4.3645,
-      "pick": 0.0017965689216766884,
+      "count": 2745,
+      "avg": 4.3774,
+      "pick": 0.001799386438722534,
       "units": [
         "DA_18_Morgana",
         "DA_18_Zyra",
@@ -2249,21 +2247,21 @@
       ]
     },
     "DA_EdgeOfNightRadiant": {
-      "count": 2448,
-      "avg": 4.0192,
-      "pick": 0.0016697041458863073,
+      "count": 2594,
+      "avg": 4.0351,
+      "pick": 0.0017004037967381614,
       "units": [
         "DA_18_KhaZix",
         "DA_18_ElderDragon",
         "DA_Nidalee18_AP",
         "DA_18_MasterYi_AD",
-        "DA_Brambleback18"
+        "DA_18_Rengar"
       ]
     },
     "DA_ProtectorsVowRadiant": {
-      "count": 2240,
-      "avg": 4.3174,
-      "pick": 0.001527833858980935,
+      "count": 2328,
+      "avg": 4.3222,
+      "pick": 0.0015260370234411872,
       "units": [
         "DA_Sentinel18",
         "DA_18_Maokai",
@@ -2273,45 +2271,45 @@
       ]
     },
     "DA_NashorsToothRadiant": {
-      "count": 2069,
-      "avg": 4.2214,
-      "pick": 0.0014112001134962296,
+      "count": 2171,
+      "avg": 4.21,
+      "pick": 0.0014231212963448528,
       "units": [
         "DA_18_Ahri",
         "DA_18_Alune",
+        "DA_18_KhaZix",
         "DA_Lux18_Base",
-        "DA_18_Soraka",
-        "DA_18_KhaZix"
+        "DA_18_Soraka"
       ]
     },
     "DA_Component_FryingPan": {
-      "count": 2050,
-      "avg": 5.8263,
-      "pick": 0.0013982408084423734,
+      "count": 2151,
+      "avg": 5.8103,
+      "pick": 0.0014100110126383134,
       "units": [
-        "DA_18_Zyra",
         "DA_18_Ahri",
-        "DA_18_Ivern",
+        "DA_18_Zyra",
         "DA_18_Soraka",
+        "DA_18_Ivern",
         "DA_Fiddlesticks18"
       ]
     },
     "DA_LastWhisperRadiant": {
-      "count": 1916,
-      "avg": 4.1754,
-      "pick": 0.0013068436043783354,
+      "count": 1970,
+      "avg": 4.1878,
+      "pick": 0.0012913629450941318,
       "units": [
         "DA_18_ElderDragon",
         "DA_18_Aphelios",
-        "DA_Draven18",
         "DA_18_Ezreal",
+        "DA_Draven18",
         "DA_18_Ashe"
       ]
     },
     "DA_MorellonomiconRadiant": {
-      "count": 1660,
-      "avg": 4.1861,
-      "pick": 0.0011322340204947998,
+      "count": 1728,
+      "avg": 4.1997,
+      "pick": 0.001132728512245005,
       "units": [
         "DA_18_Morgana",
         "DA_18_Zyra",
@@ -2321,21 +2319,21 @@
       ]
     },
     "DA_DragonsClawRadiant": {
-      "count": 1638,
-      "avg": 4.2411,
-      "pick": 0.0011172285093798086,
+      "count": 1705,
+      "avg": 4.2235,
+      "pick": 0.0011176516859824847,
       "units": [
         "DA_Sentinel18",
+        "DA_18_Rammus",
         "DA_Amumu18",
         "DA_18_Maokai",
-        "DA_18_Rammus",
         "DA_18_Sett"
       ]
     },
     "DA_TitansResolve_Radiant": {
-      "count": 1549,
-      "avg": 4.2059,
-      "pick": 0.0010565243962327982,
+      "count": 1626,
+      "avg": 4.182,
+      "pick": 0.001065866065341654,
       "units": [
         "DA_18_Elise",
         "DA_18_Rengar",
@@ -2345,21 +2343,33 @@
       ]
     },
     "DA_HealthPotion18": {
-      "count": 1540,
-      "avg": 2.8065,
-      "pick": 0.0010503857780493927,
+      "count": 1600,
+      "avg": 2.7756,
+      "pick": 0.0010488226965231528,
       "units": [
-        "DA_Sentinel18",
         "DA_Taric18",
+        "DA_Sentinel18",
         "DA_Amumu18",
         "DA_Fiddlesticks18",
         "DA_18_Diana"
       ]
     },
+    "DA_SteadfastHeartRadiant": {
+      "count": 1418,
+      "avg": 4.4669,
+      "pick": 0.0009295191147936442,
+      "units": [
+        "DA_Sentinel18",
+        "DA_18_Sett",
+        "DA_18_Maokai",
+        "DA_Amumu18",
+        "DA_18_Rammus"
+      ]
+    },
     "DA_CrownguardRadiant": {
-      "count": 1351,
-      "avg": 4.4863,
-      "pick": 0.0009214747961978763,
+      "count": 1380,
+      "avg": 4.5051,
+      "pick": 0.0009046095757512193,
       "units": [
         "DA_18_Rammus",
         "DA_Sentinel18",
@@ -2368,46 +2378,34 @@
         "DA_Amumu18"
       ]
     },
-    "DA_SteadfastHeartRadiant": {
-      "count": 1351,
-      "avg": 4.4397,
-      "pick": 0.0009214747961978763,
-      "units": [
-        "DA_Sentinel18",
-        "DA_Amumu18",
-        "DA_18_Sett",
-        "DA_18_Maokai",
-        "DA_18_Ornn"
-      ]
-    },
     "DA_BrambleVestRadiant": {
-      "count": 1235,
-      "avg": 4.115,
-      "pick": 0.0008423548285006493,
+      "count": 1269,
+      "avg": 4.1584,
+      "pick": 0.0008318475011799255,
       "units": [
         "DA_Sentinel18",
-        "DA_18_Maokai",
         "DA_Amumu18",
+        "DA_18_Maokai",
         "DA_18_Rammus",
         "DA_18_Sett"
       ]
     },
     "DA_BlastPotion18_Radiant": {
-      "count": 1221,
-      "avg": 4.1704,
-      "pick": 0.0008328058668820185,
+      "count": 1264,
+      "avg": 4.1717,
+      "pick": 0.0008285699302532907,
       "units": [
         "DA_Krug18",
         "DA_18_Sett",
         "DA_Sentinel18",
-        "DA_18_Yorick",
+        "DA_Taric18",
         "DA_Fiddlesticks18"
       ]
     },
     "DA_BloodthirsterRadiant": {
-      "count": 1196,
-      "avg": 4.2099,
-      "pick": 0.000815754149705892,
+      "count": 1242,
+      "avg": 4.2158,
+      "pick": 0.0008141486181760973,
       "units": [
         "DA_18_ElderDragon",
         "DA_Nidalee18_AP",
@@ -2417,89 +2415,89 @@
       ]
     },
     "DA_ManaPotion18": {
-      "count": 1050,
-      "avg": 4.3543,
-      "pick": 0.0007161721213973132,
+      "count": 1118,
+      "avg": 4.3596,
+      "pick": 0.000732864859195553,
       "units": [
         "DA_Sentinel18",
-        "DA_Amumu18",
         "DA_18_Alistar",
+        "DA_Amumu18",
         "DA_18_Lillia",
         "DA_Brambleback18"
       ]
     },
     "DA_QuicksilverRadiant": {
-      "count": 841,
-      "avg": 4.264,
-      "pick": 0.0005736197658048957,
+      "count": 860,
+      "avg": 4.3128,
+      "pick": 0.0005637421993811946,
       "units": [
-        "DA_Brambleback18",
         "DA_18_MasterYi_AD",
+        "DA_Brambleback18",
         "DA_18_ElderDragon",
         "DA_18_Rengar",
         "DA_18_Warwick"
       ]
     },
     "DA_IonicSparkRadiant": {
-      "count": 784,
-      "avg": 4.3112,
-      "pick": 0.0005347418506433272,
+      "count": 816,
+      "avg": 4.3407,
+      "pick": 0.000534899575226808,
       "units": [
         "DA_Sentinel18",
         "DA_18_Morgana",
         "DA_18_Diana",
-        "DA_18_Kennen",
-        "DA_Taric18"
+        "DA_Taric18",
+        "DA_18_Kennen"
       ]
     },
     "DA_SunfireCape_Radiant": {
-      "count": 772,
-      "avg": 4.2642,
-      "pick": 0.0005265570263987865,
+      "count": 813,
+      "avg": 4.2312,
+      "pick": 0.000532933032670827,
       "units": [
-        "DA_Sentinel18",
         "DA_18_Maokai",
+        "DA_Sentinel18",
         "DA_Amumu18",
         "DA_18_Rammus",
         "DA_18_Sett"
       ]
     },
     "DA_EvenshroudRadiant": {
-      "count": 413,
-      "avg": 4.0702,
-      "pick": 0.0002816943677496099,
+      "count": 436,
+      "avg": 4.1078,
+      "pick": 0.0002858041848025591,
       "units": [
         "DA_Sentinel18",
         "DA_18_Maokai",
-        "DA_Amumu18",
         "DA_Vi18",
+        "DA_Amumu18",
         "DA_18_Sett"
       ]
     },
     "DA_HealthPotion18_Radiant": {
-      "count": 247,
-      "avg": 3.081,
-      "pick": 0.00016847096570012985,
+      "count": 254,
+      "avg": 3.0945,
+      "pick": 0.0001665006030730505,
       "units": [
         "DA_Taric18",
         "DA_Sentinel18",
         "DA_18_Sett",
-        "DA_Krug18",
-        "DA_18_Yorick"
+        "DA_Fiddlesticks18",
+        "DA_Krug18"
       ]
     },
     "DA_ManaPotion18_Radiant": {
-      "count": 124,
-      "avg": 4.4758,
-      "pick": 0.00008457651719358746,
+      "count": 135,
+      "avg": 4.5481,
+      "pick": 0.00008849441501914101,
       "units": [
-        "DA_18_Ahri",
         "DA_Amumu18",
-        "DA_Sentinel18",
         "DA_18_Alistar",
-        "DA_18_Sett"
+        "DA_18_Ahri",
+        "DA_Krug18",
+        "DA_Sentinel18"
       ]
     }
   },
-  "games": 1466128
+  "games": 1525520
 }

@@ -9,6 +9,11 @@ import fsp from "node:fs/promises";
 const BASE = "https://api-hc.metatft.com/tft-explorer-api/";
 const TTL_MS = 6 * 60 * 60 * 1000;
 const CONCURRENCY = 8;
+// Gravação do cache em disco: no mínimo 30 s entre uma e outra e serialização em fatias de 1.000 entradas.
+const PERSIST_GAP_MS = 30_000;
+const SERIALIZE_SLICE = 1000;
+// Espera máxima por pergunta ao explorer (era 30 s; uma pergunta só custa ~0,5 s e o POST esperava até 3 x 30 s).
+const FETCH_TIMEOUT_MS = 15_000;
 
 /** Filtro "peça com estas estrelas e esta quantidade de itens" (uma cópia no tabuleiro). */
 export const exactUnit = (id, stars, items) =>
@@ -57,7 +62,10 @@ export function assetsOf(units, stats, { minGames = 300, limit = 2 } = {}) {
 }
 
 /** Cliente do explorer com cache; `file` guarda as respostas entre reinícios do servidor. */
-export function explorer(file) {
+export function explorer(
+  file,
+  { minGapMs = PERSIST_GAP_MS, fetchTimeoutMs = FETCH_TIMEOUT_MS } = {},
+) {
   const cache = new Map(),
     tmp = `${file}.tmp`;
   // Lê o arquivo principal; se estiver ilegível, tenta a gravação temporária que não chegou a ser renomeada.
@@ -75,17 +83,39 @@ export function explorer(file) {
     if (Date.now() - v?.at < TTL_MS) cache.set(k, v);
   let dirty = false,
     saving = null,
-    timer = null;
+    timer = null,
+    lastWriteAt = 0;
+  // Gravações desde a última `takeStats()` (instrumentação do server.log): quantas, quanto tempo de relógio e bytes.
+  const written = { n: 0, ms: 0, bytes: 0 };
+  // Serializa em fatias, cedendo o event loop entre elas: o arquivo passa de 7 MB e um `JSON.stringify` único
+  // bloqueava o loop por ~120 ms (e crescendo) a cada gravação. O texto é o mesmo de JSON.stringify(Object.fromEntries).
+  const serialize = async () => {
+    const entries = [...cache],
+      parts = [];
+    for (let i = 0; i < entries.length; i += SERIALIZE_SLICE) {
+      for (const [k, v] of entries.slice(i, i + SERIALIZE_SLICE))
+        parts.push(`${JSON.stringify(k)}:${JSON.stringify(v)}`);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return `{${parts.join(",")}}`;
+  };
   // Grava em arquivo temporário e renomeia: quem lê nunca vê o JSON pela metade.
   const persist = () => {
     if (!dirty || saving) return;
     dirty = false;
-    const now = Date.now();
+    lastWriteAt = Date.now();
+    const now = lastWriteAt,
+      t0 = performance.now();
     for (const [k, v] of cache) if (now - v.at >= TTL_MS) cache.delete(k);
     let failed = false;
-    saving = fsp
-      .writeFile(tmp, JSON.stringify(Object.fromEntries(cache)))
-      .then(() => fsp.rename(tmp, file))
+    saving = serialize()
+      .then(async (text) => {
+        await fsp.writeFile(tmp, text);
+        await fsp.rename(tmp, file);
+        written.n++;
+        written.ms += performance.now() - t0;
+        written.bytes += text.length;
+      })
       .catch((e) => {
         // Sem nova tentativa imediata (ex.: EPERM no Windows): a próxima resposta nova agenda outra.
         failed = dirty = true;
@@ -94,19 +124,27 @@ export function explorer(file) {
       })
       .finally(() => {
         saving = null;
-        if (dirty && !failed) persist();
+        if (dirty && !failed) schedulePersist();
       });
   };
-  // Junta as respostas de um lote numa gravação só (2 s depois da última); não segura o processo vivo.
+  // Espaça as gravações: a primeira resposta nova agenda a gravação (mín. 2 s, para juntar o lote) e depois só
+  // volta a gravar `minGapMs` após a anterior; respostas que chegam enquanto isso entram na próxima. Custo: uma
+  // queda do processo perde no máximo as respostas do último intervalo (voltam a ser perguntadas). Não segura o processo vivo.
   const schedulePersist = () => {
-    clearTimeout(timer);
-    timer = setTimeout(persist, 2000);
+    if (timer) return;
+    timer = setTimeout(
+      () => {
+        timer = null;
+        persist();
+      },
+      Math.max(2000, lastWriteAt + minGapMs - Date.now()),
+    );
     timer.unref?.();
   };
   const inflight = new Map();
   async function fetchRows(endpoint, filters) {
     const response = await fetch(`${BASE}${endpoint}?${filters.join("&")}`, {
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(fetchTimeoutMs),
     });
     if (!response.ok)
       throw Error(`MetaTFT ${endpoint} respondeu ${response.status}`);
@@ -141,6 +179,20 @@ export function explorer(file) {
         }
       : { avg: null, games: 0, top4: null };
   return {
+    /** Grava já o que está pendente (ignora o espaçamento); resolve quando a gravação em andamento termina. */
+    async flush() {
+      clearTimeout(timer);
+      timer = null;
+      await saving;
+      persist();
+      await saving;
+    },
+    /** Gravações do cache desde a última chamada, em texto para o server.log: `evidencia gravou=N ms=M KB=K`. */
+    takeStats() {
+      const text = `evidencia gravou=${written.n} ms=${written.ms.toFixed(0)} KB=${(written.bytes / 1024).toFixed(0)}`;
+      Object.assign(written, { n: 0, ms: 0, bytes: 0 });
+      return text;
+    },
     /** Colocação média dos tabuleiros que batem com todos os filtros. */
     total: (filters) => cached("total", filters, (rows) => stat(rows[0])),
     /**

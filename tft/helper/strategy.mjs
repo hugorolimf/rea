@@ -3,7 +3,9 @@
 // inferida pelo servidor e o estilo da comp alvo vindo da meta ("lvl N" = reroll naquele nível, "Fast 8", ...).
 // Aqui fica a árvore de decisão (nível, reroll, economia); a matemática (chance de fechar, ganho por ouro, juros,
 // renda) está em economy.mjs e a regra de "vale rolar para o time inteiro" em roll.mjs. Não simula combate.
-import { GAME, ODDS } from "./rules.mjs";
+import { GAME } from "./rules.mjs";
+import { starCopies } from "./core/pool/copies.mjs";
+import { levelOdds } from "./core/pool/shop.mjs";
 import {
   POLICY,
   bestSpend,
@@ -14,6 +16,7 @@ import {
   isContested,
   levelCostOf,
   lobbyStrength,
+  maxInterestGold,
   nextTier,
   pressureOf,
   projectGold,
@@ -109,7 +112,7 @@ function decide(plan, analysis, options, team, sim) {
       shopSpend,
       cash,
       sellable,
-      interestAt: gold === null ? null : (nextTier(gold) ?? 50),
+      interestAt: gold === null ? null : (nextTier(gold) ?? maxInterestGold()),
       [KIND]: kinds,
       ...extra,
     };
@@ -150,7 +153,7 @@ function decide(plan, analysis, options, team, sim) {
   const progress = stars3.map((u) => {
     const p = pool.get(u.name),
       own = p?.own ?? 0,
-      need = Math.max(0, 9 - own),
+      need = Math.max(0, starCopies(3) - own),
       left = p?.remainingUpper ?? 0;
     return {
       name: u.name,
@@ -206,7 +209,7 @@ function decide(plan, analysis, options, team, sim) {
   const levelGap = analysis.opponents?.length ? lob.foeLevel - level : 0;
   // Ganho esperado de cada uso do ouro: rolar pelo time inteiro (simulado com a pool real) contra subir de nível.
   const gain = sim?.gain ?? new Float64Array(1);
-  const nextOdds = ODDS[Math.min(11, level + 1)],
+  const nextOdds = levelOdds(level + 1),
     levelGain = nextOdds.reduce((n, o, i) => n + (o / 100) * (i + 1), 0); // uma vaga a mais com uma unidade 1★ típica do nível seguinte
   const floor = pressure.floor,
     spare = Math.max(0, cash - floor),
@@ -270,7 +273,7 @@ function decide(plan, analysis, options, team, sim) {
   const canLevel = levelCost !== null && levelCost > 0;
   // 1) Vida em risco: gastar para estabilizar agora vale mais que juros.
   if (pressure.danger) {
-    const lvlUp = canLevel && behind && cash - levelCost >= 10;
+    const lvlUp = canLevel && behind && cash - levelCost >= POLICY.floor.danger;
     if (lvlUp)
       steps.push(
         `Suba para o nível ${level + 1} (${levelCost}g): você está abaixo da curva e precisa de mais uma unidade em campo.`,
@@ -327,7 +330,7 @@ function decide(plan, analysis, options, team, sim) {
   // 2) Comp de reroll: economizar, rolar o excedente no nível certo até fechar os 3★.
   if (rerollLevel && open3.length && level <= rerollLevel + 1) {
     if (level < rerollLevel) {
-      if (canLevel && (behind || cash - levelCost >= 50)) {
+      if (canLevel && (behind || cash - levelCost >= POLICY.floor.healthy)) {
         if (xp.passive) return passiveWait();
         steps.push(
           `Suba para o nível ${level + 1} (${levelCost}g): o reroll desta comp é no nível ${rerollLevel}.`,
@@ -340,11 +343,15 @@ function decide(plan, analysis, options, team, sim) {
       mark(
         steps,
         "save",
-        `Economize: junte até 50g antes de chegar no nível ${rerollLevel}, onde começa o reroll.`,
+        `Economize: junte até ${POLICY.floor.healthy}g antes de chegar no nível ${rerollLevel}, onde começa o reroll.`,
       );
-      return out("ECONOMIZAR", `Economize até ${nextTier(cash) ?? 50}g`, {
-        keep: cash,
-      });
+      return out(
+        "ECONOMIZAR",
+        `Economize até ${nextTier(cash) ?? maxInterestGold()}g`,
+        {
+          keep: cash,
+        },
+      );
     }
     for (const p of open3)
       reasons.push(
@@ -354,7 +361,8 @@ function decide(plan, analysis, options, team, sim) {
       steps.push(
         `Pare o reroll: ${blocked.map((p) => p.name).join(", ")} não fecha(m) 3★ com a pool atual. Fique em 2★ e suba de nível.`,
       );
-      const up = canLevel && cash - levelCost >= 30 && !xp.passive;
+      const up =
+        canLevel && cash - levelCost >= POLICY.floor.hurt && !xp.passive;
       if (up) steps.push(`Suba para o nível ${level + 1} (${levelCost}g).`);
       else if (canLevel && xp.passive)
         steps.push(
@@ -412,7 +420,7 @@ function decide(plan, analysis, options, team, sim) {
     if (
       canLevel &&
       (behind
-        ? cash - levelCost >= Math.min(floor, 30)
+        ? cash - levelCost >= Math.min(floor, POLICY.floor.hurt)
         : cash - levelCost >= floor)
     ) {
       if (xp.passive) return passiveWait();
@@ -424,7 +432,11 @@ function decide(plan, analysis, options, team, sim) {
         keep: cash - levelCost,
       });
     }
-    if (lob.weak && spare >= 6 && first.spend >= GAME.shopCost) {
+    if (
+      lob.weak &&
+      spare >= POLICY.weakLobbySpare &&
+      first.spend >= GAME.shopCost
+    ) {
       const rate = first.gain / first.spend;
       if (rate > ev.level.perGold) {
         const spend = commit(first),
@@ -456,7 +468,7 @@ function decide(plan, analysis, options, team, sim) {
     );
     return out(
       "ECONOMIZAR",
-      `Economize até ${nextTier(cash) ?? 50}g e suba no tempo certo`,
+      `Economize até ${nextTier(cash) ?? maxInterestGold()}g e suba no tempo certo`,
       { keep: cash },
     );
   }
@@ -493,7 +505,7 @@ function decide(plan, analysis, options, team, sim) {
     });
   }
   if (level < finalLevel) {
-    if (canLevel && cash - levelCost >= Math.min(floor, 30)) {
+    if (canLevel && cash - levelCost >= Math.min(floor, POLICY.floor.hurt)) {
       if (xp.passive) return passiveWait();
       steps.push(
         `Núcleo pronto: suba para o nível ${level + 1} (${levelCost}g) para encaixar mais uma unidade forte.`,
@@ -648,9 +660,9 @@ export function strategy(plan, analysis, options) {
     income: after === null ? null : incomeOf(after, streak),
     projection,
     reach50:
-      after === null || after >= 50
+      after === null || after >= maxInterestGold()
         ? null
-        : (projection.find((r) => r.gold >= 50)?.label ?? null),
+        : (projection.find((r) => r.gold >= maxInterestGold())?.label ?? null),
     streak: streak ? { ...streak, gold: streakGold(streak.length) } : null,
     sellable: d.sellable,
     // Ouro da venda do banco que entra nesta ação (all-in crítico) e o piso que a decisão respeita.
@@ -670,7 +682,7 @@ export function strategy(plan, analysis, options) {
         : `Juros atuais: +${interestOf(gold)}g por rodada.` +
           (nextTier(gold)
             ? ` Próximo patamar em ${nextTier(gold)}g (faltam ${nextTier(gold) - gold}g).`
-            : " Juros no máximo (50g).") +
+            : ` Juros no máximo (${maxInterestGold()}g).`) +
           (after !== null
             ? ` Depois desta ação: ${after}g, renda de ${incomeOf(after, streak).total}g na próxima rodada.`
             : ""),
@@ -773,6 +785,9 @@ export function strategy(plan, analysis, options) {
     total: rows.length,
     targets: rows.slice(0, POLICY.roll.rows),
   };
-  const { call: _call, ...decision } = d;
-  return { ...decision, panels: { economy, leveling, rolling: rollingPanel } };
+  const { call: _call, ...strategyCore } = d;
+  return {
+    ...strategyCore,
+    panels: { economy, leveling, rolling: rollingPanel },
+  };
 }

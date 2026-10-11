@@ -1,5 +1,9 @@
 import { clamp, cumulativeCurve, shopsFor } from "./math.js";
-import { baseItem, ownersOf } from "./item-source.js";
+import { ownersOf } from "../../core/items/holdings.mjs";
+import { movesInto } from "../../core/items/moves.mjs";
+import { starCopies } from "../../core/pool/copies.mjs";
+import { SHOP } from "../../core/pool/tables.mjs";
+import { crossShop, refineShopHits, shopView } from "./shop-match.js";
 
 /**
  * Modelo de visão: função pura que converte o estado lido (/api/state) e a análise
@@ -109,9 +113,7 @@ export function rollPill(ro, live) {
   return { text, tone };
 }
 
-export const GOLD_PER_SHOP = 2;
-export const INTEREST_STEP = 10;
-export const INTEREST_CAP = 50;
+// Ouro por loja (rolar) e os juros: regra do jogo em core (SHOP.cost, core/economy/gold.mjs); o cliente não tem cópia (M5b).
 
 /** Score do plano exibido: o do ranking de comps (traz "melhor comp" e o nível usado) ou, sem ele, o do próprio plano. */
 function scoreOfPlan(plan, rec, level) {
@@ -139,13 +141,20 @@ const GEP_REASONS = {
   "set-diferente": "set diferente do catálogo",
   "sem-eventos-recentes": "sem eventos recentes (Overwolf/TFTAcademy parados?)",
   "banco-travado": "banco travado",
+  "gravacao-desligada": "gravação de partidas desligada no TFTAcademy",
 };
+/** Instrução quando o TFTAcademy não grava os eventos (configuração `record_games` desligada). */
+const GEP_RECORD_HINT =
+  'Ligue "gravar partidas" nas configurações do TFTAcademy para o helper receber os eventos do jogo.';
 /** Texto curto do estado da fonte GEP (`gepStatus` do servidor); null se o servidor não informa. */
 export function gepNote(g) {
   if (!g || typeof g.state !== "string") return null;
   const age = num(g.lastEventAgeMs),
-    why = GEP_REASONS[g.reason] ?? g.reason ?? "";
-  const label =
+    why = GEP_REASONS[g.reason] ?? g.reason ?? "",
+    // Gravação desligada: o TFTAcademy não grava (e apaga a partida no fim); vale a instrução mesmo fora de partida.
+    hint =
+      g.recordGames === false && g.state !== "ativo" ? GEP_RECORD_HINT : null;
+  const base =
     g.state === "ativo"
       ? `GEP ativo${age !== null ? ` · último evento há ${Math.round(age / 1000)}s` : ""}`
       : g.state === "obsoleto"
@@ -153,16 +162,19 @@ export function gepNote(g) {
         : g.state === "esquema-desconhecido"
           ? `GEP: esquema do banco desconhecido${g.detail ? ` (${g.detail})` : ""}; usando a leitura de tela`
           : `GEP ausente${why ? `: ${why}` : ""}; usando a leitura de tela`;
+  const label = hint ? `${base}. ${hint}` : base;
   // Texto curto do chip visível no HUD: ativo mostra a idade do último evento; os demais dizem que caiu para a tela.
   const short =
     g.state === "ativo"
       ? `GEP ativo${age !== null ? ` · ${Math.round(age / 1000)}s` : ""}`
-      : g.state === "obsoleto"
-        ? "GEP parado"
-        : g.state === "esquema-desconhecido"
-          ? "GEP ?"
-          : "GEP off";
-  return { state: g.state, label, short };
+      : g.reason === "gravacao-desligada"
+        ? "GEP off · ligar gravação"
+        : g.state === "obsoleto"
+          ? "GEP parado"
+          : g.state === "esquema-desconhecido"
+            ? "GEP ?"
+            : "GEP off";
+  return { state: g.state, label, short, ...(hint ? { hint } : {}) };
 }
 
 export function buildModel({ state, rec }) {
@@ -263,7 +275,7 @@ export function buildModel({ state, rec }) {
   });
 
   const dock = transitions.map((t) => {
-    const need = t.requiredStars ? 3 ** (t.requiredStars - 1) : 0;
+    const need = t.requiredStars ? starCopies(t.requiredStars) : 0;
     return {
       key: `${t.exit?.id ?? "vaga"}>${t.enter.id}`,
       exit: t.exit ?? null,
@@ -300,11 +312,10 @@ export function buildModel({ state, rec }) {
           slotsFree: b.slotsFree ?? 0,
           owners,
           // "Passar itens" do servidor que terminam nesta peça: de quem sai o item escolhido.
-          moves: (plan.itemMoves ?? []).flatMap((m) =>
-            (m.moves ?? [])
-              .filter((x) => x.to?.id === c.id)
-              .map((x) => ({ itemId: baseItem(x.item.id), fromId: m.from.id })),
-          ),
+          moves: movesInto(plan.itemMoves, c.id).map(({ itemId, fromId }) => ({
+            itemId,
+            fromId,
+          })),
         }
       : null;
   }
@@ -325,8 +336,20 @@ export function buildModel({ state, rec }) {
     next: "items",
     carousel: "items",
   };
-  const add = (id, title, tone, rows) =>
-    rows.length && steps.push({ id, title, tone, group: GROUP[id], rows });
+  const add = (id, title, tone, rows, note = null) =>
+    rows.length &&
+    steps.push({
+      id,
+      title,
+      tone,
+      group: GROUP[id],
+      rows,
+      ...(note ? { note } : {}),
+    });
+  // Loja de agora (só ao vivo): cruza a lista Comprar e o painel Roll com a mesma função (shop-match.js).
+  const shopNow = live
+    ? shopView(screen, { gepStatus: state?.gepStatus })
+    : shopView(null);
   add(
     "swap",
     "Trocar",
@@ -352,10 +375,8 @@ export function buildModel({ state, rec }) {
       inField: i.to ? owned.has(i.to.id) : false,
     })),
   ]);
-  add(
-    "buy",
-    "Comprar",
-    "amber",
+  // Cópias que o plano quer de cada peça: o servidor lista uma linha por peça que falta (1 cópia); `want`/`copies`, se vierem, valem.
+  const buying = crossShop(
     (stage?.buyNow ?? []).map((u) => ({
       key: `buy:${u.id}`,
       kind: "buy",
@@ -364,8 +385,11 @@ export function buildModel({ state, rec }) {
       replaces: u.replaces,
       chance: u.chancePerShop ?? 0,
       broke: u.affordable === false,
+      want: u.want ?? u.copies ?? 1,
     })),
+    shopNow,
   );
+  add("buy", "Comprar", "amber", buying.rows, buying.status);
   add(
     "slot",
     "Vaga livre",
@@ -496,7 +520,8 @@ export function buildModel({ state, rec }) {
         // Rolar derruba o patamar de juros: a única nota de ouro que entra no painel.
         interest: live && ro.go ? (ro.interest ?? null) : null,
         // Peças do time na loja agora (o servidor já descontou o que manda comprar).
-        shop: ro.shop ?? [],
+        // Os espaços e a confiança vêm da loja que a interface lê agora (shop-match.js), a mesma da lista Comprar.
+        shop: refineShopHits(ro.shop, shopNow),
         targets: shown,
         // Indicador "dá para achar rolando" de TODAS as peças (as suas e as da comp), só informativo.
         finds: findStrip(targets),
@@ -591,15 +616,15 @@ export function buildCurve(target, plannedGold) {
     const n95 = shopsFor(k, p, 0.95),
       maxN = Math.round(clamp(Number.isFinite(n95) ? n95 + 2 : 40, 8, 40));
     points = cumulativeCurve(k, p, maxN).map(({ n, v }) => ({
-      g: n * GOLD_PER_SHOP,
+      g: n * SHOP.cost,
       v,
     }));
-    const gold = (n) => (Number.isFinite(n) ? n * GOLD_PER_SHOP : null);
+    const gold = (n) => (Number.isFinite(n) ? n * SHOP.cost : null);
     q50 = gold(shopsFor(k, p, 0.5));
     q80 = gold(shopsFor(k, p, 0.8));
   }
   const maxG = points.at(-1).g,
-    step = points[1]?.g ?? GOLD_PER_SHOP;
+    step = points[1]?.g ?? SHOP.cost;
   const planned = plannedGold != null ? Math.min(maxG, plannedGold) : null;
   return {
     name: target.name,

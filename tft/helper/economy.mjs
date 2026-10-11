@@ -1,158 +1,49 @@
 // Economia do TFT: renda, juros, XP, pressão de vida e a matemática de rolar (chance exata de fechar
 // um upgrade e ganho esperado por ouro). Funções puras, sem I/O, usadas por strategy.mjs, stage.mjs,
-// tactics.mjs, playbook.mjs e pelo mock da interface no navegador.
+// tactics.mjs e pelo mock da interface no navegador.
 // Regras do jogo vêm de rules.mjs; POLICY reúne as regras de bolso desta ferramenta.
-import { GAME, ODDS, POOL } from "./rules.mjs";
-
-/** Regras de bolso desta ferramenta (não do jogo). Todos os limiares de economia ficam aqui. */
-export const POLICY = {
-  // Nível esperado ao fim de cada estágio-rodada numa curva padrão: [estágio, rodada, nível].
-  curve: [
-    [2, 1, 4],
-    [2, 5, 5],
-    [3, 2, 6],
-    [4, 1, 7],
-    [4, 5, 8],
-    [5, 5, 9],
-  ],
-  // Faixas de vida. Perigo: HP ≤ danger, ou ≤ dangerLate a partir do estágio lateStage, ou ≤ weak com board fraca.
-  hp: {
-    critical: 20,
-    danger: 30,
-    dangerLate: 45,
-    weak: 50,
-    hurt: 60,
-    fastReroll: 50,
-  },
-  lateStage: 4,
-  // Ouro que fica guardado depois de gastar, por faixa; no reroll lento o piso é 50 e no rápido, fastReroll.
-  floor: { healthy: 50, hurt: 30, danger: 10, critical: 0, fastReroll: 20 },
-  // Peso do ouro futuro frente à força agora: 1 = cada ouro precisa render a média do plano; 0 = gaste tudo.
-  urgency: { healthy: 1, hurt: 0.6, danger: 0.25, critical: 0 },
-  // Rodadas de juros em jogo quando o gasto derruba o patamar.
-  horizon: { healthy: 3, hurt: 2, danger: 1, critical: 0 },
-  // 3★ disputado: desista com tantas cópias com rivais ou acima desta fração da pool.
-  contested: { copies: 6, share: 0.35 },
-  // Força de uma unidade = custo × fator da estrela (+ itens); a mesma régua do lobby.
-  star: [0, 1, 1.8, 3.2],
-  itemMight: 0.6,
-  // Valor de um upgrade no ganho esperado: carry pesa mais, cada item equipado soma 25%; unidade nova vale metade.
-  carryWeight: 2,
-  itemWeight: 0.25,
-  newUnitWeight: 0.5,
-  // Simulação de rolagem: corridas, semente fixa (resultado determinístico) e teto de ouro simulado.
-  simulation: { runs: 500, seed: 0x7f4a7c15, maxGold: 120 },
-  // Rolar pelo time inteiro (roll.mjs): vale rolar com pelo menos `chance` de evoluir alguma peça que valha a
-  // evolução (`minValue` de força: um 2★ de custo 1 da comp não vale rolar sozinho); o carry pesa `carryWeight`,
-  // os demais cores `coreWeight` e a peça fora da comp `offPlanWeight`; a espera pelo nível de rolagem só é
-  // sugerida se a chance subir `waitMargin`; `rows` limita a lista enviada e `simTargets` os alvos da simulação conjunta.
-  roll: {
-    chance: 0.5,
-    minValue: 1,
-    coreWeight: 1.5,
-    offPlanWeight: 0.6,
-    waitMargin: 0.15,
-    rows: 14,
-    simTargets: 10,
-  },
-  // Fração do ganho máximo que ainda conta como "tão bom quanto" ao escolher quanto rolar.
-  spendTolerance: 0.04,
-};
+import { GAME, POOL } from "./rules.mjs";
+import { POLICY } from "./core/economy/policy.mjs";
+import { interestOf } from "./core/economy/gold.mjs";
+import { starCopies } from "./core/pool/copies.mjs";
+import { levelOdds } from "./core/pool/shop.mjs";
+import { closeCurve as closeCurveAt } from "./core/pool/curve.mjs";
+// A política (POLICY: todos os limiares de ouro e vida), os juros, a renda, a projeção, o calendário de rodadas e a faixa de
+// vida moram em core/economy (M5b); a chance por slot, as cópias livres e a curva de fechar estrela, em core/pool (M4).
+// economy.mjs reexporta o que o mock, os motores e os testes consomem por este caminho (o MESMO objeto POLICY).
+export { POLICY } from "./core/economy/policy.mjs";
+export {
+  incomeOf,
+  interestOf,
+  interestTiers,
+  maxInterestGold,
+  nextTier,
+  projectGold,
+  shopsAhead,
+  streakGold,
+  tierFloor,
+} from "./core/economy/gold.mjs";
+export { isPvp, nextRound, roundLabel } from "./core/economy/rounds.mjs";
+export { pressureOf } from "./core/economy/pressure.mjs";
+export { freeByCost, freeOf } from "./core/pool/copies.mjs";
+export { slotChance } from "./core/pool/shop.mjs";
+export { binomialPmf } from "./core/pool/curve.mjs";
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-const MAX_INTEREST_GOLD = GAME.interestStep * GAME.interestMax;
 
 /* ---------- Ouro ---------- */
-
-/** Juros pagos na próxima rodada para `gold` guardado. */
-export const interestOf = (gold) =>
-  gold == null
-    ? null
-    : Math.min(
-        GAME.interestMax,
-        Math.floor(Math.max(0, gold) / GAME.interestStep),
-      );
-/** Próximo patamar de juros (null no máximo ou sem ouro lido). */
-export const nextTier = (gold) =>
-  gold == null || gold >= MAX_INTEREST_GOLD
-    ? null
-    : (Math.floor(gold / GAME.interestStep) + 1) * GAME.interestStep;
-/** Patamar de juros atual (múltiplo de 10 abaixo do ouro, até 50). */
-export const tierFloor = (gold) =>
-  Math.min(
-    MAX_INTEREST_GOLD,
-    Math.floor(Math.max(0, gold) / GAME.interestStep) * GAME.interestStep,
-  );
-
-/** Ouro extra por rodada de uma sequência de `length` vitórias ou derrotas. */
-export function streakGold(length) {
-  for (const [min, gold] of GAME.streakGold) if (length >= min) return gold;
-  return 0;
-}
-
-/** Renda da próxima rodada guardando `gold`: base + juros + sequência (vitória não é prevista). */
-export function incomeOf(gold, streak = null) {
-  const interest = interestOf(gold) ?? 0,
-    bonus = streakGold(streak?.length ?? 0);
-  return {
-    base: GAME.baseIncome,
-    interest,
-    streak: bonus,
-    total: GAME.baseIncome + interest + bonus,
-  };
-}
+// Juros, renda e projeção: core/economy/gold.mjs (reexportados acima).
 
 /** Valor de venda: 1★ devolve o custo; 2★/3★ devolvem as cópias menos 1 (custo 1 devolve tudo). */
 export const sellValue = (cost, stars) =>
   stars <= 1
     ? cost
     : cost === 1
-      ? 3 ** (stars - 1)
-      : 3 ** (stars - 1) * cost - 1;
+      ? starCopies(stars)
+      : starCopies(stars) * cost - 1;
 
 /* ---------- Rodadas ---------- */
-
-const roundsIn = (stage) =>
-  stage === 1 ? GAME.stageOneRounds : GAME.stageRounds;
-/** Rodada seguinte a `{stage, round}`. */
-export const nextRound = ({ stage, round }) =>
-  round >= roundsIn(stage)
-    ? { stage: stage + 1, round: 1 }
-    : { stage, round: round + 1 };
-/** Rodada contra jogador (as únicas que contam para sequência). */
-export const isPvp = ({ stage, round }) =>
-  stage >= 2 && round !== GAME.carouselRound && round !== GAME.pveRound;
-export const roundLabel = (r) => `${r.stage}-${r.round}`;
-const roundIndex = ({ stage, round }) =>
-  stage <= 1
-    ? round
-    : GAME.stageOneRounds + (stage - 2) * GAME.stageRounds + round;
-
-/**
- * Ouro no início das próximas `rounds` rodadas se você gastar `spend` agora e só economizar depois.
- * Cada rodada paga base + juros sobre o ouro guardado + sequência atual (mantida); vitórias não entram.
- */
-export function projectGold(
-  gold,
-  { spend = 0, stage = null, streak = null, rounds = 4 } = {},
-) {
-  if (gold == null) return [];
-  let g = Math.max(0, gold - spend),
-    at = stage;
-  const out = [];
-  for (let i = 0; i < rounds; i++) {
-    const income = incomeOf(g, streak);
-    g += income.total;
-    at = at ? nextRound(at) : null;
-    out.push({
-      label: at ? roundLabel(at) : `+${i + 1}`,
-      gold: g,
-      interest: interestOf(g),
-      income: income.total,
-    });
-  }
-  return out;
-}
+// nextRound, isPvp, roundLabel e projectGold: core/economy (reexportados acima).
 
 /** Nível da curva padrão no estágio-rodada lido. */
 export function curveLevel(stage) {
@@ -251,40 +142,6 @@ export function lobbyStrength(analysis) {
   };
 }
 
-/**
- * Faixa de vida usada por todas as decisões de gasto: crítica, perigo, ferido ou saudável,
- * com o piso de ouro, a urgência e o horizonte de juros de cada faixa.
- */
-export function pressureOf({ hp, stage = null, weak = false, trend = null }) {
-  const H = POLICY.hp;
-  // Tendência: no ritmo das últimas perdas, chegar a 15 de vida em 3 rodadas é perigo; 3+ perdas em ~5 minutos
-  // com 65 de vida ou menos também (o tabuleiro não segura o lobby — estabilizar antes da vida acabar).
-  const projected = trend?.avgLoss ? hp - 3 * trend.avgLoss : Infinity,
-    bleeding = projected <= 15 || ((trend?.recentLosses ?? 0) >= 3 && hp <= 65);
-  const critical = hp <= H.critical,
-    danger =
-      critical ||
-      bleeding ||
-      hp <= H.danger ||
-      (hp <= H.dangerLate && (stage?.stage ?? 0) >= POLICY.lateStage) ||
-      (weak && hp <= H.weak);
-  const band = critical
-    ? "critical"
-    : danger
-      ? "danger"
-      : hp <= H.hurt
-        ? "hurt"
-        : "healthy";
-  return {
-    band,
-    danger,
-    critical,
-    floor: POLICY.floor[band],
-    urgency: POLICY.urgency[band],
-    horizon: POLICY.horizon[band],
-  };
-}
-
 /** 3★ disputado demais: muitas cópias com rivais (em campo ou estimadas no banco) ou fração alta da pool. */
 export const isContested = (p) => {
   const held = (p?.enemy ?? 0) + (p?.hidden ?? 0);
@@ -294,82 +151,14 @@ export const isContested = (p) => {
   );
 };
 
-/**
- * Cópias provavelmente livres na pool, inteiras: o teto observado menos as estimadas nos bancos rivais.
- * Use para probabilidade; para "ainda é possível?" use o teto (`remainingUpper`).
- */
-export const likelyFree = (p) =>
-  Math.max(0, Math.round(p?.remainingLikely ?? p?.remainingUpper ?? 0));
-
 /* ---------- Probabilidade de loja ---------- */
 
-/** Cópias livres somadas por custo: o denominador da chance de cada campeão na loja. */
-export function freeByCost(pool) {
-  const free = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  for (const p of pool ?? [])
-    free[p.cost] = (free[p.cost] ?? 0) + likelyFree(p);
-  return free;
-}
-
-/** Chance de um slot da loja mostrar o campeão: odds do custo × cópias livres dele ÷ livres do custo. */
-export const slotChance = (level, cost, copies, denom) =>
-  denom > 0 && copies > 0
-    ? ((ODDS[clamp(level, 1, 11)][cost - 1] ?? 0) / 100) * (copies / denom)
-    : 0;
-
-/** PMF da Binomial(n, p) por recorrência, sem fatoriais. */
-export function binomialPmf(n, p) {
-  const out = new Array(n + 1).fill(0);
-  if (p <= 0) return ((out[0] = 1), out);
-  if (p >= 1) return ((out[n] = 1), out);
-  out[0] = (1 - p) ** n;
-  for (let i = 0; i < n; i++)
-    out[i + 1] = out[i] * ((n - i) / (i + 1)) * (p / (1 - p));
-  return out;
-}
-
 /**
- * Chance exata de juntar `goal` cópias gastando no máximo g de ouro, para g = 0..maxGold.
- * Cadeia de Markov em (cópias compradas × ouro): cada loja custa 2g e mostra Binomial(5, p_k) cópias,
- * com p_k = odds × (livres − k) ÷ (livres do custo − k) — a pool encolhe a cada compra; cada cópia
- * comprada custa `cost`. Compra tudo o que aparecer e couber no ouro.
+ * Chance exata de juntar `goal` cópias gastando no máximo g de ouro, para g = 0..maxGold (padrão da política): a
+ * conta é de `core/pool/curve.mjs`; aqui entra só o teto de ouro simulado, que é política da ferramenta.
  */
-export function closeCurve({
-  level,
-  cost,
-  own,
-  goal,
-  free,
-  denom,
-  maxGold = POLICY.simulation.maxGold,
-}) {
-  const need = goal - own,
-    curve = new Float64Array(maxGold + 1);
-  if (need <= 0) return curve.fill(1);
-  if (free < need || !cost) return curve;
-  // f[k][g]: chance de fechar já tendo comprado k cópias e com g de ouro.
-  const f = Array.from(
-    { length: need + 1 },
-    () => new Float64Array(maxGold + 1),
-  );
-  f[need].fill(1);
-  const pmf = Array.from({ length: need }, (_, k) =>
-    binomialPmf(GAME.shopSlots, slotChance(level, cost, free - k, denom - k)),
-  );
-  for (let g = GAME.shopCost; g <= maxGold; g++) {
-    const left = g - GAME.shopCost,
-      afford = Math.floor(left / cost);
-    for (let k = need - 1; k >= 0; k--) {
-      let v = 0;
-      for (let x = 0; x <= GAME.shopSlots; x++) {
-        const b = Math.min(x, need - k, afford);
-        v += pmf[k][x] * f[k + b][left - b * cost];
-      }
-      f[k][g] = v;
-    }
-  }
-  return f[0];
-}
+export const closeCurve = (args) =>
+  closeCurveAt({ ...args, maxGold: args.maxGold ?? POLICY.simulation.maxGold });
 
 /** Menor ouro com chance ≥ q na curva (null se não chegar). */
 export function goldFor(curve, q) {
@@ -440,7 +229,7 @@ export function rollSim({
   const live = targets.filter((t) => t.steps.length && t.free > 0);
   if (!live.length || maxGold < GAME.shopCost) return { gain, any };
   const rand = mulberry32(seed),
-    odds = ODDS[clamp(level, 1, 11)],
+    odds = levelOdds(level),
     n = live.length,
     chance = live.map((t) => (odds[t.cost - 1] ?? 0) / 100);
   const last = live.map((t) => t.steps.at(-1).copies),
@@ -464,7 +253,11 @@ export function rollSim({
         let r = rand();
         for (let i = 0; i < n; i++) {
           const t = live[i],
-            p = pool[t.cost] > 0 ? (chance[i] * left[i]) / pool[t.cost] : 0;
+            // A pool livre é fracionária: `left` pode terminar a corrida abaixo de zero (ex.: 0,4 e uma compra a mais).
+            p =
+              pool[t.cost] > 0 && left[i] > 0
+                ? (chance[i] * left[i]) / pool[t.cost]
+                : 0;
           if (r >= p) {
             r -= p;
             continue;

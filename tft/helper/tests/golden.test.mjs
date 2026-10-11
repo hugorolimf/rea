@@ -13,7 +13,7 @@ import path from "node:path";
 import { POLICY } from "../economy.mjs";
 import { strategy } from "../strategy.mjs";
 import { makeState } from "./fixtures.mjs";
-import { GAME } from "../rules.mjs";
+import { INCOME } from "../core/economy/tables.mjs";
 import {
   canonical,
   diffPaths,
@@ -162,9 +162,9 @@ test("sensibilidade: perturbar uma constante de política ou de regra quebra pel
   });
   // Teto de juros do jogo.
   const interest = runAllWith(() => {
-    const was = GAME.interestMax;
-    GAME.interestMax = 3;
-    return () => (GAME.interestMax = was);
+    const was = INCOME.interestMax;
+    INCOME.interestMax = 3;
+    return () => (INCOME.interestMax = was);
   });
   // Faixa de vida "ferido" (piso de ouro e urgência por faixa).
   const hurt = runAllWith(() => {
@@ -178,79 +178,100 @@ test("sensibilidade: perturbar uma constante de política ou de regra quebra pel
   );
   assert.ok(
     changed(interest) >= 1,
-    "GAME.interestMax não afeta nenhum cenário",
+    "INCOME.interestMax não afeta nenhum cenário",
   );
   assert.ok(changed(hurt) >= 1, "POLICY.hp.hurt não afeta nenhum cenário");
   assert.equal(POLICY.hp.hurt, 60);
-  assert.equal(GAME.interestMax, 5);
+  assert.equal(INCOME.interestMax, 5);
 });
 
-test("o harness continua sendo uma transcrição fiel do POST /api/recommend de server.mjs", () => {
-  const server = fs
-      .readFileSync(path.join(root, "server.mjs"), "utf8")
-      .replace(/\r\n/g, "\n"),
-    post = server.slice(server.indexOf('url.pathname === "/api/recommend"'));
-  // Ordem das etapas. Se falhar, o servidor mudou (ou o pipeline saiu dele, M9): religue o harness ao novo ponto de entrada.
-  const steps = [
-    "validate(JSON.parse(body))",
+test("o harness continua sendo uma transcrição fiel do pipeline de POST /api/recommend (app/recommend.mjs)", () => {
+  // O pipeline saiu de server.mjs no M10b (o POST e o laço automático chamam o mesmo `run`); o servidor só o liga. Desde o
+  // M8b a base, a tática e os planos são fatos do grafo (app/recommend-facts.mjs): o servidor e o harness os leem pelos
+  // mesmos métodos de `bindRun`, na mesma ordem.
+  const read = (file) =>
+    fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
+  const server = read("app/recommend.mjs"),
+    post = server.slice(server.indexOf("async function run("));
+  assert.ok(post.length > 0, "app/recommend.mjs: `run` não encontrado");
+  const harness = read("tests/golden/harness.mjs"),
+    // A montagem de `options` está em `assembleStep` e o resto em `runStep`, nessa ordem no arquivo.
+    steps = harness.slice(harness.indexOf("export function assembleStep("));
+  // Ordem das etapas. Se falhar, o pipeline mudou: religue o harness ao novo ponto de entrada.
+  const order = (name, text, list) => {
+    let at = -1;
+    for (const step of list) {
+      const found = text.indexOf(step, at + 1);
+      assert.ok(found > at, `${name}: etapa fora de ordem ou ausente: ${step}`);
+      at = found;
+    }
+  };
+  order("app/recommend.mjs", post, [
+    "validate(input)",
     "gepBenchUnits(",
     "recommendInventory(",
-    "snapshotSignature(snapshot)",
-    "analyze(snapshot, catalog, options)",
-    "structuredClone(built)",
-    "tactics(base, catalog, options)",
-    "playbook(plan, analysis, options, metadata)",
-    "stagePlan(plan, analysis, catalog, options)",
-    "strategy(plan, analysis, options)",
+    "recommendValues(",
+    "view.target()",
+    "view.base()",
+    "view.tactical()",
+    "view.field(",
+    "view.strategy(",
+    "composeAnalysis(",
     "planState.track(",
     "augmentAdvice(",
-    "decide(analysis, options)",
     "contestAlert(",
-  ];
-  let at = -1;
-  for (const step of steps) {
-    const found = post.indexOf(step, at + 1);
+  ]);
+  order("harness", steps, [
+    "gepBenchUnits(",
+    "recommendInventory(",
+    "recommendValues(",
+    "view.target()",
+    "view.base()",
+    "view.tactical()",
+    "view.field(",
+    "view.strategy(",
+    "composeAnalysis(",
+    "run.tracker.track(",
+    "augmentAdvice(",
+    "contestAlert(",
+  ]);
+  // O emblema de aprimoramento é regra do núcleo (M9) e chega ao motor pelo fato `traits.grants` (M8b): nem o servidor nem
+  // o harness montam `options.augment*` (a catraca T2 `augment-emblem-rule` também trava a regra copiada).
+  for (const [name, text] of [
+    ["app/recommend.mjs", server],
+    ["harness", harness],
+  ]) {
     assert.ok(
-      found > at,
-      `server.mjs: etapa fora de ordem ou ausente: ${step}`,
+      !/options\.augment(?:Traits|TraitsById|Emblems|Names)\s*=/.test(text),
+      `${name}: monta options.augment* à mão (é o fato traits.grants)`,
     );
-    at = found;
+    assert.match(text, /recommendValues\(/, name);
   }
-  // augmentEmblem é regra de servidor copiada no harness: mesmo texto, ignorando aspas, espaços e comentários.
-  const flat = (text) =>
-    text
-      .replace(/\/\/[^\n]*/g, "")
-      .replace(/\s+/g, "")
-      .replace(/'/g, '"');
-  const fromServer = /function augmentEmblem\(a\) \{[\s\S]*?\n\}\n/.exec(
-    server,
-  )?.[0];
-  assert.ok(fromServer, "server.mjs: augmentEmblem não encontrado");
-  const fromHarness =
-    /export function makeAugmentEmblem[\s\S]*?return (function augmentEmblem\(a\) \{[\s\S]*?\n {2}\});/.exec(
-      fs
-        .readFileSync(path.join(root, "tests/golden/harness.mjs"), "utf8")
-        .replace(/\r\n/g, "\n"),
-    )?.[1];
-  assert.ok(fromHarness, "harness: augmentEmblem não encontrado");
-  assert.equal(flat(fromHarness.replace(/\n {2}\}$/, "\n}")), flat(fromServer));
+  const facts = read("app/recommend-facts.mjs");
+  assert.match(
+    facts,
+    /\.grants\(chosen\)/,
+    "o fato traits.grants não chama grants()",
+  );
 });
 
-test("D1 (caracterização): trocar só a loja devolve o compScore antigo do cache da base, embora o motor leia a loja", () => {
+test("D1 (corrigido no M8b): trocar só a loja refaz a base, e o resultado é o mesmo com e sem o histórico do grafo", () => {
   const scenario = scenarios.find((s) => s.id === "shop-cache-d1"),
     cached = runScenario(ctx, scenario, snapshots).map((o) => o.response),
     fresh = runScenario(ctx, scenario, snapshots, { noBaseCache: true }).map(
       (o) => o.response,
     );
-  // Com o cache (como o servidor hoje): a 3ª leitura, com outra loja, repete o ranking da 2ª.
-  assert.deepEqual(cached[2].compRanking, cached[1].compRanking);
-  // Sem o cache a loja entra no score (`scoreParts.shop`): é o valor que o cache esconde.
-  assert.notDeepEqual(fresh[2].compRanking, fresh[1].compRanking);
+  // A 3ª leitura muda só a loja: a loja é entrada declarada da base, então o ranking da 3ª difere do da 2ª (a nota
+  // `scoreParts.shop` entra), e o histórico do grafo não esconde isso (antes a chave de cache não tinha a loja).
+  assert.notDeepEqual(cached[2].compRanking, cached[1].compRanking);
+  assert.deepEqual(
+    canonical(cached[2].compRanking),
+    canonical(fresh[2].compRanking),
+  );
   assert.ok(
     fresh[2].compRanking.some((r) => (r.scoreParts?.shop ?? 0) > 0),
     "a loja deveria somar ao score de alguma comp",
   );
-  // Quando M8 corrigir D1 por construção, estas duas asserções passam a ser o contrário: registre o diff aceito.
 });
 
 /* ---------- Estratégia sobre estados sintéticos (tests/fixtures.mjs) ---------- */

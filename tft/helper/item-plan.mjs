@@ -17,7 +17,15 @@
 // não leva duas cópias do mesmo item no plano, item sem valor positivo em nenhum campeão fica de fora, itens que já
 // estão num campeão que fica e não entram no plano continuam onde estão.
 
-import { baseItem } from "./v2/js/item-source.js";
+import {
+  baseItemId,
+  isComponent,
+  isEmblemTool,
+} from "./core/catalog/items.mjs";
+import {
+  craftKindFromOrigins,
+  kindFromOrigin,
+} from "./core/items/holdings.mjs";
 import { HOLD_VALUE } from "./item-holdings.mjs";
 import { isPlanItem } from "./item-value.mjs";
 
@@ -35,8 +43,8 @@ export const planPoints = (total) =>
   PLAN_POINTS_MAX * (1 - Math.exp(-Math.max(0, total) / PLAN_SCALE));
 const EPS = 1e-9;
 const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
-const isPart = (id) =>
-  id.startsWith('DA_Component_') && !/Spatula|FryingPan/.test(id);
+// Componente que entra em receita de item (Espátula e Frigideira só formam emblemas).
+const isPart = (id) => isComponent(id) && !isEmblemTool(id);
 /** Alternativas de montagem testadas por comp (conjuntos de componentes que viram itens); passando disso, as de maior valor. */
 const MAX_CRAFT_SETS = 4;
 /** Receitas consideradas por comp: as de maior valor em algum campeão (limite de tempo da análise). */
@@ -157,12 +165,12 @@ export function buildItemPlan({
       Math.max(
         0,
         SLOTS -
-          equipped.filter((id) => !isPlanItem(baseItem(id)) && !isPart(id))
+          equipped.filter((id) => !isPlanItem(baseItemId(id)) && !isPart(id))
             .length,
       ),
     );
     for (const raw of equipped) {
-      const id = baseItem(raw),
+      const id = baseItemId(raw),
         from = { type: "unit", unitId: u.id, name: u.name ?? u.id };
       if (isPlanItem(id)) insts.push({ id, raw, radiant: id !== raw, from });
       else if (isPart(raw)) parts.push({ id: raw, from });
@@ -170,13 +178,13 @@ export function buildItemPlan({
   }
   for (const l of leaving)
     for (const raw of l.items ?? []) {
-      const id = baseItem(raw),
+      const id = baseItemId(raw),
         from = { type: "leaving", name: l.name };
       if (isPlanItem(id)) insts.push({ id, raw, radiant: id !== raw, from });
       else if (isPart(raw)) parts.push({ id: raw, from });
     }
   for (const raw of bank) {
-    const id = baseItem(raw),
+    const id = baseItemId(raw),
       from = { type: "bank", name: "banco" };
     if (isPlanItem(id)) insts.push({ id, raw, radiant: id !== raw, from });
     else if (isPart(raw)) parts.push({ id: raw, from });
@@ -190,23 +198,9 @@ export function buildItemPlan({
   const slots = new Map(units.map((u) => [u.id, []]));
   const idOf = (o) => (o.t === "i" ? insts[o.i].id : o.id);
   function kindOf(o, unitId) {
-    if (o.t === "i") {
-      const f = insts[o.i].from;
-      return f.type === "bank"
-        ? "bank"
-        : f.type === "leaving"
-          ? "move"
-          : f.unitId === unitId
-            ? "on"
-            : "moveStay";
-    }
-    return [parts[o.a], parts[o.b]].every(
-      (p) =>
-        p.from.type === "bank" ||
-        (p.from.type === "unit" && p.from.unitId === unitId),
-    )
-      ? "craft"
-      : "craftMove";
+    // A situação de cada origem (banco, peça que sai, a própria peça, outra peça) é da regra única da posse de itens.
+    if (o.t === "i") return kindFromOrigin(insts[o.i].from, unitId);
+    return craftKindFromOrigins([parts[o.a].from, parts[o.b].from], unitId);
   }
   // Valor medido (positivo) de um item num campeão, uma consulta por par.
   const measured = new Map(units.map((u) => [u.id, new Map()]));

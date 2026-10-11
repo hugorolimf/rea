@@ -30,8 +30,11 @@ const mini = (id, name, n = 0, ring = "") =>
   `<span class="mini" title="${esc(name)}">${portrait(id, name, { size: 26, ring, hidden: true })}<b class="sr">${esc(name)}</b>${n ? `<i class="st">${stars(n)}</i>` : ""}</span>`;
 const costBadge = (c) =>
   `<em class="cost" style="--c:var(--cost-${Math.min(5, Math.max(1, c ?? 1))})">${esc(c)}</em>`;
-const tile = (u, { badge = "", foot = "", tone = "" } = {}) =>
-  `<span class="tile ${tone}" title="${esc(u.name)}">${portrait(u.id, u.name, { size: 46, badge: `${costBadge(u.cost)}${badge}` })}<b class="sr">${esc(u.name)}</b>${foot}</span>`;
+const tile = (
+  u,
+  { badge = "", foot = "", tone = "", title = u.name, attrs = "" } = {},
+) =>
+  `<span class="tile ${tone}"${attrs} title="${esc(title)}">${portrait(u.id, u.name, { size: 46, badge: `${costBadge(u.cost)}${badge}` })}<b class="sr">${esc(u.name)}</b>${foot}</span>`;
 
 const SHOP_GLYPH = {
   comprar: ["is-buy", "check"],
@@ -81,6 +84,36 @@ export function nextRow(r) {
   return `${mini(r.unit.id, r.unit.name, r.unit.stars)}<span class="nx-item" data-complete="${rec.complete ? 1 : 0}">${main}</span>${op("=")}${base}<span class="nx-recipe" role="group" aria-label="Receita de ${esc(rec.item.name)}">${recipe}</span>${note ? `<small class="nx-note" data-tone="${rec.complete ? "go" : "amber"}">${note}</small>` : ""}`;
 }
 
+/**
+ * Peça da lista Comprar. Se ela está na loja agora (`r.shop`, de shop-match.js): contorno de ação, selo "NA LOJA" sobre
+ * a borda do retrato (sobreposto: não ocupa espaço, a linha não muda de altura) e, no lugar da chance, o que fazer
+ * ("comprar 1 · #3"). Só provável (loja lida da tela): selo "NA LOJA?" tracejado e a dica diz isso.
+ */
+function buyTile(r) {
+  const s = r.shop,
+    where =
+      r.how === "replace"
+        ? "entra por " + esc(r.replaces)
+        : r.how === "bank"
+          ? "guardar no banco"
+          : "vaga livre",
+    flag = s
+      ? `<b class="shop-flag" data-conf="${s.probable ? "provavel" : "confiavel"}" aria-hidden="true">${esc(s.badge)}</b>`
+      : "";
+  return tile(r.unit, {
+    tone: [r.broke ? "is-broke" : "", s ? "is-shop" : ""]
+      .filter(Boolean)
+      .join(" "),
+    // Na loja: a dica traz o aviso (e a diferença confiável x provável); a chance por loja continua nela.
+    title: s
+      ? `${r.unit.name}\n${s.title}\nChance por loja: ${pct(r.chance)}`
+      : r.unit.name,
+    attrs: s ? ` data-shop="${s.probable ? "provavel" : "confiavel"}"` : "",
+    badge: `<em class="act" title="${where}">${glyph(r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}</em>${flag}`,
+    foot: `<span class="meter" style="--p:${Math.min(1, r.chance / 0.2)}"><i></i></span><small${s ? ` class="shop-do" data-conf="${s.probable ? "provavel" : "confiavel"}"` : ""}>${s ? `<span class="sr">na loja: </span>${esc(s.mark)}` : pct(r.chance)}</small>`,
+  });
+}
+
 /** HTML de cada linha por tipo; textos longos ficam em `title`. */
 const BUILD = {
   swap: (r) =>
@@ -89,12 +122,7 @@ const BUILD = {
     `${r.items.map((i) => itemPortrait(i)).join("")}${flow("go")}${mini(r.unit.id, r.unit.name, r.unit.stars)}<i class="${r.inField ? "ok" : "wait"}" title="${r.inField ? "montável com seu banco" : "prepare a entrada em campo"}">${glyph(r.inField ? "check" : "clock")}</i>`,
   bank: (r) =>
     `${itemPortrait(r.item)}${flow()}${r.to ? mini(r.to.id, r.to.name) : `<span class="stash" title="${esc(r.reason)}">${glyph("bank")}</span>`}`,
-  buy: (r) =>
-    tile(r.unit, {
-      tone: r.broke ? "is-broke" : "",
-      badge: `<em class="act" title="${r.how === "replace" ? "entra por " + esc(r.replaces) : r.how === "bank" ? "guardar no banco" : "vaga livre"}">${glyph(r.how === "replace" ? "swap" : r.how === "bank" ? "bank" : "plus")}</em>`,
-      foot: `<span class="meter" style="--p:${Math.min(1, r.chance / 0.2)}"><i></i></span><small>${pct(r.chance)}</small>`,
-    }),
+  buy: (r) => buyTile(r),
   slot: (r) =>
     `<span class="slot-empty" title="${r.fromReserve ? "já está na reserva" : "entra ao subir de nível"}">${glyph("plus")}</span>${flow("go")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.fromReserve ? `<i class="ok" title="já está na reserva">${glyph("roll")}</i>` : ""}`,
   hold: (r) =>
@@ -123,7 +151,13 @@ const stepNode = (step) =>
     el(
       "div",
       { class: "step-body" },
-      el("h3", {}, el("span", { class: "label" }), el("b", { class: "count" })),
+      el(
+        "h3",
+        {},
+        el("span", { class: "label" }),
+        el("b", { class: "count" }),
+        el("small", { class: "note" }),
+      ),
       el("div", { class: "rows" }),
     ),
   );
@@ -133,6 +167,12 @@ function updateStep(node, step) {
   node.querySelector(".step-node").innerHTML = glyph(ICON[step.id] ?? "check");
   node.querySelector(".label").textContent = step.title;
   node.querySelector(".count").textContent = step.rows.length;
+  // Nota discreta do cabeçalho (ex.: "nenhuma peça do plano na loja agora"); só existe quando a fonte leu a loja.
+  const note = node.querySelector(".note");
+  note.hidden = !step.note;
+  note.textContent = step.note?.text ?? "";
+  note.title = step.note?.title ?? "";
+  note.dataset.state = step.note?.state ?? "";
   reconcile(node.querySelector(".rows"), step.rows, {
     key: (r, i) => r.key ?? `${step.id}:${i}`,
     create: (r) =>

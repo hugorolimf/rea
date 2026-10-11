@@ -1,7 +1,20 @@
 import { isContested } from "./economy.mjs";
 import { carouselPicks } from "./carousel.mjs";
-import { baseItemId } from "./item-tiers.mjs";
+import {
+  addCoverage,
+  baseItemId,
+  coverageOf,
+  isComponent,
+  isEmblemItem,
+  isManaItem,
+  isThiefsGloves,
+  recipeOf,
+} from "./core/catalog/items.mjs";
+import { coveredKeys } from "./core/items/moves.mjs";
+import { fillRecipe, spend, takeOne } from "./core/items/stock.mjs";
+import { championRole, isAvatar } from "./core/catalog/champions.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
+import { starCopies, starsForCopies } from "./core/pool/copies.mjs";
 /**
  * Lista de itens desejados de um campeão: a build da comp escolhida primeiro, depois a build geral publicada.
  * Mesma ordem em build(), Passar itens (itemMoves) e item do banco (stage.mjs).
@@ -9,11 +22,10 @@ import { traitBook } from "./core/catalog/traits.mjs";
 export const wishlist = (id, compBuilds, metaBuilds) => [
   ...new Set([...(compBuilds?.[id] ?? []), ...(metaBuilds?.get(id) ?? [])]),
 ];
-/** "campeão:item" de cada item já montado que a comp passa de um campeão para outro (Passar itens). */
-const coveredByMoves = (moves) =>
-  new Set(
-    moves.flatMap((m) => (m.moves ?? []).map((x) => `${x.to.id}:${x.item.id}`)),
-  );
+/** "campeão:item" de cada item já montado que a comp passa de um campeão para outro (regra: core/items/moves.mjs). */
+const coveredByMoves = coveredKeys;
+/** O item dá este efeito de cobertura (regra: core/catalog/items.mjs). */
+const covers = (id, tag) => coverageOf(id).includes(tag);
 export function tactics(analysis, catalog, options = {}) {
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c]));
   const items = new Map(catalog.items.map((i) => [i.apiName, i]));
@@ -38,14 +50,7 @@ export function tactics(analysis, catalog, options = {}) {
     )
       reserve.set(u.championName, u);
   }
-  const role = (c) => {
-    const known = options.metaRoles?.get(c.apiName);
-    if (known) return known;
-    const d = (c.ability?.desc ?? "").toLowerCase();
-    if (c.stats.range <= 2 && /shield|heal|health|durability/.test(d))
-      return "tank";
-    return /physical damage/.test(d) && !/magic damage/.test(d) ? "ad" : "ap";
-  };
+  const role = (c) => championRole(c, options.metaRoles);
   const chosen = analysis.opponents.find(
     (p) => String(p.id) === options.viewedPlayerId,
   );
@@ -146,27 +151,24 @@ export function tactics(analysis, catalog, options = {}) {
     ];
     // Só item montável (receita de 2 componentes) ou já no banco: artefato vem da bigorna e componente não é item final.
     const buildable = (id) =>
-      (items.get(id)?.composition?.length ?? 0) === 2 ||
+      recipeOf(items.get(id)) !== null ||
       (options.inventory ?? []).includes(id);
     if (meta?.length) {
       // Ordem da meta manda; o lobby observado só desempata itens que já estão na lista.
       const strong = units.some((u) => u.stars >= 2 && u.cost >= 3);
       let rank = 0;
       for (const id of meta) {
-        if (/Emblem|ThiefsGloves/.test(id) || !buildable(id)) continue;
+        if (isEmblemItem(id) || isThiefsGloves(id) || !buildable(id)) continue;
         rank++;
         let bonus = 0,
           why = "";
-        if (/LastWhisper/.test(id) && armor) {
+        if (covers(id, "shredArmor") && armor) {
           bonus = 10;
           why = " Sobe pela frontline com armadura observada.";
-        } else if (/VoidStaff/.test(id) && resists) {
+        } else if (covers(id, "shredMagic") && resists) {
           bonus = 10;
           why = " Sobe pela resistência mágica observada.";
-        } else if (
-          /SunfireCape|Morellonomicon|RedBuff/.test(id) &&
-          heals >= 2
-        ) {
+        } else if (covers(id, "wounds") && heals >= 2) {
           bonus = 10;
           why = " Sobe pela cura observada em rivais.";
         } else if (/DragonsClaw/.test(id) && threat.physicalShare < 0.45) {
@@ -341,14 +343,7 @@ export function tactics(analysis, catalog, options = {}) {
       );
     }
     for (const s of scores) {
-      const utility =
-        s.id === "DA_VoidStaff"
-          ? "shredMagic"
-          : s.id === "DA_LastWhisper"
-            ? "shredArmor"
-            : /SunfireCape|Morellonomicon|RedBuff/.test(s.id)
-              ? "wounds"
-              : null;
+      const utility = coverageOf(s.id)[0] ?? null;
       // Item que a comp designa para esta unidade não é duplicata: é dela.
       if (
         utility &&
@@ -362,26 +357,18 @@ export function tactics(analysis, catalog, options = {}) {
       }
     }
     // Componente solto já equipado neste campeão vale como metade da receita: completar não gasta slot novo.
-    const heldParts = equipped.filter((i) => i.startsWith("DA_Component_"));
+    const heldParts = equipped.filter(isComponent);
     for (const s of scores) {
-      const stock = [...(options.inventory ?? [])],
+      const stock = options.inventory ?? [],
         required = stock.includes(s.id)
           ? [s.id]
-          : s.components.map((c) => c.id),
-        missing = [],
-        held = [...heldParts];
-      s.usesHeld = null;
-      for (const id of required) {
-        const h = required.length === 2 && !s.usesHeld ? held.indexOf(id) : -1;
-        if (h >= 0) {
-          held.splice(h, 1);
-          s.usesHeld = id;
-          continue;
-        }
-        const at = stock.indexOf(id);
-        if (at < 0) missing.push(id);
-        else stock.splice(at, 1);
-      }
+          : s.components.map((c) => c.id);
+      // Banco (cada cópia uma vez) e, numa receita de 2, uma peça solta que a própria peça já leva (core/items/stock.mjs).
+      const { missing, usesHeld } = fillRecipe(required, {
+        stock,
+        held: heldParts,
+      });
+      s.usesHeld = usesHeld;
       if (s.usesHeld) s.score += 30;
       s.missing = missing.map(item);
       s.craftable = required.length > 0 && missing.length === 0;
@@ -409,18 +396,12 @@ export function tactics(analysis, catalog, options = {}) {
     const chosenItems = [];
     for (const s of scores) {
       if (chosenItems.length === 3) break;
-      if (
-        chosenItems.some(
-          (i) =>
-            /BlueBuff|SpearOfShojin/.test(i.id) &&
-            /BlueBuff|SpearOfShojin/.test(s.id),
-        )
-      )
+      if (chosenItems.some((i) => isManaItem(i.id) && isManaItem(s.id)))
         continue;
       chosenItems.push(s);
     }
     const occupied = equipped.length,
-      locked = equipped.some((i) => /ThiefsGloves/.test(i));
+      locked = equipped.some(isThiefsGloves);
     const slotsFree = locked ? 0 : Math.max(0, 3 - occupied);
     const additions = [],
       heldLeft = [...heldParts];
@@ -428,24 +409,21 @@ export function tactics(analysis, catalog, options = {}) {
     for (const s of scores) {
       if (freeUsed >= slotsFree && !heldLeft.length) break;
       if (equipped.some((i) => clean(i) === s.id)) continue;
-      const h = s.usesHeld ? heldLeft.indexOf(s.usesHeld) : -1;
-      if (h >= 0) heldLeft.splice(h, 1);
-      else if (s.usesHeld || freeUsed >= slotsFree || locked) continue;
-      else freeUsed++;
+      // Completar a peça solta que a unidade já leva não gasta slot; começar um item novo gasta.
+      const completesHeld =
+        !!s.usesHeld && takeOne(heldLeft, s.usesHeld) !== null;
+      if (!completesHeld) {
+        if (s.usesHeld || freeUsed >= slotsFree || locked) continue;
+        freeUsed++;
+      }
       if (
-        /BlueBuff|SpearOfShojin/.test(s.id) &&
-        [...equipped, ...additions.map((i) => i.id)].some((i) =>
-          /BlueBuff|SpearOfShojin/.test(i),
-        )
+        isManaItem(s.id) &&
+        [...equipped, ...additions.map((i) => i.id)].some(isManaItem)
       )
         continue;
       additions.push(s);
     }
-    for (const i of [...equipped, ...additions.map((i) => i.id)]) {
-      if (/VoidStaff/.test(i)) coverage.add("shredMagic");
-      if (/LastWhisper/.test(i)) coverage.add("shredArmor");
-      if (/SunfireCape|Morellonomicon|RedBuff/.test(i)) coverage.add("wounds");
-    }
+    addCoverage(coverage, [...equipped, ...additions.map((i) => i.id)]);
     return {
       championId: c.apiName,
       name: c.name,
@@ -471,7 +449,8 @@ export function tactics(analysis, catalog, options = {}) {
         reroll =
           u.name === carry &&
           u.cost <= 2 &&
-          (pool?.remainingUpper ?? 0) >= Math.max(0, 9 - (pool?.own ?? 0)) &&
+          (pool?.remainingUpper ?? 0) >=
+            Math.max(0, starCopies(3) - (pool?.own ?? 0)) &&
           !isContested(pool);
       const targetStars = Math.max(u.owned ? u.stars : 1, reroll ? 3 : 2);
       return {
@@ -567,7 +546,7 @@ export function tactics(analysis, catalog, options = {}) {
         outPower = power(outCost, outStars, out?.itemNames?.length ?? 0);
       const enterCost = byId.get(t.enter.id)?.cost ?? 1,
         copies = analysis.pool.find((p) => p.name === t.enter.name)?.own ?? 0,
-        haveStars = copies >= 9 ? 3 : copies >= 3 ? 2 : copies >= 1 ? 1 : 0;
+        haveStars = starsForCopies(copies);
       // Os itens de quem sai passam para quem entra, então a comparação é só de corpo: custo e estrelas.
       const body = power(outCost, outStars, 0);
       let required = 1;
@@ -586,7 +565,7 @@ export function tactics(analysis, catalog, options = {}) {
       else if (required > 3)
         t.reason = `Não troque: ${t.enter.name} (custo ${enterCost}) não alcança ${t.exit.name} ${outStars}★ (custo ${outCost}) nem em 3★. Mantenha ${t.exit.name}.`;
       else
-        t.reason = `Segure ${t.exit.name} ${outStars}★ em campo. Só troque quando ${t.enter.name} estiver ${required}★ (você tem ${copies} de ${3 ** (required - 1)} cópias).`;
+        t.reason = `Segure ${t.exit.name} ${outStars}★ em campo. Só troque quando ${t.enter.name} estiver ${required}★ (você tem ${copies} de ${starCopies(required)} cópias).`;
     }
     const { counts, byEmblem } = book.tally(
       planned.map((u) => ({
@@ -606,13 +585,7 @@ export function tactics(analysis, catalog, options = {}) {
       };
     });
     const coverage = new Set();
-    for (const u of planned)
-      for (const i of u.items ?? []) {
-        if (/VoidStaff/.test(i)) coverage.add("shredMagic");
-        if (/LastWhisper/.test(i)) coverage.add("shredArmor");
-        if (/SunfireCape|Morellonomicon|RedBuff/.test(i))
-          coverage.add("wounds");
-      }
+    for (const u of planned) addCoverage(coverage, u.items);
     // Carry primeiro; depois quem tem build na comp (fica com os efeitos dela), depois tanques.
     const itemOrder = [...planned].sort(
       (a, b) =>
@@ -646,7 +619,7 @@ export function tactics(analysis, catalog, options = {}) {
           .filter(
             (c) =>
               c.traits.includes(t.name) &&
-              !c.traits.includes("Avatar") &&
+              !isAvatar(c) &&
               !planned.some((p) => p.id === c.apiName),
           )
           .sort((a, b) => a.cost - b.cost)
@@ -671,13 +644,7 @@ export function tactics(analysis, catalog, options = {}) {
             holders.find((b) => b.role === "tank") ??
             holders[0] ??
             null;
-          const stock = [...stockAll],
-            missing = [];
-          for (const id of e.parts) {
-            const at = stock.indexOf(id);
-            if (at < 0) missing.push(id);
-            else stock.splice(at, 1);
-          }
+          const { missing } = spend(stockAll, e.parts);
           emblem = {
             ...item(e.id),
             holder: holder?.name ?? null,
@@ -716,10 +683,8 @@ export function tactics(analysis, catalog, options = {}) {
     for (const source of analysis.self.units) {
       const held = (source.itemNames ?? [])
         .map(clean)
-        .filter((id) => !/Emblem|ThiefsGloves/.test(id));
-      const gloves = (source.itemNames ?? []).find((id) =>
-        /ThiefsGloves/.test(id),
-      );
+        .filter((id) => !isEmblemItem(id) && !isThiefsGloves(id));
+      const gloves = (source.itemNames ?? []).find(isThiefsGloves);
       if (gloves) {
         // a luva vai inteira, e só para quem está sem nenhum item
         if (!planned.some((p) => p.id === source.championName)) {
@@ -896,12 +861,7 @@ export function tactics(analysis, catalog, options = {}) {
     : null;
   // Free items are caller-confirmed; equipped items remain attached to their observed owner.
   const coverage = new Set();
-  for (const u of analysis.self.units)
-    for (const id of u.itemNames ?? []) {
-      if (/VoidStaff/.test(id)) coverage.add("shredMagic");
-      if (/LastWhisper/.test(id)) coverage.add("shredArmor");
-      if (/SunfireCape|Morellonomicon|RedBuff/.test(id)) coverage.add("wounds");
-    }
+  for (const u of analysis.self.units) addCoverage(coverage, u.itemNames);
   // Próximo item / Montar agora seguem a build da comp alvo (a mesma dos planos); quem não está nela usa a geral.
   // O preview ainda não tem `meta` (o servidor põe depois): as builds vêm da comp fixada.
   const target = analysis.preview ?? analysis.recommendations[0] ?? null,
@@ -945,18 +905,11 @@ export function tactics(analysis, catalog, options = {}) {
     for (const candidate of b.additions) {
       if (covered.has(`${b.championId}:${candidate.id}`)) continue;
       const parts = candidate.components.map((i) => i.id);
-      if (candidate.usesHeld)
-        parts.splice(parts.indexOf(candidate.usesHeld), 1);
+      if (candidate.usesHeld) takeOne(parts, candidate.usesHeld);
       const required = inventory.includes(candidate.id)
         ? [candidate.id]
         : parts;
-      const check = [...inventory],
-        missing = [];
-      for (const id of required) {
-        const at = check.indexOf(id);
-        if (at >= 0) check.splice(at, 1);
-        else missing.push(id);
-      }
+      const { missing } = spend(inventory, required);
       const inField = ownedIds.has(b.championId),
         inGoal = targetIds.has(b.championId);
       choices.push({
@@ -989,18 +942,10 @@ export function tactics(analysis, catalog, options = {}) {
     // Completar um componente já equipado não ocupa slot novo.
     const needsSlot = !c.item.usesHeld;
     if (!c.ready || (needsSlot && !slots.get(c.championId))) continue;
-    const check = [...remaining];
-    let possible = true;
-    for (const id of c.required) {
-      const at = check.indexOf(id);
-      if (at < 0) {
-        possible = false;
-        break;
-      }
-      check.splice(at, 1);
-    }
-    if (!possible) continue;
-    remaining.splice(0, remaining.length, ...check);
+    // Cada cópia do banco serve a um item só: o que já foi dado a um item anterior não sobra para este.
+    const spent = spend(remaining, c.required);
+    if (spent.missing.length) continue;
+    remaining.splice(0, remaining.length, ...spent.left);
     if (needsSlot) slots.set(c.championId, slots.get(c.championId) - 1);
     ready.push(c);
   }

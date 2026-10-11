@@ -1,3 +1,8 @@
+import {
+  REFRESH_WINDOW_MS,
+  analysisKey as coreAnalysisKey,
+  decisionPayload,
+} from "../../core/state/analysis-key.mjs";
 import { shareEvents } from "./sse-share.js";
 
 /** Camada de rede da v2: usa os mesmos endpoints da v1, sem alterar o contrato. */
@@ -19,6 +24,8 @@ export async function loadCatalog() {
     items: new Map(d.items.map((i) => [i.id, i])),
     traits: new Map(d.traits.map((t) => [t.name, t.breakpoints])),
     traitIcons: new Map(d.traits.map((t) => [t.name, t.icon])),
+    // Wisps (fogos-fátuos) do Set 18: a loja os mostra com marca própria e nunca como campeões (core/catalog/wisps.mjs).
+    wisps: d.wisps ?? [],
     // Item de emblema → sinergia que ele dá a quem o equipa.
     emblems: new Map(
       d.items.filter((i) => i.trait).map((i) => [i.id, i.trait]),
@@ -35,41 +42,54 @@ export const loadHistory = async () =>
   (await getJSON("/api/history")).matches ?? [];
 
 /**
- * Corpo do POST /api/recommend, derivado do estado lido (nível/ouro/itens vêm da tela quando há).
- * `goal` é a comp fixada ({id, swaps}); o servidor resolve unidades, carry e builds e aplica as trocas.
+ * Decisões do usuário (comp fixada com trocas, aprimoramentos marcados, trocas no automático) no formato do corpo do POST
+ * e da chave de análise: a regra mora em core/state/analysis-key.mjs, a mesma que o servidor usa para conduzir a análise
+ * sozinho. `augmentsKnown` (a tela tem registro de aprimoramentos desta partida) entra só quando informado.
+ */
+export const decisionsOf = (
+  state,
+  goal = null,
+  augments = [],
+  compSwaps = {},
+  augmentsKnown = undefined,
+) =>
+  decisionPayload(state, {
+    augments: augments.map((a) => a.id),
+    goalCompId: goal?.id ?? "",
+    goalSwaps: goal?.swaps ?? [],
+    compSwaps: goal ? {} : compSwaps,
+    augmentsKnown,
+  });
+
+/**
+ * Corpo do POST /api/recommend: só decisões do usuário (comp fixada, trocas, aprimoramentos escolhidos). Ouro, nível,
+ * itens, loja, XP e estágio o servidor lê do próprio estado (core/state/inputs.mjs); mandá-los daqui reintroduziria a
+ * defasagem entre o que o cliente viu e o que o servidor lê no mesmo POST. `goal` é a comp fixada ({id, swaps}); o
+ * servidor resolve unidades, carry e builds e aplica as trocas.
+ * `replay` (partida revista): a leitura de agora não vale para ela, então os campos antigos do cliente continuam
+ * indo (nível estimado, ouro desconhecido, sem banco de itens).
  */
 export function recommendPayload(
   state,
   goal = null,
   augments = [],
   compSwaps = {},
+  { replay = false, legacyServer = false } = {},
 ) {
-  const screen = state.screen ?? {};
+  const screen = state.screen ?? {},
+    decisions = decisionsOf(state, goal, augments, compSwaps);
+  // `legacyServer`: um servidor iniciado antes do M7 ainda exige `level`/`gold`/`inventory` no POST (sem eles responde
+  // "Nível deve ser de 1 a 11." / "Ouro inválido."). O servidor novo ignora esses campos ao vivo e usa o próprio estado,
+  // então mandá-los é inofensivo. Remover quando todo servidor em uso for posterior ao M7.
+  if (!replay && !legacyServer) return decisions;
   return {
-    augments: augments.map((a) => a.id),
-    playerId: state.localPlayerId,
-    viewedPlayerId: "",
+    ...decisions,
     level: screen.level ?? state.estimatedLevel ?? 7,
     gold: screen.gold ?? null,
-    // O banco de campeões não é informado nem lido: não há fonte (ver FONTES-DE-DADOS.md).
     bench: [],
     inventory: Array.isArray(screen.items) ? screen.items : [],
-    // screen.level é o lido ou o piso derivado (servidor, level.mjs). Só sem ele entra o tabuleiro, marcado estimado:
-    // a análise não trata estimativa como leitura (sem rolagem/odds por nível).
     levelEstimated: screen.level == null,
-    levelSource:
-      screen.level == null
-        ? "estimado"
-        : screen.sources?.level === "derived"
-          ? "derivado"
-          : "tela",
-    targetLevel: "auto",
-    previewIds: [],
-    side: "right",
-    goalCarryId: "",
-    goalCompId: goal?.id ?? "",
-    goalSwaps: goal?.swaps ?? [],
-    compSwaps: goal ? {} : compSwaps,
+    levelSource: screen.level == null ? "estimado" : "tela",
   };
 }
 // Análise nova busca evidência na MetaTFT em até 3 passes: espera mais que as leituras simples para não abortar
@@ -85,30 +105,14 @@ export const loadRecommendation = (payload) =>
     120000,
   );
 
-export const REFRESH_WINDOW_MS = 120000;
-/** Chave que muda só quando uma nova análise é necessária (mesma regra de cache da v1). */
+export { REFRESH_WINDOW_MS };
+/**
+ * Chave que muda só quando uma nova análise é necessária (mesma regra de cache da v1). A regra é a de
+ * core/state/analysis-key.mjs (o servidor calcula a mesma para conduzir a análise sozinho); aqui só entra o relógio.
+ * `payload` = as decisões (`decisionsOf`), não o corpo do POST com os campos antigos do servidor legado.
+ */
 export const analysisKey = (state, payload) =>
-  JSON.stringify({
-    payload,
-    // Conteúdo do snapshot (o servidor devolve `signature`); o horário do arquivo muda a cada regravação, mesmo sem
-    // nada de novo no jogo. Servidor antigo sem assinatura: cai para o horário.
-    source: state.signature ?? state.modifiedAt,
-    phase: state.phase,
-    actionable: state.actionable,
-    sameGame: state.sameGame,
-    match: state.match?.id,
-    screen: {
-      xp: state.screen?.xp,
-      stage: state.screen?.stage,
-      shop: state.screen?.shop,
-      augments: state.screen?.augments,
-      // Removedores mudam o método de passar itens (servidor lê da própria tela).
-      removers: state.screen?.removers,
-    },
-    // Só o decaimento do banco estimado dos rivais muda com o tempo (em meios, ver server.mjs): 2 min bastam. Antes,
-    // 30 s refaziam a análise inteira mesmo com o jogo parado.
-    window: Math.floor(Date.now() / REFRESH_WINDOW_MS),
-  });
+  coreAnalysisKey(state, payload, Date.now());
 
 /**
  * Assina os avisos do servidor (SSE): novos tabuleiros e início/fim de partida (`type: "match"`).

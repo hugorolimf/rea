@@ -1,4 +1,5 @@
-import { baseItem } from "./item-source.js";
+import { baseItemId } from "../../core/catalog/items.mjs";
+import { takeOne } from "../../core/items/stock.mjs";
 
 /**
  * Receita do "Próximo item" de uma peça (Ao vivo, trilha de itens): o item principal e as duas peças da receita, cada
@@ -28,7 +29,7 @@ export function nextItemRecipe(
   if (!item?.id) return null;
   const name = (id) =>
     catalogItems.get(id)?.name ?? String(id).replace(/^DA_(Component_)?/, "");
-  const baseId = baseItem(item.id),
+  const baseId = baseItemId(item.id),
     radiant = baseId !== item.id,
     recipeOf = radiant ? baseId : item.id;
   const sent = ids(item.components),
@@ -59,13 +60,12 @@ export function nextItemRecipe(
   const parts = recipe.map((id) => {
     const label = name(id);
     if (informed) {
-      const byId = missingIds.indexOf(id),
-        byName = byId < 0 ? missingNames.indexOf(label) : -1;
-      if (byId >= 0 || byName >= 0) {
-        if (byId >= 0) missingIds.splice(byId, 1);
-        else missingNames.splice(byName, 1);
+      // Cada faltante vale uma peça da receita: por id e, sem id, por nome (core/items/stock.mjs gasta uma vez).
+      if (
+        takeOne(missingIds, id) !== null ||
+        takeOne(missingNames, label) !== null
+      )
         return { id, name: label, state: "missing" };
-      }
       if (held === id && !heldUsed) {
         heldUsed = true;
         return { id, name: label, state: "equipped" };
@@ -74,9 +74,8 @@ export function nextItemRecipe(
     }
     // Servidor antigo ou sem informação: o banco lido da tela decide; sem banco, o estado é desconhecido.
     if (!stock) return { id, name: label, state: "unknown" };
-    const at = stock.indexOf(id);
-    if (at < 0) return { id, name: label, state: "missing" };
-    stock.splice(at, 1);
+    if (takeOne(stock, id) === null)
+      return { id, name: label, state: "missing" };
     return { id, name: label, state: "bank" };
   });
   return {

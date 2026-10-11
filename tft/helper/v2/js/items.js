@@ -2,6 +2,7 @@
  * Tela "Itens": atributos, filtros, faixas de tier, grade de receitas e matriz de atributos.
  * Funções puras sobre o que /api/items devolve; o DOM fica em ui/items.js.
  */
+import { componentId, isComponent } from "../../core/catalog/items.mjs";
 
 /** Atributos da barra de status, na ordem em que aparecem. `hue` vira a cor (OKLCH); `col` é o rótulo curto da matriz. */
 export const ATTRS = [
@@ -98,7 +99,7 @@ export const COMPONENTS = [
   "SparringGloves",
   "Spatula",
   "FryingPan",
-].map((c) => `DA_Component_${c}`);
+].map(componentId);
 
 /** "+35%", "+15", "+1" — valor do atributo como aparece no jogo. */
 export function formatStat(key, value) {
@@ -224,7 +225,7 @@ export function unknownNote(reading) {
   if (!reading || !(reading.unknown > 0)) return null;
   const n = reading.unknown,
     known = reading.bank.filter((id) => typeof id === "string"),
-    components = known.filter((id) => id.startsWith('DA_Component_')).length,
+    components = known.filter(isComponent).length,
     head = `${n} ${n === 1 ? "espaço ocupado" : "espaços ocupados"} sem ícone reconhecido: fora da análise (nada é adivinhado).`;
   return known.length >= 3
     ? `${head} Estimativa: ${Math.round((components / known.length) * 100)}% dos reconhecidos são componentes.`

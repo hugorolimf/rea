@@ -1,0 +1,222 @@
+@layer components {
+  /* Botão da célula "Meta" do HUD (era um link para a aba Comps): abre o modal da comp sugerida. */
+  button.goal-link {
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--blue);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  /* Com o modal aberto a página de trás não rola; a calha reservada evita o salto de largura. */
+  body:has(dialog.comp-modal[open]) .stage {
+    overflow: hidden;
+  }
+
+  /* Tamanho fixo: trocar de sugestão ou abrir "Builds e 3★" só rola o corpo, nada pula. */
+  .comp-modal {
+    width: min(760px, calc(100vw - 32px));
+    max-width: none;
+    height: min(86vh, 820px);
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: 0 24px 80px oklch(0 0 0 / 0.55);
+    &::backdrop {
+      background: color-mix(in oklab, var(--bg), transparent 28%);
+      backdrop-filter: blur(3px);
+    }
+    &:focus-visible {
+      outline: none;
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .comp-modal[open] {
+      animation: cm-in 0.18s ease-out;
+    }
+    @keyframes cm-in {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+    }
+  }
+
+  .cm-box {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    height: 100%;
+  }
+  .cm-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px 10px;
+    & h2 {
+      flex: 1;
+      min-width: 0;
+      font-size: 15px;
+      font-weight: 700;
+      &:focus-visible {
+        outline: none;
+      }
+    }
+  }
+  .cm-pager {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cm-pos {
+    min-width: 5.5ch;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .cm-step,
+  .cm-close {
+    padding: 6px 8px;
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  /* Sugestões: uma pastilha por comp, com o carry em retrato e o score. */
+  .cm-tabs {
+    display: flex;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 18px 10px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .cm-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px 4px 5px;
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    &:hover {
+      border-color: var(--muted);
+    }
+    &[aria-current="true"] {
+      border-color: var(--go);
+      background: color-mix(in oklab, var(--go), var(--surface) 88%);
+      color: var(--text);
+    }
+    &[data-chosen] {
+      border-color: color-mix(in oklab, var(--amber), transparent 40%);
+      & .i {
+        width: 13px;
+        height: 13px;
+        color: var(--amber);
+      }
+    }
+  }
+  .cm-tab-score {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cm-body {
+    min-height: 0;
+    padding: 14px 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  .cm-card > .comp {
+    background: transparent;
+    border-color: var(--line-soft);
+  }
+  .comp-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .comp-trait {
+    font-size: 11px;
+  }
+
+  .cm-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 12px 18px 14px;
+    border-top: 1px solid var(--line-soft);
+    background: color-mix(in oklab, var(--surface), var(--bg) 40%);
+  }
+  .cm-state {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 2.9em;
+    color: var(--muted);
+    font-size: 12px;
+    & b {
+      color: var(--text);
+    }
+    & .i {
+      margin-top: 2px;
+      color: var(--go);
+    }
+  }
+  .cm-all {
+    color: var(--blue);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+  .cm-act {
+    min-width: 11.5em;
+    justify-content: center;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+  .cm-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 560px) {
+    .comp-modal {
+      width: 100vw;
+      height: 100dvh;
+      border-radius: 0;
+    }
+    .cm-foot {
+      grid-template-columns: 1fr 1fr;
+    }
+    .cm-state {
+      grid-column: 1 / -1;
+    }
+  }
+}

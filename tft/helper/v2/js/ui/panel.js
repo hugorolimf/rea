@@ -116,7 +116,9 @@ export function mountPanel(root) {
   const oddsHead = head("Loja", "eye");
   oddsHead.verdict.hidden = true; // a loja não tem veredito
   const oddsBar = el("div", { class: "odds-bar" }),
-    odds = section("odds", oddsHead.node, oddsBar);
+    // Wisps (fogos-fátuos) da loja: marca com imagem, nome no tooltip e a recomendação de compra (v2/js/wisps.js).
+    wispBox = el("div", { class: "wisp-hits" }),
+    odds = section("odds", oddsHead.node, oddsBar, wispBox);
   /* Por quê */
   const whyBody = el("div", { class: "why-body" }),
     why = el(
@@ -133,7 +135,7 @@ export function mountPanel(root) {
   const tgNode = () => el("div", { class: "tg" });
 
   return {
-    update(p) {
+    update(p, wisps = []) {
       root.dataset.empty = p ? "0" : "1";
       if (!p) return;
       /* Nível */
@@ -250,7 +252,7 @@ export function mountPanel(root) {
           ? `<span class="lbl">Na loja</span>${r.shop
               .map(
                 (s) =>
-                  `<span class="hit" data-action="${esc(s.action ?? "")}" title="${esc(s.name)} no slot ${s.slots.join(", ")}${s.closes ? ` · ${esc(s.closes)}` : ""} · ${s.buy ? `compre ${s.buy} (${s.gold}g)` : esc(s.action ?? "não compre")}">${nameChip("champion", s.id, s.name, { size: 18 })}${s.buy ? ` ×${s.buy} · ${s.gold}g` : ` · ${esc(s.action ?? "–")}`}</span>`,
+                  `<span class="hit" data-action="${esc(s.action ?? "")}"${s.confidence ? ` data-conf="${s.probable ? "provavel" : "confiavel"}"` : ""} title="${esc(s.name)} no slot ${s.slots.join(", ")}${s.closes ? ` · ${esc(s.closes)}` : ""} · ${s.buy ? `compre ${s.buy} (${s.gold}g)` : esc(s.action ?? "não compre")}${s.confidenceTitle ? `\n${esc(s.confidenceTitle)}` : ""}">${nameChip("champion", s.id, s.name, { size: 18 })}${s.buy ? ` ×${s.buy} · ${s.gold}g` : ` · ${esc(s.action ?? "–")}`}${s.probable ? '<i class="conf" aria-hidden="true">?</i>' : ""}</span>`,
               )
               .join("")}`
           : "";
@@ -294,7 +296,7 @@ export function mountPanel(root) {
 
       /* Loja: odds do nível em uma barra só, com o custo do carry aceso */
       const o = p.odds ?? [];
-      odds.hidden = !o.length;
+      odds.hidden = !o.length && !wisps.length;
       oddsHead.title.innerHTML = `${glyph("eye")}Loja${p.level?.level ? ` · nível ${p.level.level}` : ""}`;
       reconcile(
         oddsBar,
@@ -315,6 +317,15 @@ export function mountPanel(root) {
           },
         },
       );
+
+      /* Wisps na loja: o Wisp não é campeão (não entra na rolagem); aqui só a marca e o que fazer com ele. */
+      wispBox.hidden = !wisps.length;
+      wispBox.innerHTML = wisps
+        .map(
+          (w) =>
+            `<div class="wisp" data-verdict="${esc(w.veredito)}" data-tipo="${esc(w.tipo ?? "")}" title="${esc(w.title)}"><span class="wisp-mark" role="img" aria-label="Wisp ${esc(w.name)}">${w.image ? `<img src="${esc(w.image)}" alt="" width="20" height="20" loading="lazy" decoding="async">` : ""}</span><b class="v">${esc(w.vereditoTexto)}</b><span class="why">${esc(w.motivo)}</span></div>`,
+        )
+        .join("");
 
       /* Por quê */
       whyBody.innerHTML = `${p.steps.length ? `<ol>${p.steps.map((t) => `<li>${richText(t)}</li>`).join("")}</ol>` : ""}${p.reasons.length ? `<ul>${p.reasons.map((t) => `<li>${richText(t)}</li>`).join("")}</ul>` : ""}`;

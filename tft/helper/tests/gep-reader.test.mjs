@@ -9,20 +9,32 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  augmentResolver,
+  chosenAugmentIds,
   emptyGepState,
   applyGepEvent,
   evaluateGep,
   gepBenchUnits,
+  gepOpenMode,
   gepReader,
   matchIdDigits,
   mergeGep,
+  parseAugmentOffer,
+  parseAugmentPicked,
+  parseAugmentPickedList,
   parseBench,
   parseGold,
   parseItemBench,
   parseLocalIdentity,
+  parseRecordGames,
   parseShop,
   parseXp,
+  shopWisps,
+  wispCatalog,
+  wispLookup,
 } from "../gep-reader.mjs";
+import { analysisInputs } from "../core/state/inputs.mjs";
+import { buildGameState } from "../core/state/game-state.mjs";
 import { mergeSources } from "../game-log.mjs";
 import { analyze } from "../engine.mjs";
 import { recommendInventory } from "../item-holdings.mjs";
@@ -295,7 +307,17 @@ test("partida gravada: ouro, nível, XP, estágio, loja, reserva e banco de iten
   assert.ok(f.gold.ageMs >= 5000 && f.gold.ageMs <= 5000 + LAST_DT * 1000);
   // Nada de rivais nem de nomes: o resultado público não traz as linhas dos outros jogadores.
   const dump = JSON.stringify(s);
-  assert.doesNotMatch(dump, /Rival[A-G]|opponent|battle_stats|augment/i);
+  assert.doesNotMatch(dump, /Rival[A-G]|opponent|battle_stats/i);
+  // Sem eventos de aprimoramentos na partida gravada: nada de oferta nem de escolhidos, e nenhum Wisp na loja.
+  assert.equal(f.augmentOffer, null);
+  assert.equal(f.augmentPicked, null);
+  assert.deepEqual(s.coverage, {
+    augmentOffer: null,
+    augmentPicked: null,
+    augmentUnknown: 0,
+    wisps: 0,
+  });
+  assert.equal(s.recordGames, null, "banco do fixture sem tabela settings");
   assert.doesNotMatch(dump, /Local|LOC/);
 });
 
@@ -456,7 +478,7 @@ test("sem roster ainda: o item_bench espera a identidade e é resolvido quando e
   assert.equal(state.pendingItemBench, null);
 });
 
-test("rivais e aprimoramentos não são lidos: linhas dessas chaves não mudam nada", () => {
+test("rivais não são lidos (e aprimoramentos só nos pares feature.key certos): linhas dessas chaves não mudam nada", () => {
   const file = newFile();
   makeDb(file, { upToDt: 47 });
   const poison = (key, feature, data, dt) => ({
@@ -576,6 +598,11 @@ test("somente leitura: o banco não muda e nenhum arquivo novo é criado na past
   const file = newFile();
   makeDb(file);
   assert.equal(fs.existsSync(`${file}-wal`), false, "fechou limpo: sem -wal");
+  assert.equal(
+    gepOpenMode(file),
+    "imutavel",
+    "ninguém com o banco aberto: immutable=1",
+  );
   const before = sha(file),
     mtime = fs.statSync(file).mtimeMs,
     files = fs.readdirSync(tmp).sort();
@@ -600,6 +627,11 @@ test("leitura ao vivo: enxerga linhas ainda no WAL de outro processo que mantém
   assert.ok(
     fs.existsSync(`${file}-wal`) && fs.statSync(`${file}-wal`).size > 0,
     "linhas só no WAL",
+  );
+  assert.equal(
+    gepOpenMode(file),
+    "compartilhado",
+    "com -wal ao lado a leitura é normal (enxerga o WAL), nunca immutable=1",
   );
   try {
     const s = reader(file, { t: at(49) }).status(ctx);
@@ -769,8 +801,8 @@ test("reserva do GEP no formato do motor: só com GEP ativo, só do jogador, est
     ),
     [],
   );
-  // Sem GEP a reserva volta a ser manual (nunca o que a interface mandar).
-  assert.equal(mergeGep(screenSeen(), null).sources.bench, "manual");
+  // Sem GEP a reserva fica sem fonte (a entrada manual foi removida; nunca o que a interface mandar).
+  assert.equal(mergeGep(screenSeen(), null).sources.bench, null);
 });
 
 test("evaluateGep: relógio adiantado em relação ao banco não gera idade negativa", () => {
@@ -848,6 +880,686 @@ test("motor: a reserva do GEP chega ao motor com origem gep; sem GEP a reserva �
     ),
     ["DA_Component_BFSword"],
   );
+});
+
+// --- gravação desligada (configuração record_games do TFTAcademy) --------------------------------------------------
+
+/** Cria/atualiza linhas na tabela `settings` do banco de teste (esquema do TFTAcademy). */
+function withSettings(file, rows) {
+  const db = new DatabaseSync(file);
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY NOT NULL, value text, updated_at integer)",
+  );
+  const put = db.prepare(
+    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?,?,?)",
+  );
+  for (const [k, v] of Object.entries(rows)) put.run(k, v, BASE);
+  db.close();
+}
+
+test("parsing: record_games como texto, JSON ou 0/1; ilegível é desconhecido", () => {
+  assert.equal(parseRecordGames("false"), false);
+  assert.equal(parseRecordGames("true"), true);
+  assert.equal(parseRecordGames('"false"'), false);
+  assert.equal(parseRecordGames(" TRUE "), true);
+  assert.equal(parseRecordGames("0"), false);
+  assert.equal(parseRecordGames(1), true);
+  assert.equal(parseRecordGames("talvez"), null);
+  assert.equal(parseRecordGames(null), null);
+  assert.equal(parseRecordGames(undefined), null);
+});
+
+test("abertura somente leitura: com -wal ou -shm lê normal (vê o WAL); só sem eles usa immutable=1", () => {
+  const f = "/pasta/tft-events.db";
+  assert.equal(
+    gepOpenMode(f, () => false),
+    "imutavel",
+  );
+  assert.equal(
+    gepOpenMode(f, (p) => p === `${f}-wal`),
+    "compartilhado",
+  );
+  assert.equal(
+    gepOpenMode(f, (p) => p === `${f}-shm`),
+    "compartilhado",
+  );
+  assert.equal(
+    gepOpenMode(f, () => true),
+    "compartilhado",
+  );
+});
+
+test("gravação desligada: sem partida o motivo é gravacao-desligada e só record_games é lido de settings", () => {
+  const file = newFile();
+  const e = new DatabaseSync(file);
+  e.exec(SCHEMA);
+  e.close();
+  withSettings(file, {
+    record_games: "false",
+    outra_chave: "segredo-que-nao-pode-aparecer",
+  });
+  const s = reader(file, { t: at(10) }).status(ctx);
+  assert.deepEqual(
+    [s.state, s.reason, s.was, s.recordGames, s.available],
+    ["ausente", "gravacao-desligada", "sem-partida", false, false],
+  );
+  assert.doesNotMatch(JSON.stringify(s), /segredo/);
+  // Garantia estática: a única consulta a `settings` é a de uma chave, parametrizada.
+  const src = fs.readFileSync(
+    new URL("../gep-reader.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.equal((src.match(/FROM settings/g) ?? []).length, 1);
+  assert.match(src, /SELECT value FROM settings WHERE key = \?/);
+});
+
+test("gravação desligada: partida velha vira gravacao-desligada; partida já em gravação segue ativa; ligada mantém obsoleto", () => {
+  const off = newFile();
+  makeDb(off);
+  withSettings(off, { record_games: "false" });
+  const old = reader(off, { t: at(LAST_DT + 600) }).status(ctx);
+  assert.deepEqual(
+    [old.state, old.reason, old.was, old.recordGames, old.fields],
+    ["ausente", "gravacao-desligada", "sem-eventos-recentes", false, null],
+  );
+  // O mesmo banco com a partida ainda fresca (gravação ligada quando ela começou): ativo, mas a configuração é informada.
+  const live = reader(off, { t: at(LAST_DT + 3) }).status(ctx);
+  assert.equal(live.state, "ativo");
+  assert.equal(live.recordGames, false);
+  // Outra partida no jogo: com a gravação desligada o banco não pode ter a de agora.
+  assert.equal(
+    reader(off, { t: at(LAST_DT + 3) }).status({ ...ctx, gameId: "999" })
+      .reason,
+    "gravacao-desligada",
+  );
+  // Fora de partida o motivo próprio fica (a configuração continua em recordGames).
+  const outside = reader(off, { t: at(LAST_DT + 3) }).status({
+    ...ctx,
+    inMatch: false,
+  });
+  assert.deepEqual(
+    [outside.reason, outside.recordGames],
+    ["fora-de-partida", false],
+  );
+  // Ligada: o motivo é o de sempre.
+  const on = newFile();
+  makeDb(on);
+  withSettings(on, { record_games: "true" });
+  const stale = reader(on, { t: at(LAST_DT + 600) }).status(ctx);
+  assert.deepEqual(
+    [stale.state, stale.reason, stale.recordGames],
+    ["obsoleto", "sem-eventos-recentes", true],
+  );
+  // Sem a tabela settings ou com valor ilegível: desconhecida, nada muda.
+  const none = newFile();
+  makeDb(none);
+  const n = reader(none, { t: at(LAST_DT + 600) }).status(ctx);
+  assert.deepEqual([n.reason, n.recordGames], ["sem-eventos-recentes", null]);
+  const junk = newFile();
+  makeDb(junk);
+  withSettings(junk, { record_games: "talvez" });
+  const j = reader(junk, { t: at(LAST_DT + 600) }).status(ctx);
+  assert.deepEqual([j.reason, j.recordGames], ["sem-eventos-recentes", null]);
+});
+
+test("gravação desligada: religar a configuração é percebido na leitura seguinte; esquema desconhecido não é mascarado", () => {
+  const file = newFile();
+  const e = new DatabaseSync(file);
+  e.exec(SCHEMA);
+  e.close();
+  withSettings(file, { record_games: "false" });
+  const clock = { t: at(10) };
+  const r = reader(file, clock);
+  assert.equal(r.status(ctx).reason, "gravacao-desligada");
+  withSettings(file, { record_games: "true" });
+  clock.t += 6000; // passa o recuo de leitura com falha
+  const again = r.status(ctx);
+  assert.deepEqual([again.reason, again.recordGames], ["sem-partida", true]);
+  // Esquema desconhecido continua sendo esquema desconhecido, com ou sem a configuração.
+  const odd = newFile();
+  const o = new DatabaseSync(odd);
+  o.exec(
+    "CREATE TABLE games (id text, started_at integer); CREATE TABLE events (id integer, game_id text);",
+  );
+  o.close();
+  withSettings(odd, { record_games: "false" });
+  assert.equal(
+    reader(odd, { t: at(10) }).status(ctx).state,
+    "esquema-desconhecido",
+  );
+});
+
+// --- Wisps (fogos-fátuos) na loja ----------------------------------------------------------------------------------
+
+test("Wisp na loja: separado dos campeões, com nome do catálogo; nome fora do catálogo e sem 'Wisp' segue desconhecido", () => {
+  const wisps = wispCatalog(catalog.items, [
+    { id: "DA_AbandonShip18", name: "Abandonar Navio", nameEn: "Abandon Ship" },
+  ]);
+  assert.ok(wisps.has("DA_AbandonShip18") && wisps.has("DA_BeggarsWisp18"));
+  assert.ok(wisps.size > 100, "todos os itens com a etiqueta de Wisp");
+  assert.ok(!wisps.has("DA_Component_BFSword"), "item comum não é Wisp");
+  const shop = parseShop(
+    JSON.stringify({
+      slot_1: { name: "DA_18_Rakan" },
+      slot_2: { name: "DA_AbandonShip18" },
+      slot_3: { name: "Sold" },
+      slot_4: { name: "DA_NovoWisp_Futuro" },
+      slot_5: { name: "DA_99_Nada" },
+    }),
+    (id) => champions.has(id),
+    wispLookup(wisps),
+  );
+  assert.equal(shop[0].id, "DA_18_Rakan");
+  assert.equal(shop[0].wisp, undefined);
+  assert.deepEqual(
+    [
+      shop[1].id,
+      shop[1].wisp,
+      shop[1].wispId,
+      shop[1].wispName,
+      shop[1].wispKnown,
+    ],
+    [null, true, "DA_AbandonShip18", "Abandonar Navio", true],
+  );
+  assert.equal(shop[2], null, "Sold continua vazio");
+  assert.deepEqual(
+    [shop[3].id, shop[3].wisp, shop[3].wispKnown],
+    [null, true, false],
+    "tem 'Wisp' no id mas não está no catálogo: Wisp não confirmado",
+  );
+  assert.deepEqual([shop[4].id, shop[4].wisp], [null, undefined]);
+  assert.deepEqual(shopWisps(shop), [
+    { slot: 2, id: "DA_AbandonShip18", name: "Abandonar Navio", known: true },
+    { slot: 4, id: "DA_NovoWisp_Futuro", name: null, known: false },
+  ]);
+  // Sem catálogo de Wisps só o id com "Wisp" é reconhecido; um campeão do catálogo nunca vira Wisp.
+  const bare = parseShop(
+    '{"slot_1":{"name":"DA_AbandonShip18"},"slot_2":{"name":"DA_BeggarsWisp18"},"slot_3":{"name":"DA_18_Rakan"}}',
+    (id) => champions.has(id),
+    wispLookup(null),
+  );
+  assert.deepEqual(
+    bare.map((c) => [c?.id ?? null, c?.wisp === true]),
+    [
+      [null, false],
+      [null, true],
+      ["DA_18_Rakan", false],
+      [null, false],
+      [null, false],
+    ],
+  );
+});
+
+test("Wisp na loja pelo leitor e pela mescla: wisps separados, shop só com campeões, a análise lê id nulo", () => {
+  const wisps = wispCatalog(catalog.items, [
+    { id: "DA_AbandonShip18", name: "Abandonar Navio", nameEn: "Abandon Ship" },
+  ]);
+  const file = newFile();
+  makeDb(file, {
+    extraRows: [
+      {
+        dt: LAST_DT + 1,
+        event_type: "store",
+        round: "1-3",
+        feature: "store",
+        key: "shop_pieces",
+        data: JSON.stringify({
+          slot_1: { name: "DA_18_Rakan" },
+          slot_2: { name: "DA_AbandonShip18" },
+          slot_3: { name: "Sold" },
+          slot_4: { name: "DA_BeggarsWisp18" },
+          slot_5: { name: "DA_18_Sentry" },
+        }),
+      },
+    ],
+  });
+  const gep = reader(file, { t: at(LAST_DT + 2) }, { wisps }).status(ctx);
+  assert.deepEqual(
+    gep.fields.shop.value.map((c) => c?.id ?? null),
+    ["DA_18_Rakan", null, null, null, "DA_18_Sentry"],
+  );
+  assert.deepEqual(
+    gep.fields.shop.wisps.map((w) => [w.slot, w.id, w.name, w.known]),
+    [
+      [2, "DA_AbandonShip18", "Abandonar Navio", true],
+      [4, "DA_BeggarsWisp18", "Beggar's Wisp", true],
+    ],
+  );
+  assert.equal(gep.coverage.wisps, 2);
+  const seen = mergeGep(screenSeen(), gep);
+  assert.deepEqual(seen.wisps, gep.fields.shop.wisps);
+  assert.equal(seen.sources.wisps, "gep");
+  assert.equal(seen.sourcesDetail.wisps.confidence, "observed");
+  assert.equal(seen.shop[1].wisp, true);
+  // O estado normalizado traz os Wisps como campo próprio.
+  const state = buildGameState(seen, { now: 1_000_000, gameId: "g" });
+  assert.equal(state.me.wisps.source, "gep");
+  assert.equal(state.me.wisps.value.length, 2);
+  // A análise só recebe campeões: o Wisp vira id nulo (o motor e a rolagem descartam id nulo).
+  assert.deepEqual(analysisInputs(seen, { live: false }).shop, [
+    "DA_18_Rakan",
+    null,
+    null,
+    null,
+    "DA_18_Sentry",
+  ]);
+  // Mesmo uma carta de Wisp com id preenchido por engano não passa para a análise.
+  assert.deepEqual(
+    analysisInputs(
+      { shop: [{ id: "DA_X", wisp: true }, { id: "DA_18_Rakan" }] },
+      { live: false },
+    ).shop,
+    [null, "DA_18_Rakan"],
+  );
+  // Loja escondida ou escolhida a da tela pela precedência: os Wisps do GEP não entram.
+  const hidden = structuredClone(gep);
+  hidden.fields.shop.visible = false;
+  assert.equal(mergeGep(screenSeen(), hidden).wisps, undefined);
+  const denied = mergeGep(screenSeen(), gep, (name) => name !== "shop");
+  assert.equal(denied.wisps, undefined);
+  assert.equal(denied.sources.wisps, undefined);
+  // Sem GEP, nada de Wisps (a tela não os distingue).
+  assert.equal(mergeGep(screenSeen(), null).wisps, undefined);
+});
+
+// --- aprimoramentos (oferta e escolhidos) --------------------------------------------------------------------------
+
+const AUGS = new Set(["DA_18_BigGrabBag", "DA_Min_Max", "DA_Kingslayer"]);
+const augRow = (dt, feature, key, data) => ({
+  dt,
+  event_type: feature,
+  round: "2-1",
+  feature,
+  key,
+  data,
+});
+const augData = (...names) =>
+  JSON.stringify(
+    Object.fromEntries(names.map((n, i) => [`augment_${i + 1}`, { name: n }])),
+  );
+
+test("parsing: resolução de aprimoramentos pelo catálogo (exato, caminho/extensão, caixa) e ambíguo é desconhecido", () => {
+  const resolve = augmentResolver(AUGS);
+  assert.equal(resolve("DA_Min_Max"), "DA_Min_Max");
+  assert.equal(resolve("da_min_max"), "DA_Min_Max");
+  assert.equal(resolve("Game/Augments/DA_Min_Max.DA_Min_Max"), "DA_Min_Max");
+  assert.equal(resolve("DA_Inexistente"), null);
+  assert.equal(resolve(""), null);
+  assert.equal(
+    augmentResolver(["DA_A", "da_a"])("Da_A"),
+    null,
+    "duas caixas possíveis: não adivinha",
+  );
+  assert.equal(
+    augmentResolver(["DA_A", "da_a"])("DA_A"),
+    "DA_A",
+    "o exato sempre vale",
+  );
+  assert.equal(
+    augmentResolver(null)("qualquer"),
+    "qualquer",
+    "sem catálogo aceita tudo",
+  );
+});
+
+test("parsing: oferta de aprimoramentos na ordem dos espaços; vazia é tela fechada; fora do catálogo é contado", () => {
+  const resolve = augmentResolver(AUGS);
+  const swapped = JSON.stringify({
+    augment_3: { name: "DA_Kingslayer" },
+    augment_1: { name: "DA_18_BigGrabBag" },
+    augment_2: { name: "da_min_max" },
+  });
+  const offer = parseAugmentOffer(swapped, resolve);
+  assert.deepEqual(offer.ids, [
+    "DA_18_BigGrabBag",
+    "DA_Min_Max",
+    "DA_Kingslayer",
+  ]);
+  assert.equal(offer.unknown, 0);
+  const partial = parseAugmentOffer(
+    augData("DA_Kingslayer", "DA_Nada", "DA_Min_Max"),
+    resolve,
+  );
+  assert.deepEqual(partial.ids, ["DA_Kingslayer", "DA_Min_Max"]);
+  assert.equal(partial.unknown, 1);
+  assert.deepEqual(partial.cards[1], { text: "DA_Nada", id: null });
+  assert.deepEqual(parseAugmentOffer("{}", resolve), {
+    cards: [],
+    ids: [],
+    unknown: 0,
+  });
+  assert.deepEqual(parseAugmentOffer(augData(""), resolve).cards, []);
+  assert.equal(parseAugmentOffer("[]", resolve), null);
+  assert.equal(parseAugmentOffer("não é json", resolve), null);
+  // Itens de campeão do anel de aprimoramentos não são aprimoramentos.
+  assert.deepEqual(
+    parseAugmentOffer(augData("TFT_ChampionItem_Foo", "DA_Min_Max"), resolve)
+      .ids,
+    ["DA_Min_Max"],
+  );
+});
+
+test("parsing: aprimoramento escolhido = último nome não vazio (objeto de espaços, {name}, texto)", () => {
+  const resolve = augmentResolver(AUGS);
+  assert.deepEqual(
+    parseAugmentPicked(augData("DA_Kingslayer", "DA_Min_Max"), resolve),
+    {
+      text: "DA_Min_Max",
+      id: "DA_Min_Max",
+    },
+  );
+  assert.deepEqual(
+    parseAugmentPicked('{"name":"DA_Kingslayer","tier":"S"}', resolve),
+    {
+      text: "DA_Kingslayer",
+      id: "DA_Kingslayer",
+    },
+  );
+  assert.equal(
+    parseAugmentPicked('"DA_Kingslayer"', resolve).id,
+    "DA_Kingslayer",
+  );
+  assert.equal(
+    parseAugmentPicked("DA_Kingslayer", resolve).id,
+    "DA_Kingslayer",
+  );
+  assert.deepEqual(parseAugmentPicked('"DA_Fora"', resolve), {
+    text: "DA_Fora",
+    id: null,
+  });
+  assert.equal(parseAugmentPicked("{}", resolve), null);
+  assert.equal(parseAugmentPicked("null", resolve), null);
+  assert.equal(parseAugmentPicked(null, resolve), null);
+});
+
+test("aprimoramentos escolhidos: formato real é cumulativo (slot_1..4); ler no meio da partida não perde os anteriores", () => {
+  const resolve = augmentResolver(AUGS);
+  // Formato observado (partida de 2026-10-11): `augments.picked_augment` reenvia a lista inteira, espaços vazios com "".
+  const real = (...names) =>
+    JSON.stringify(
+      Object.fromEntries(
+        [1, 2, 3, 4].map((i) => [`slot_${i}`, { name: names[i - 1] ?? "" }]),
+      ),
+    );
+  assert.deepEqual(
+    parseAugmentPickedList(real("DA_Kingslayer", "DA_Min_Max"), resolve).map(
+      (x) => x.id,
+    ),
+    ["DA_Kingslayer", "DA_Min_Max"],
+  );
+  assert.deepEqual(parseAugmentPickedList("{}", resolve), []);
+  assert.deepEqual(parseAugmentPickedList('"DA_Fora"', resolve), [
+    { text: "DA_Fora", id: null },
+  ]);
+  const state = emptyGepState();
+  const feed = (ts, data) =>
+    applyGepEvent(
+      state,
+      { id: ts, ts, feature: "augments", key: "picked_augment", data },
+      { resolveAugment: resolve },
+    );
+  feed(1, real("DA_Kingslayer"));
+  feed(2, real("DA_Kingslayer", "DA_Min_Max"));
+  feed(3, real("DA_Kingslayer", "DA_Min_Max"));
+  assert.deepEqual(
+    state.augmentPicked.value.map((x) => x.id),
+    ["DA_Kingslayer", "DA_Min_Max"],
+  );
+  // Começando tarde (já com dois na lista): os dois entram, na ordem.
+  const late = emptyGepState();
+  applyGepEvent(
+    late,
+    {
+      id: 9,
+      ts: 9,
+      feature: "augments",
+      key: "picked_augment",
+      data: real("DA_Kingslayer", "DA_Min_Max"),
+    },
+    { resolveAugment: resolve },
+  );
+  assert.deepEqual(
+    late.augmentPicked.value.map((x) => x.id),
+    ["DA_Kingslayer", "DA_Min_Max"],
+  );
+});
+
+function augGep(extraRows, extra = { augments: AUGS }, dt = LAST_DT + 12) {
+  const file = newFile();
+  makeDb(file, { extraRows });
+  return reader(file, { t: at(dt) }, extra).status(ctx);
+}
+const FULL_AUG_ROWS = [
+  augRow(
+    LAST_DT + 1,
+    "match_info",
+    "round_type",
+    '{"stage":"2-1","name":"Augment","type":"Augment_1"}',
+  ),
+  augRow(
+    LAST_DT + 2,
+    "augments",
+    "me",
+    augData("DA_18_BigGrabBag", "da_min_max", "DA_Kingslayer"),
+  ),
+  augRow(LAST_DT + 9, "match_info", "picked_augment", augData("DA_Min_Max")),
+  augRow(LAST_DT + 9, "match_info", "picked_augment", augData("DA_Min_Max")),
+];
+
+test("aprimoramentos pelo leitor: oferta e escolhido do jogador mapeados ao catálogo, com estágio, idade e sem repetir", () => {
+  const s = augGep(FULL_AUG_ROWS);
+  assert.equal(s.state, "ativo");
+  const f = s.fields;
+  assert.deepEqual(f.augmentOffer.value, [
+    "DA_18_BigGrabBag",
+    "DA_Min_Max",
+    "DA_Kingslayer",
+  ]);
+  assert.equal(f.augmentOffer.count, 3);
+  assert.equal(f.augmentOffer.unknown, 0);
+  assert.equal(f.augmentOffer.ageMs, 10_000);
+  assert.deepEqual(f.augmentPicked.value, [{ id: "DA_Min_Max", stage: "2-1" }]);
+  assert.equal(f.augmentPicked.ageMs, 3000);
+  assert.deepEqual(s.coverage, {
+    augmentOffer: 3,
+    augmentPicked: 1,
+    augmentUnknown: 0,
+    wisps: 0,
+  });
+  // Dois escolhidos em momentos diferentes: em ordem, cada um com o estágio da hora.
+  const two = augGep([
+    ...FULL_AUG_ROWS,
+    augRow(
+      LAST_DT + 10,
+      "match_info",
+      "round_type",
+      '{"stage":"3-2","name":"Augment","type":"Augment_2"}',
+    ),
+    augRow(
+      LAST_DT + 11,
+      "match_info",
+      "picked_augment",
+      augData("DA_Kingslayer"),
+    ),
+  ]);
+  assert.deepEqual(two.fields.augmentPicked.value, [
+    { id: "DA_Min_Max", stage: "2-1" },
+    { id: "DA_Kingslayer", stage: "3-2" },
+  ]);
+});
+
+test("aprimoramentos: só os pares feature.key do jogador (outra feature com a mesma chave não entra)", () => {
+  const s = augGep([
+    augRow(
+      LAST_DT + 1,
+      "live_client_data",
+      "me",
+      augData("DA_Kingslayer", "DA_Min_Max"),
+    ),
+    augRow(LAST_DT + 2, "board", "picked_augment", augData("DA_Kingslayer")),
+    augRow(LAST_DT + 3, "opponent", "augments", augData("DA_Kingslayer")),
+    augRow(LAST_DT + 4, "roster", "me", augData("DA_Kingslayer")),
+  ]);
+  assert.equal(s.state, "ativo");
+  assert.equal(s.fields.augmentOffer, null);
+  assert.equal(s.fields.augmentPicked, null);
+  assert.equal(s.lastEventAgeMs, 8000, "mas contam como sinal de vida");
+  // `me.picked_augment` é aceito (o TFTAcademy não filtra a feature do escolhido).
+  const viaMe = augGep([
+    augRow(LAST_DT + 1, "me", "picked_augment", '"DA_Kingslayer"'),
+  ]);
+  assert.deepEqual(viaMe.fields.augmentPicked.value, [
+    { id: "DA_Kingslayer", stage: "1-3" },
+  ]);
+});
+
+test("aprimoramentos: sem a coluna feature só as chaves inequívocas (a chave me sozinha é ignorada)", () => {
+  const file = newFile();
+  const db = new DatabaseSync(file);
+  db.exec(
+    "CREATE TABLE games (id text PRIMARY KEY, started_at integer NOT NULL); CREATE TABLE events (id integer PRIMARY KEY AUTOINCREMENT, game_id text NOT NULL, timestamp integer NOT NULL, key text, data text);",
+  );
+  db.prepare("INSERT INTO games (id, started_at) VALUES (?,?)").run("g", BASE);
+  const put = db.prepare(
+    "INSERT INTO events (game_id, timestamp, key, data) VALUES (?,?,?,?)",
+  );
+  put.run("g", BASE + 1, "gold", "5");
+  put.run("g", BASE + 2, "me", augData("DA_Kingslayer", "DA_Min_Max"));
+  put.run("g", BASE + 3, "picked_augment", '"DA_Kingslayer"');
+  db.close();
+  const s = reader(file, { t: (BASE + 4) * 1000 }, { augments: AUGS }).status({
+    inMatch: true,
+  });
+  assert.equal(s.state, "ativo");
+  assert.equal(s.fields.gold.value, 5);
+  assert.equal(s.fields.augmentOffer, null);
+  assert.deepEqual(s.fields.augmentPicked.value, [
+    { id: "DA_Kingslayer", stage: null },
+  ]);
+});
+
+test("aprimoramentos na mescla: o GEP fresco vence a oferta da tela e traz os escolhidos; vale mesmo contra a precedência dos demais campos", () => {
+  const gep = augGep(FULL_AUG_ROWS);
+  const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Fora"] };
+  const seen = mergeGep(base, gep);
+  assert.deepEqual(seen.augments, [
+    "DA_18_BigGrabBag",
+    "DA_Min_Max",
+    "DA_Kingslayer",
+  ]);
+  assert.equal(seen.sources.augments, "gep");
+  assert.equal(seen.sourcesDetail.augments.confidence, "observed");
+  assert.equal(seen.sourcesDetail.augments.ageMs, 10_000);
+  assert.deepEqual(seen.pickedAugments, [{ id: "DA_Min_Max", stage: "2-1" }]);
+  assert.equal(seen.sources.pickedAugments, "gep");
+  const state = buildGameState(seen, { now: 1_000_000, gameId: "g" });
+  assert.equal(state.me.pickedAugments.source, "gep");
+  // A precedência com histerese (tela escolhida para ouro) não esconde o que só o GEP observa.
+  const screenWins = mergeGep(base, gep, () => false);
+  assert.equal(screenWins.gold, 7);
+  assert.equal(screenWins.sources.gold, "screen");
+  assert.deepEqual(screenWins.pickedAugments, [
+    { id: "DA_Min_Max", stage: "2-1" },
+  ]);
+  assert.equal(screenWins.augments.length, 3);
+  // GEP obsoleto ou ausente: volta à tela, sem erro, e sem escolhidos.
+  const stale = mergeGep(
+    base,
+    augGep(FULL_AUG_ROWS, { augments: AUGS }, LAST_DT + 900),
+  );
+  assert.deepEqual(stale.augments, ["DA_Kingslayer", "DA_Fora"]);
+  assert.equal(stale.pickedAugments, undefined);
+  assert.equal(stale.gepStatus.state, "obsoleto");
+});
+
+test("aprimoramentos: oferta incompleta, vazia ou fora do catálogo não substitui a da tela; escolhido fora do catálogo é desconhecido", () => {
+  const base = { ...screenSeen(), augments: ["DA_Kingslayer", "DA_Min_Max"] };
+  const partial = augGep(
+    [
+      augRow(
+        LAST_DT + 1,
+        "augments",
+        "me",
+        augData("DA_18_BigGrabBag", "DA_Min_Max", "DA_Inexistente"),
+      ),
+      augRow(LAST_DT + 2, "match_info", "picked_augment", '"DA_Inexistente"'),
+    ],
+    { augments: AUGS },
+    LAST_DT + 3,
+  );
+  assert.equal(partial.fields.augmentOffer.unknown, 1);
+  assert.deepEqual(partial.fields.augmentOffer.value, [
+    "DA_18_BigGrabBag",
+    "DA_Min_Max",
+  ]);
+  assert.deepEqual(partial.fields.augmentPicked.value, []);
+  assert.equal(partial.fields.augmentPicked.unknown, 1);
+  assert.equal(partial.coverage.augmentUnknown, 2);
+  const seen = mergeGep(base, partial);
+  assert.deepEqual(
+    seen.augments,
+    base.augments,
+    "oferta incompleta: fica a da tela",
+  );
+  assert.notEqual(seen.sources.augments, "gep");
+  assert.equal(seen.pickedAugments, undefined);
+  assert.equal(seen.sources.pickedAugments, undefined);
+  // Oferta vazia (tela de escolha fechada): a da tela continua.
+  const closed = augGep(
+    [augRow(LAST_DT + 1, "augments", "me", "{}")],
+    { augments: AUGS },
+    LAST_DT + 3,
+  );
+  assert.deepEqual(closed.fields.augmentOffer.value, []);
+  assert.deepEqual(mergeGep(base, closed).augments, base.augments);
+  // Sem nenhum evento de aprimoramentos: nada muda.
+  assert.deepEqual(mergeGep(base, augGep([])).augments, base.augments);
+});
+
+test("aprimoramentos escolhidos na análise: o registro manual prevalece (mesmo vazio); sem ele valem os do GEP", () => {
+  const gepPicked = [
+    { id: "DA_Min_Max", stage: "2-1" },
+    { id: "DA_Fora", stage: "2-1" },
+    { id: "DA_Kingslayer", stage: "3-2" },
+  ];
+  const valid = (id) => AUGS.has(id);
+  assert.deepEqual(chosenAugmentIds({ gepPicked, valid }), {
+    ids: ["DA_Min_Max", "DA_Kingslayer"],
+    source: "gep",
+    stages: new Map([
+      ["DA_Min_Max", "2-1"],
+      ["DA_Kingslayer", "3-2"],
+    ]),
+  });
+  // O usuário marcou (ou corrigiu) à mão: o GEP não altera nada.
+  assert.deepEqual(
+    chosenAugmentIds({
+      manual: ["DA_18_BigGrabBag"],
+      known: true,
+      gepPicked,
+      valid,
+    }),
+    { ids: ["DA_18_BigGrabBag"], source: "manual", stages: new Map() },
+  );
+  // Remoção explícita (registro existe e está vazio): vale o vazio.
+  assert.deepEqual(
+    chosenAugmentIds({ manual: [], known: true, gepPicked, valid }),
+    {
+      ids: [],
+      source: "manual",
+      stages: new Map(),
+    },
+  );
+  // Nada do GEP e nada manual: sem origem.
+  assert.deepEqual(
+    chosenAugmentIds({ manual: [], known: false, gepPicked: [], valid }),
+    {
+      ids: [],
+      source: null,
+      stages: new Map(),
+    },
+  );
+  assert.equal(chosenAugmentIds({ gepPicked: undefined }).source, null);
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

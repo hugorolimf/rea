@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parseStage, stageText } from "./core/state/clock.mjs";
 import { buildLedger, ledgerStatus } from "./unit-ledger.mjs";
 
 /** Execuções do jogo guardadas para o livro-razão (uma partida com quedas tem poucas). */
@@ -69,7 +70,7 @@ export function parseSentryEvent(buffer) {
     queueId = readTag(buffer, "game.queue"),
     set = readTag(buffer, "set_name");
   if (!gameId && !round && !phase) return null;
-  const parts = /^(\d+)-(\d+)$/.exec(round ?? "");
+  const at = parseStage(round);
   return {
     gameId: gameId ?? null,
     queueId: queueId ?? null,
@@ -77,9 +78,9 @@ export function parseSentryEvent(buffer) {
     phase: phase ?? null,
     phaseKind: phaseKind(phase),
     // Rodada como o jogo escreve ("2-4"); nula quando o valor não tem o formato estágio-rodada.
-    stage: parts ? `${Number(parts[1])}-${Number(parts[2])}` : null,
-    stageNumber: parts ? Number(parts[1]) : null,
-    roundNumber: parts ? Number(parts[2]) : null,
+    stage: stageText(at),
+    stageNumber: at?.stage ?? null,
+    roundNumber: at?.round ?? null,
   };
 }
 
@@ -410,7 +411,8 @@ export function mergeSources(screen, game) {
       xp: from(screen.xp, "screen"),
       items: from(screen.bank, "screen"),
       shop: from(screen.shop, "screen"),
-      bench: "manual",
+      // Reserva: sem fonte própria aqui. Só o GEP fresco a informa (mergeGep); a entrada manual foi removida.
+      bench: null,
     },
   };
 }

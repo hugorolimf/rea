@@ -4,6 +4,8 @@
 // se a peça volta ao campo (ou vira 2★), a cópia guardada é reconhecida e deixa de contar.
 // Rival eliminado devolve tudo à pool e é ignorado. Valores são estimativas, nunca observações.
 
+import { starCopies } from "./core/pool/copies.mjs";
+
 /** Parâmetros da estimativa: chance inicial de a cópia ter ficado no banco e meia-vida dessa chance. */
 export const BENCH_POLICY = {
   keep: 0.5,
@@ -17,7 +19,7 @@ const copiesOf = (units) => {
   for (const u of units ?? [])
     m.set(
       u.championName,
-      (m.get(u.championName) ?? 0) + 3 ** ((u.starLevel ?? 1) - 1),
+      (m.get(u.championName) ?? 0) + starCopies(u.starLevel),
     );
   return m;
 };
@@ -25,12 +27,16 @@ const copiesOf = (units) => {
 /**
  * Cópias estimadas fora da pool nos bancos dos rivais: Map championName → cópias (fracionárias).
  * `rows` são as capturas de uma partida na ordem gravada ({id, health, units, sourceAt}); `skip` são ids
- * ignorados (o próprio jogador, cujo banco é informado à parte).
+ * ignorados (o próprio jogador, cujo banco é informado à parte). `now` (epoch ms) entra como argumento, nunca por
+ * `Date.now()` aqui dentro (a estimativa é reproduzível); sem um `now` válido vale a hora da última captura.
  */
 export function hiddenHoldings(
   rows,
-  { now = Date.now(), skip = new Set(), policy = BENCH_POLICY } = {},
+  { now: given, skip = new Set(), policy = BENCH_POLICY } = {},
 ) {
+  const now = Number.isFinite(given)
+    ? given
+    : Math.max(0, ...(rows ?? []).map((r) => Date.parse(r.sourceAt) || 0));
   const byPlayer = new Map();
   for (const r of rows ?? []) {
     const id = String(r.id);

@@ -237,6 +237,77 @@
         color: var(--go);
         font-weight: 700;
       }
+      /* Loja lida da tela (não do GEP): só provável, borda tracejada e "?" */
+      &[data-conf="provavel"] {
+        border-style: dashed;
+      }
+      & .conf {
+        color: var(--amber);
+        font-style: normal;
+        font-weight: 800;
+      }
+    }
+  }
+  /* Wisps (fogos-fátuos) da loja: marca com imagem, a recomendação e o motivo curto; o detalhe fica no tooltip. */
+  .wisp-hits {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 11px;
+    & .wisp {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px 3px 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      &[data-verdict="comprar"] {
+        border-color: color-mix(in oklab, var(--go), transparent 55%);
+        background: color-mix(in oklab, var(--go), transparent 90%);
+      }
+      &[data-verdict="pular"] {
+        border-color: color-mix(in oklab, var(--danger), transparent 60%);
+        background: color-mix(in oklab, var(--danger), transparent 92%);
+      }
+      &[data-verdict="avaliar"] {
+        border-color: color-mix(in oklab, var(--amber), transparent 55%);
+      }
+    }
+    & .wisp-mark {
+      display: inline-grid;
+      flex: none;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: color-mix(in oklab, var(--amber), transparent 85%);
+      & img {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+      }
+    }
+    & .v {
+      flex: none;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    & [data-verdict="comprar"] .v {
+      color: var(--go);
+    }
+    & [data-verdict="pular"] .v {
+      color: var(--danger);
+    }
+    & [data-verdict="avaliar"] .v {
+      color: var(--amber);
+    }
+    & .why {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
   .more {

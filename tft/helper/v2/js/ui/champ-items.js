@@ -1,7 +1,7 @@
 import { esc } from "../dom.js";
 import { glyph, itemPortrait, portrait, stars } from "./glyphs.js";
 import { richText } from "./rich-text.js";
-import { buildStates } from "../item-source.js";
+import { buildStates } from "../../../core/items/holdings.mjs";
 
 /**
  * Itens do campeão clicado na Formação: o que está equipado e os itens recomendados com a receita.

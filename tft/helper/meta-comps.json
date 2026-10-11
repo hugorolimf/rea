@@ -1,6 +1,6 @@
 {
   "source": "https://api-hc.metatft.com/tft-comps-api/comps_data + comps_stats",
-  "fetchedAt": "2026-10-10T22:44:11.563Z",
+  "fetchedAt": "2026-10-11T03:08:25.261Z",
   "set": "TFTSet18",
   "patch": null,
   "comps": [
@@ -55,9 +55,9 @@
             "DA_GuinsoosRageblade",
             "DA_TitansResolve"
           ],
-          "avg": 3.85,
+          "avg": 3.84,
           "delta": -0.26,
-          "n": 2708
+          "n": 2822
         },
         "DA_18_Cassiopeia": {
           "items": [
@@ -67,7 +67,7 @@
           ],
           "avg": 3.76,
           "delta": -0.35,
-          "n": 1557
+          "n": 1652
         },
         "DA_18_Rammus": {
           "items": ["DA_BrambleVest", "DA_SpiritVisage", "DA_WarmogsArmor"],
@@ -77,15 +77,15 @@
         },
         "DA_Fiddlesticks18": {
           "items": ["DA_AdaptiveHelm", "DA_Crownguard", "DA_TitansResolve"],
-          "avg": 3.03,
-          "delta": -1.08,
-          "n": 67
+          "avg": 3,
+          "delta": -1.11,
+          "n": 70
         }
       },
-      "games": 24880,
-      "avg": 4.11,
-      "top4": 57.7,
-      "win": 14
+      "games": 26234,
+      "avg": 4.1,
+      "top4": 57.8,
+      "win": 14.1
     },
     {
       "id": "426001",
@@ -127,9 +127,9 @@
       "buildStats": {
         "DA_18_Aphelios": {
           "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_StrikersFlail"],
-          "avg": 3.44,
-          "delta": -0.87,
-          "n": 296
+          "avg": 3.48,
+          "delta": -0.83,
+          "n": 311
         },
         "DA_Brambleback18": {
           "items": [
@@ -137,15 +137,15 @@
             "DA_EdgeOfNight",
             "DA_Quicksilver"
           ],
-          "avg": 3.88,
-          "delta": -0.43,
-          "n": 2400
+          "avg": 3.89,
+          "delta": -0.42,
+          "n": 2524
         },
         "DA_Sentinel18": {
           "items": ["DA_ProtectorsVow", "DA_ProtectorsVow", "DA_ProtectorsVow"],
-          "avg": 3.17,
-          "delta": -1.14,
-          "n": 149
+          "avg": 3.16,
+          "delta": -1.15,
+          "n": 154
         },
         "DA_Amumu18": {
           "items": [
@@ -153,14 +153,14 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.68,
-          "delta": -0.63,
-          "n": 136
+          "avg": 3.65,
+          "delta": -0.66,
+          "n": 140
         }
       },
-      "games": 36583,
+      "games": 38432,
       "avg": 4.28,
-      "top4": 55.4,
+      "top4": 55.5,
       "win": 9.7
     },
     {
@@ -178,7 +178,7 @@
       ],
       "key": ["DA_18_Elderwood", "DA_18_Aphelios"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Yorick", "DA_18_Rengar"],
+      "stars": ["DA_18_Rengar", "DA_18_Yorick"],
       "builds": {
         "DA_18_Aphelios": [
           "DA_18_EmblemElderwood",
@@ -204,30 +204,30 @@
             "DA_GuinsoosRageblade",
             "DA_KrakensFury"
           ],
-          "avg": 3.97,
-          "delta": -0.32,
-          "n": 3597
+          "avg": 3.96,
+          "delta": -0.33,
+          "n": 3751
         },
         "DA_18_Ezreal": {
           "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_SpearOfShojin"],
           "avg": 3.82,
           "delta": -0.47,
-          "n": 1317
+          "n": 1380
         },
         "DA_18_Lillia": {
           "items": ["DA_18_EmblemElderwood", "DA_Evenshroud", "DA_SunfireCape"],
-          "avg": 3.15,
-          "delta": -1.15,
-          "n": 149
+          "avg": 3.12,
+          "delta": -1.17,
+          "n": 159
         },
         "DA_18_Hecarim": {
           "items": ["DA_Evenshroud", "DA_ProtectorsVow", "DA_SunfireCape"],
-          "avg": 3.2,
-          "delta": -1.09,
-          "n": 130
+          "avg": 3.24,
+          "delta": -1.05,
+          "n": 139
         }
       },
-      "games": 117879,
+      "games": 124150,
       "avg": 4.19,
       "top4": 55.3,
       "win": 15
@@ -284,8 +284,8 @@
             "DA_RabadonsDeathcap"
           ],
           "avg": 3.78,
-          "delta": -0.45,
-          "n": 26886
+          "delta": -0.44,
+          "n": 28142
         },
         "DA_18_Rammus": {
           "items": [
@@ -293,24 +293,24 @@
             "DA_GargoyleStoneplate",
             "DA_GargoyleStoneplate"
           ],
-          "avg": 3.6,
-          "delta": -0.62,
-          "n": 9432
+          "avg": 3.61,
+          "delta": -0.61,
+          "n": 9870
         },
         "DA_18_Zyra": {
           "items": ["DA_Morellonomicon", "DA_SpearOfShojin", "DA_VoidStaff"],
           "avg": 3.31,
-          "delta": -0.91,
-          "n": 4228
+          "delta": -0.92,
+          "n": 4414
         },
         "DA_Fiddlesticks18": {
           "items": ["DA_IonicSpark", "DA_SpiritVisage", "DA_SunfireCape"],
-          "avg": 2.88,
-          "delta": -1.34,
-          "n": 205
+          "avg": 2.9,
+          "delta": -1.32,
+          "n": 218
         }
       },
-      "games": 381901,
+      "games": 402519,
       "avg": 4.13,
       "top4": 56.8,
       "win": 15.4
@@ -329,13 +329,7 @@
       ],
       "key": ["DA_18_Lunar", "DA_18_Aphelios", "DA_Nidalee18_AP"],
       "levelling": "Fast 8",
-      "stars": [
-        "DA_18_RekSai",
-        "DA_18_Kobuko",
-        "DA_18_Veigar",
-        "DA_18_Rengar",
-        "DA_Karma18"
-      ],
+      "stars": ["DA_18_Kobuko", "DA_18_Veigar", "DA_18_Rengar", "DA_Karma18"],
       "builds": {
         "DA_Nidalee18_AP": [
           "DA_InfinityEdge",
@@ -363,13 +357,13 @@
           "items": ["DA_InfinityEdge", "DA_SpearOfShojin", "DA_SteraksGage"],
           "avg": 4.01,
           "delta": -0.3,
-          "n": 22596
+          "n": 23545
         },
         "DA_18_Aphelios": {
           "items": ["DA_Deathblade", "DA_GuinsoosRageblade", "DA_KrakensFury"],
-          "avg": 4,
+          "avg": 4.01,
           "delta": -0.31,
-          "n": 10652
+          "n": 11042
         },
         "DA_Amumu18": {
           "items": [
@@ -377,18 +371,18 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.77,
-          "delta": -0.55,
-          "n": 5568
+          "avg": 3.78,
+          "delta": -0.54,
+          "n": 5793
         },
         "DA_Sentinel18": {
           "items": ["DA_AdaptiveHelm", "DA_ProtectorsVow", "DA_ProtectorsVow"],
           "avg": 3.64,
-          "delta": -0.68,
-          "n": 1853
+          "delta": -0.67,
+          "n": 1922
         }
       },
-      "games": 391896,
+      "games": 410664,
       "avg": 4.19,
       "top4": 58.2,
       "win": 8.6
@@ -433,15 +427,15 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.03,
+          "avg": 4.04,
           "delta": -0.46,
-          "n": 1818
+          "n": 1897
         },
         "DA_18_Ezreal": {
           "items": ["DA_Deathblade", "DA_LastWhisper", "DA_SpearOfShojin"],
-          "avg": 4.2,
+          "avg": 4.21,
           "delta": -0.29,
-          "n": 3599
+          "n": 3738
         },
         "DA_18_Ahri": {
           "items": [
@@ -449,9 +443,9 @@
             "DA_BlueBuff",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.94,
-          "delta": -0.55,
-          "n": 434
+          "avg": 3.91,
+          "delta": -0.59,
+          "n": 458
         },
         "DA_18_Soraka": {
           "items": [
@@ -459,12 +453,12 @@
             "DA_RabadonsDeathcap",
             "DA_SpearOfShojin"
           ],
-          "avg": 3.64,
-          "delta": -0.86,
-          "n": 135
+          "avg": 3.62,
+          "delta": -0.88,
+          "n": 141
         }
       },
-      "games": 99366,
+      "games": 104398,
       "avg": 4.34,
       "top4": 54.4,
       "win": 9.5
@@ -495,15 +489,15 @@
         "DA_18_Elise"
       ],
       "builds": {
-        "DA_18_Alistar": [
-          "DA_GargoyleStoneplate",
-          "DA_GargoyleStoneplate",
-          "DA_WarmogsArmor"
-        ],
         "DA_18_Teemo": [
           "DA_Morellonomicon",
           "DA_SpearOfShojin",
           "DA_VoidStaff"
+        ],
+        "DA_18_Alistar": [
+          "DA_GargoyleStoneplate",
+          "DA_GargoyleStoneplate",
+          "DA_WarmogsArmor"
         ],
         "DA_18_LeBlanc": [
           "DA_GiantSlayer",
@@ -517,6 +511,12 @@
         ]
       },
       "buildStats": {
+        "DA_18_Teemo": {
+          "items": ["DA_Morellonomicon", "DA_SpearOfShojin", "DA_VoidStaff"],
+          "avg": 4.3,
+          "delta": -0.17,
+          "n": 963
+        },
         "DA_18_Alistar": {
           "items": [
             "DA_GargoyleStoneplate",
@@ -525,19 +525,13 @@
           ],
           "avg": 4.04,
           "delta": -0.43,
-          "n": 683
-        },
-        "DA_18_Teemo": {
-          "items": ["DA_Morellonomicon", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 4.31,
-          "delta": -0.16,
-          "n": 908
+          "n": 717
         },
         "DA_18_LeBlanc": {
           "items": ["DA_GiantSlayer", "DA_JeweledGauntlet", "DA_SpearOfShojin"],
-          "avg": 3.74,
-          "delta": -0.73,
-          "n": 119
+          "avg": 3.75,
+          "delta": -0.72,
+          "n": 123
         },
         "DA_18_Hecarim": {
           "items": [
@@ -550,9 +544,9 @@
           "n": 45
         }
       },
-      "games": 34367,
+      "games": 36474,
       "avg": 4.29,
-      "top4": 56.4,
+      "top4": 56.2,
       "win": 6.8
     },
     {
@@ -579,8 +573,8 @@
         "DA_18_Xayah",
         "DA_18_Camille",
         "DA_18_Ornn",
-        "DA_Karma18",
         "DA_18_Leona",
+        "DA_Karma18",
         "DA_18_Veigar"
       ],
       "builds": {
@@ -608,15 +602,15 @@
       "buildStats": {
         "DA_18_ElderDragon": {
           "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_StrikersFlail"],
-          "avg": 3.04,
-          "delta": -1.13,
-          "n": 4071
+          "avg": 3.03,
+          "delta": -1.14,
+          "n": 4258
         },
         "DA_18_Sentry": {
           "items": ["DA_BlueBuff", "DA_JeweledGauntlet", "DA_RabadonsDeathcap"],
           "avg": 3.92,
           "delta": -0.25,
-          "n": 9864
+          "n": 10305
         },
         "DA_Krug18": {
           "items": [
@@ -625,17 +619,17 @@
             "DA_WarmogsArmor"
           ],
           "avg": 3.83,
-          "delta": -0.34,
-          "n": 6975
+          "delta": -0.35,
+          "n": 7279
         },
         "DA_Cinderling18": {
           "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_SpearOfShojin"],
-          "avg": 4,
-          "delta": -0.17,
-          "n": 3116
+          "avg": 4.01,
+          "delta": -0.16,
+          "n": 3257
         }
       },
-      "games": 448483,
+      "games": 473177,
       "avg": 4.15,
       "top4": 56.7,
       "win": 14.3
@@ -655,7 +649,7 @@
       ],
       "key": ["DA_18_Vanguard", "DA_18_Morgana", "DA_18_Alune"],
       "levelling": "Fast 9",
-      "stars": ["DA_18_Ornn"],
+      "stars": ["DA_18_Kobuko"],
       "builds": {
         "DA_18_Alune": [
           "DA_ArchangelsStaff",
@@ -685,15 +679,15 @@
             "DA_JeweledGauntlet",
             "DA_SpearOfShojin"
           ],
-          "avg": 3.73,
-          "delta": -0.56,
-          "n": 1148
+          "avg": 3.75,
+          "delta": -0.54,
+          "n": 1213
         },
         "DA_18_Morgana": {
           "items": ["DA_HextechGunblade", "DA_Morellonomicon", "DA_VoidStaff"],
           "avg": 3.72,
           "delta": -0.57,
-          "n": 1350
+          "n": 1421
         },
         "DA_Sentinel18": {
           "items": [
@@ -702,8 +696,8 @@
             "DA_WarmogsArmor"
           ],
           "avg": 3.73,
-          "delta": -0.56,
-          "n": 794
+          "delta": -0.55,
+          "n": 831
         },
         "DA_Taric18": {
           "items": [
@@ -711,14 +705,14 @@
             "DA_GargoyleStoneplate",
             "DA_SpiritVisage"
           ],
-          "avg": 2.71,
-          "delta": -1.57,
-          "n": 66
+          "avg": 2.65,
+          "delta": -1.63,
+          "n": 69
         }
       },
-      "games": 87064,
+      "games": 91974,
       "avg": 4.23,
-      "top4": 53.6,
+      "top4": 53.5,
       "win": 19.2
     },
     {
@@ -748,23 +742,23 @@
           "DA_ProtectorsVow",
           "DA_WarmogsArmor"
         ],
-        "DA_Brambleback18": [
-          "DA_Bloodthirster",
-          "DA_SteraksGage",
-          "DA_TitansResolve"
-        ],
         "DA_18_Alune": [
           "DA_18_EmblemInvoker",
           "DA_ArchangelsStaff",
           "DA_RabadonsDeathcap"
+        ],
+        "DA_Brambleback18": [
+          "DA_EdgeOfNight",
+          "DA_Quicksilver",
+          "DA_SteraksGage"
         ]
       },
       "buildStats": {
         "DA_18_Morgana": {
           "items": ["DA_18_EmblemLunar", "DA_Morellonomicon", "DA_VoidStaff"],
-          "avg": 3.76,
+          "avg": 3.75,
           "delta": -0.83,
-          "n": 123
+          "n": 126
         },
         "DA_Sentinel18": {
           "items": [
@@ -772,15 +766,9 @@
             "DA_ProtectorsVow",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.08,
-          "delta": -0.5,
-          "n": 506
-        },
-        "DA_Brambleback18": {
-          "items": ["DA_Bloodthirster", "DA_SteraksGage", "DA_TitansResolve"],
-          "avg": 3.86,
-          "delta": -0.73,
-          "n": 64
+          "avg": 4.09,
+          "delta": -0.49,
+          "n": 522
         },
         "DA_18_Alune": {
           "items": [
@@ -788,14 +776,20 @@
             "DA_ArchangelsStaff",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.12,
-          "delta": -1.47,
-          "n": 34
+          "avg": 3.06,
+          "delta": -1.53,
+          "n": 35
+        },
+        "DA_Brambleback18": {
+          "items": ["DA_EdgeOfNight", "DA_Quicksilver", "DA_SteraksGage"],
+          "avg": 4.17,
+          "delta": -0.41,
+          "n": 308
         }
       },
-      "games": 54418,
-      "avg": 4.42,
-      "top4": 51.4,
+      "games": 56485,
+      "avg": 4.41,
+      "top4": 51.5,
       "win": 12.4
     },
     {
@@ -812,7 +806,7 @@
       ],
       "key": ["DA_18_Invoker", "DA_18_Ahri"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Akali_AD", "DA_18_Leona", "DA_18_Xayah", "DA_18_Varus"],
+      "stars": ["DA_18_Akali_AD", "DA_18_Leona", "DA_18_Varus", "DA_18_Xayah"],
       "builds": {
         "DA_18_Morgana": [
           "DA_Morellonomicon",
@@ -839,8 +833,8 @@
         "DA_18_Morgana": {
           "items": ["DA_Morellonomicon", "DA_RabadonsDeathcap", "DA_VoidStaff"],
           "avg": 3.72,
-          "delta": -0.65,
-          "n": 6077
+          "delta": -0.66,
+          "n": 6359
         },
         "DA_18_Ahri": {
           "items": [
@@ -848,15 +842,15 @@
             "DA_JeweledGauntlet",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.93,
-          "delta": -0.44,
-          "n": 5041
+          "avg": 3.94,
+          "delta": -0.43,
+          "n": 5249
         },
         "DA_Sentinel18": {
           "items": ["DA_ProtectorsVow", "DA_ProtectorsVow", "DA_ProtectorsVow"],
           "avg": 3.36,
           "delta": -1.01,
-          "n": 1854
+          "n": 1927
         },
         "DA_18_Sett": {
           "items": [
@@ -864,12 +858,12 @@
             "DA_SteraksGage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.81,
-          "delta": -0.56,
-          "n": 1690
+          "avg": 3.8,
+          "delta": -0.57,
+          "n": 1767
         }
       },
-      "games": 273219,
+      "games": 286767,
       "avg": 4.34,
       "top4": 53.6,
       "win": 11.8
@@ -889,7 +883,7 @@
       ],
       "key": ["DA_18_Elderwood", "DA_Draven18"],
       "levelling": "Fast 9",
-      "stars": ["DA_18_Rengar", "DA_18_Leona"],
+      "stars": ["DA_18_Veigar", "DA_18_Rengar", "DA_18_Leona"],
       "builds": {
         "DA_Draven18": [
           "DA_Deathblade",
@@ -915,9 +909,9 @@
       "buildStats": {
         "DA_Draven18": {
           "items": ["DA_Deathblade", "DA_GuinsoosRageblade", "DA_KrakensFury"],
-          "avg": 3.87,
+          "avg": 3.86,
           "delta": -0.57,
-          "n": 7844
+          "n": 8196
         },
         "DA_18_Maokai": {
           "items": [
@@ -927,22 +921,22 @@
           ],
           "avg": 3.41,
           "delta": -1.03,
-          "n": 3392
+          "n": 3549
         },
         "DA_18_Ezreal": {
           "items": ["DA_GiantSlayer", "DA_LastWhisper", "DA_SpearOfShojin"],
-          "avg": 3.63,
-          "delta": -0.81,
-          "n": 867
+          "avg": 3.6,
+          "delta": -0.83,
+          "n": 899
         },
         "DA_18_Kennen": {
           "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_StrikersFlail"],
-          "avg": 2.64,
-          "delta": -1.8,
-          "n": 151
+          "avg": 2.67,
+          "delta": -1.77,
+          "n": 157
         }
       },
-      "games": 302821,
+      "games": 317816,
       "avg": 4.39,
       "top4": 49.8,
       "win": 19
@@ -994,9 +988,9 @@
             "DA_NashorsTooth",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.83,
-          "delta": -0.4,
-          "n": 5359
+          "avg": 3.84,
+          "delta": -0.39,
+          "n": 5589
         },
         "DA_18_Hecarim": {
           "items": [
@@ -1006,13 +1000,13 @@
           ],
           "avg": 3.81,
           "delta": -0.42,
-          "n": 4592
+          "n": 4792
         },
         "DA_18_Ezreal": {
           "items": ["DA_Deathblade", "DA_RedBuff", "DA_SpearOfShojin"],
-          "avg": 3.25,
-          "delta": -0.99,
-          "n": 1823
+          "avg": 3.23,
+          "delta": -1,
+          "n": 1902
         },
         "DA_18_Diana": {
           "items": [
@@ -1020,12 +1014,12 @@
             "DA_HandOfJustice",
             "DA_IonicSpark"
           ],
-          "avg": 3.11,
+          "avg": 3.1,
           "delta": -1.13,
-          "n": 476
+          "n": 494
         }
       },
-      "games": 202096,
+      "games": 212544,
       "avg": 4.36,
       "top4": 52.7,
       "win": 13.6
@@ -1049,8 +1043,8 @@
         "DA_18_Rammus",
         "DA_18_Kobuko",
         "DA_18_Alistar",
-        "DA_Scuttlecrab18",
         "DA_Gromp18_AP",
+        "DA_Scuttlecrab18",
         "DA_18_Ornn",
         "DA_18_LeBlanc",
         "DA_18_Shen",
@@ -1060,7 +1054,7 @@
       ],
       "builds": {
         "DA_18_Teemo": [
-          "DA_18_EmblemFloraFatalis",
+          "DA_HextechGunblade",
           "DA_JeweledGauntlet",
           "DA_RabadonsDeathcap"
         ],
@@ -1070,9 +1064,9 @@
           "DA_VoidStaff"
         ],
         "DA_18_Rammus": [
-          "DA_18_EmblemBrawler",
+          "DA_DragonsClaw",
           "DA_GargoyleStoneplate",
-          "DA_WarmogsArmor"
+          "DA_SpiritVisage"
         ],
         "DA_Sentinel18": [
           "DA_AdaptiveHelm",
@@ -1083,40 +1077,40 @@
       "buildStats": {
         "DA_18_Teemo": {
           "items": [
-            "DA_18_EmblemFloraFatalis",
+            "DA_HextechGunblade",
             "DA_JeweledGauntlet",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.28,
-          "delta": -1.21,
-          "n": 18
+          "avg": 4.15,
+          "delta": -0.33,
+          "n": 546
         },
         "DA_18_Morgana": {
           "items": ["DA_HextechGunblade", "DA_Morellonomicon", "DA_VoidStaff"],
-          "avg": 3.52,
-          "delta": -0.97,
-          "n": 139
+          "avg": 3.55,
+          "delta": -0.94,
+          "n": 143
         },
         "DA_18_Rammus": {
           "items": [
-            "DA_18_EmblemBrawler",
+            "DA_DragonsClaw",
             "DA_GargoyleStoneplate",
-            "DA_WarmogsArmor"
+            "DA_SpiritVisage"
           ],
-          "avg": 3.58,
-          "delta": -0.9,
-          "n": 24
+          "avg": 3.86,
+          "delta": -0.62,
+          "n": 65
         },
         "DA_Sentinel18": {
           "items": ["DA_AdaptiveHelm", "DA_ProtectorsVow", "DA_ProtectorsVow"],
           "avg": 3.22,
-          "delta": -1.27,
+          "delta": -1.26,
           "n": 32
         }
       },
-      "games": 26474,
+      "games": 27605,
       "avg": 4.37,
-      "top4": 53.7,
+      "top4": 53.8,
       "win": 7.4
     },
     {
@@ -1169,9 +1163,9 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.27,
-          "delta": -0.96,
-          "n": 1509
+          "avg": 3.26,
+          "delta": -0.97,
+          "n": 1579
         },
         "DA_18_Ornn": {
           "items": [
@@ -1179,27 +1173,27 @@
             "DA_GargoyleStoneplate",
             "DA_SpiritVisage"
           ],
-          "avg": 4,
-          "delta": -0.23,
-          "n": 841
+          "avg": 3.98,
+          "delta": -0.26,
+          "n": 880
         },
         "DA_18_LeBlanc": {
           "items": ["DA_BlueBuff", "DA_Morellonomicon", "DA_VoidStaff"],
           "avg": 3.54,
           "delta": -0.7,
-          "n": 609
+          "n": 639
         },
         "DA_18_Veigar": {
           "items": ["DA_BlueBuff", "DA_BlueBuff", "DA_JeweledGauntlet"],
-          "avg": 4.46,
-          "delta": 0.23,
-          "n": 198
+          "avg": 4.49,
+          "delta": 0.25,
+          "n": 218
         }
       },
-      "games": 209025,
+      "games": 219800,
       "avg": 4.35,
       "top4": 52.9,
-      "win": 13.7
+      "win": 13.8
     },
     {
       "id": "426015",
@@ -1248,7 +1242,7 @@
           ],
           "avg": 4.05,
           "delta": -0.53,
-          "n": 6124
+          "n": 6305
         },
         "DA_Nidalee18_AP": {
           "items": [
@@ -1256,9 +1250,9 @@
             "DA_GuinsoosRageblade",
             "DA_VoidStaff"
           ],
-          "avg": 3.97,
+          "avg": 3.96,
           "delta": -0.61,
-          "n": 339
+          "n": 362
         },
         "DA_Amumu18": {
           "items": [
@@ -1266,9 +1260,9 @@
             "DA_SunfireCape",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.08,
-          "delta": -0.51,
-          "n": 451
+          "avg": 4.07,
+          "delta": -0.5,
+          "n": 468
         },
         "DA_Vi18": {
           "items": [
@@ -1277,11 +1271,11 @@
             "DA_WarmogsArmor"
           ],
           "avg": 4.56,
-          "delta": -0.03,
+          "delta": -0.02,
           "n": 72
         }
       },
-      "games": 72795,
+      "games": 76162,
       "avg": 4.58,
       "top4": 48.5,
       "win": 9.6
@@ -1319,8 +1313,8 @@
         "DA_18_Sivir": {
           "items": ["DA_InfinityEdge", "DA_RedBuff", "DA_StrikersFlail"],
           "avg": 4.03,
-          "delta": -0.51,
-          "n": 1411
+          "delta": -0.52,
+          "n": 1468
         },
         "DA_18_Malphite": {
           "items": [
@@ -1328,26 +1322,26 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.07,
-          "delta": -0.47,
-          "n": 1959
+          "avg": 4.08,
+          "delta": -0.46,
+          "n": 2038
         },
         "DA_Nidalee18_AP": {
           "items": ["DA_InfinityEdge", "DA_SpearOfShojin", "DA_SteraksGage"],
           "avg": 4.11,
-          "delta": -0.43,
-          "n": 1176
+          "delta": -0.44,
+          "n": 1209
         },
         "DA_KogMaw18_AD": {
           "items": ["DA_TacticiansCape"],
-          "avg": 3.48,
-          "delta": -1.06,
-          "n": 58
+          "avg": 3.58,
+          "delta": -0.96,
+          "n": 62
         }
       },
-      "games": 48145,
-      "avg": 4.47,
-      "top4": 51.8,
+      "games": 50537,
+      "avg": 4.48,
+      "top4": 51.7,
       "win": 8.5
     },
     {
@@ -1378,8 +1372,8 @@
           "DA_SteraksGage"
         ],
         "DA_CrimsonRaptor18": [
+          "DA_Deathblade",
           "DA_GuinsoosRageblade",
-          "DA_HextechGunblade",
           "DA_KrakensFury"
         ]
       },
@@ -1387,8 +1381,8 @@
         "DA_18_Aphelios": {
           "items": ["DA_Deathblade", "DA_KrakensFury", "DA_RedBuff"],
           "avg": 3.85,
-          "delta": -0.78,
-          "n": 141
+          "delta": -0.79,
+          "n": 149
         },
         "DA_Sentinel18": {
           "items": [
@@ -1396,9 +1390,9 @@
             "DA_ProtectorsVow",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.05,
-          "delta": -0.58,
-          "n": 582
+          "avg": 4.08,
+          "delta": -0.56,
+          "n": 604
         },
         "DA_Brambleback18": {
           "items": [
@@ -1406,24 +1400,20 @@
             "DA_EdgeOfNight",
             "DA_SteraksGage"
           ],
-          "avg": 3.94,
-          "delta": -0.69,
-          "n": 311
+          "avg": 3.99,
+          "delta": -0.65,
+          "n": 323
         },
         "DA_CrimsonRaptor18": {
-          "items": [
-            "DA_GuinsoosRageblade",
-            "DA_HextechGunblade",
-            "DA_KrakensFury"
-          ],
-          "avg": 4.17,
-          "delta": -0.47,
-          "n": 48
+          "items": ["DA_Deathblade", "DA_GuinsoosRageblade", "DA_KrakensFury"],
+          "avg": 4.13,
+          "delta": -0.51,
+          "n": 56
         }
       },
-      "games": 52062,
+      "games": 54395,
       "avg": 4.51,
-      "top4": 50.6,
+      "top4": 50.5,
       "win": 8
     },
     {
@@ -1453,11 +1443,7 @@
           "DA_ArchangelsStaff",
           "DA_HextechGunblade"
         ],
-        "DA_18_Rammus": [
-          "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
-          "DA_WarmogsArmor"
-        ],
+        "DA_18_Rammus": ["DA_BrambleVest", "DA_DragonsClaw", "DA_SpiritVisage"],
         "DA_Fiddlesticks18": [
           "DA_IonicSpark",
           "DA_SpiritVisage",
@@ -1465,7 +1451,7 @@
         ],
         "DA_18_Lillia": [
           "DA_GargoyleStoneplate",
-          "DA_ProtectorsVow",
+          "DA_SunfireCape",
           "DA_WarmogsArmor"
         ]
       },
@@ -1476,38 +1462,34 @@
             "DA_ArchangelsStaff",
             "DA_HextechGunblade"
           ],
-          "avg": 4.16,
+          "avg": 4.15,
           "delta": -0.48,
-          "n": 2605
+          "n": 2711
         },
         "DA_18_Rammus": {
-          "items": [
-            "DA_GargoyleStoneplate",
-            "DA_SpiritVisage",
-            "DA_WarmogsArmor"
-          ],
-          "avg": 4.11,
-          "delta": -0.52,
-          "n": 675
+          "items": ["DA_BrambleVest", "DA_DragonsClaw", "DA_SpiritVisage"],
+          "avg": 3.47,
+          "delta": -1.17,
+          "n": 62
         },
         "DA_Fiddlesticks18": {
           "items": ["DA_IonicSpark", "DA_SpiritVisage", "DA_SunfireCape"],
-          "avg": 3.75,
-          "delta": -0.89,
-          "n": 142
+          "avg": 3.73,
+          "delta": -0.9,
+          "n": 154
         },
         "DA_18_Lillia": {
           "items": [
             "DA_GargoyleStoneplate",
-            "DA_ProtectorsVow",
+            "DA_SunfireCape",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.22,
-          "delta": -0.41,
-          "n": 41
+          "avg": 4.16,
+          "delta": -0.47,
+          "n": 37
         }
       },
-      "games": 110038,
+      "games": 115993,
       "avg": 4.52,
       "top4": 50.3,
       "win": 8
@@ -1547,9 +1529,9 @@
           "DA_SteraksGage"
         ],
         "DA_18_Alistar": [
-          "DA_Crownguard",
           "DA_GargoyleStoneplate",
-          "DA_WarmogsArmor"
+          "DA_GargoyleStoneplate",
+          "DA_GargoyleStoneplate"
         ],
         "DA_18_Azir": [
           "DA_ArchangelsStaff",
@@ -1565,8 +1547,8 @@
             "DA_SpearOfShojin"
           ],
           "avg": 4.32,
-          "delta": -0.3,
-          "n": 2999
+          "delta": -0.31,
+          "n": 3144
         },
         "DA_18_Warwick": {
           "items": [
@@ -1574,19 +1556,19 @@
             "DA_SpearOfShojin",
             "DA_SteraksGage"
           ],
-          "avg": 3.35,
+          "avg": 3.36,
           "delta": -1.27,
-          "n": 94
+          "n": 97
         },
         "DA_18_Alistar": {
           "items": [
-            "DA_Crownguard",
             "DA_GargoyleStoneplate",
-            "DA_WarmogsArmor"
+            "DA_GargoyleStoneplate",
+            "DA_GargoyleStoneplate"
           ],
-          "avg": 3.97,
-          "delta": -0.65,
-          "n": 384
+          "avg": 3.23,
+          "delta": -1.4,
+          "n": 35
         },
         "DA_18_Azir": {
           "items": [
@@ -1594,12 +1576,12 @@
             "DA_GuinsoosRageblade",
             "DA_HextechGunblade"
           ],
-          "avg": 3.35,
-          "delta": -1.27,
-          "n": 17
+          "avg": 3.26,
+          "delta": -1.36,
+          "n": 19
         }
       },
-      "games": 21320,
+      "games": 22668,
       "avg": 4.57,
       "top4": 50.1,
       "win": 9.7
@@ -1648,9 +1630,9 @@
             "DA_ArchangelsStaff",
             "DA_JeweledGauntlet"
           ],
-          "avg": 3.41,
-          "delta": -1.17,
-          "n": 64
+          "avg": 3.34,
+          "delta": -1.23,
+          "n": 67
         },
         "DA_18_Sett": {
           "items": [
@@ -1658,15 +1640,15 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.96,
-          "delta": -0.61,
-          "n": 543
+          "avg": 3.97,
+          "delta": -0.6,
+          "n": 556
         },
         "DA_18_Zyra": {
           "items": ["DA_HextechGunblade", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 3.68,
+          "avg": 3.69,
           "delta": -0.89,
-          "n": 206
+          "n": 207
         },
         "DA_Amumu18": {
           "items": [
@@ -1676,12 +1658,12 @@
           ],
           "avg": 3.72,
           "delta": -0.86,
-          "n": 88
+          "n": 89
         }
       },
-      "games": 43652,
+      "games": 45499,
       "avg": 4.55,
-      "top4": 49.4,
+      "top4": 49.3,
       "win": 9.3
     },
     {
@@ -1749,9 +1731,9 @@
             "DA_JeweledGauntlet",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.96,
-          "delta": -0.48,
-          "n": 1862
+          "avg": 3.95,
+          "delta": -0.49,
+          "n": 1970
         },
         "DA_18_Sejuani": {
           "items": [
@@ -1759,15 +1741,15 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.94,
-          "delta": -0.5,
-          "n": 2816
+          "avg": 3.93,
+          "delta": -0.51,
+          "n": 2959
         },
         "DA_18_Aphelios": {
           "items": ["DA_GiantSlayer", "DA_KrakensFury", "DA_LastWhisper"],
-          "avg": 2.75,
-          "delta": -1.69,
-          "n": 84
+          "avg": 2.85,
+          "delta": -1.59,
+          "n": 88
         },
         "DA_18_Shen": {
           "items": [
@@ -1775,12 +1757,12 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.94,
-          "delta": -0.5,
-          "n": 200
+          "avg": 4,
+          "delta": -0.44,
+          "n": 219
         }
       },
-      "games": 195197,
+      "games": 206804,
       "avg": 4.31,
       "top4": 53.7,
       "win": 14.1
@@ -1833,9 +1815,9 @@
             "DA_GuinsoosRageblade",
             "DA_TitansResolve"
           ],
-          "avg": 4.06,
-          "delta": -0.43,
-          "n": 2344
+          "avg": 4.08,
+          "delta": -0.42,
+          "n": 2436
         },
         "DA_18_MasterYi_AD": {
           "items": [
@@ -1844,26 +1826,26 @@
             "DA_GuinsoosRageblade"
           ],
           "avg": 4.45,
-          "delta": -0.04,
-          "n": 2610
+          "delta": -0.05,
+          "n": 2704
         },
         "DA_Vi18": {
           "items": ["DA_Evenshroud", "DA_SunfireCape", "DA_WarmogsArmor"],
-          "avg": 3.42,
-          "delta": -1.08,
-          "n": 110
+          "avg": 3.41,
+          "delta": -1.09,
+          "n": 117
         },
         "DA_Nidalee18_AP": {
           "items": ["DA_HandOfJustice", "DA_InfinityEdge", "DA_SpearOfShojin"],
-          "avg": 3.11,
-          "delta": -1.38,
-          "n": 62
+          "avg": 3.17,
+          "delta": -1.33,
+          "n": 65
         }
       },
-      "games": 65046,
+      "games": 68287,
       "avg": 4.48,
       "top4": 50.7,
-      "win": 10.3
+      "win": 10.4
     },
     {
       "id": "426023",
@@ -1907,20 +1889,24 @@
           "DA_EdgeOfNight",
           "DA_HandOfJustice"
         ],
-        "DA_Murkwolf18": ["DA_EdgeOfNight", "DA_InfinityEdge", "DA_LastWhisper"]
+        "DA_Murkwolf18": [
+          "DA_HandOfJustice",
+          "DA_InfinityEdge",
+          "DA_Quicksilver"
+        ]
       },
       "buildStats": {
         "DA_18_Warwick": {
           "items": ["DA_SpearOfShojin", "DA_SteraksGage", "DA_TitansResolve"],
           "avg": 4.21,
           "delta": -0.18,
-          "n": 3211
+          "n": 3319
         },
         "DA_18_Malphite": {
           "items": ["DA_Evenshroud", "DA_SpiritVisage", "DA_SunfireCape"],
-          "avg": 3.12,
-          "delta": -1.27,
-          "n": 33
+          "avg": 3.14,
+          "delta": -1.25,
+          "n": 36
         },
         "DA_Brambleback18": {
           "items": [
@@ -1928,20 +1914,20 @@
             "DA_EdgeOfNight",
             "DA_HandOfJustice"
           ],
-          "avg": 2.91,
-          "delta": -1.48,
-          "n": 35
+          "avg": 2.9,
+          "delta": -1.49,
+          "n": 40
         },
         "DA_Murkwolf18": {
-          "items": ["DA_EdgeOfNight", "DA_InfinityEdge", "DA_LastWhisper"],
-          "avg": 3.54,
-          "delta": -0.85,
-          "n": 37
+          "items": ["DA_HandOfJustice", "DA_InfinityEdge", "DA_Quicksilver"],
+          "avg": 3.72,
+          "delta": -0.67,
+          "n": 65
         }
       },
-      "games": 48205,
-      "avg": 4.4,
-      "top4": 53.2,
+      "games": 50594,
+      "avg": 4.41,
+      "top4": 53.1,
       "win": 7.3
     },
     {
@@ -1967,13 +1953,13 @@
       "builds": {
         "DA_18_Rengar": [
           "DA_EdgeOfNight",
-          "DA_HandOfJustice",
-          "DA_Quicksilver"
+          "DA_GuinsoosRageblade",
+          "DA_TitansResolve"
         ],
         "DA_18_KhaZix": [
           "DA_HandOfJustice",
           "DA_HandOfJustice",
-          "DA_NashorsTooth"
+          "DA_RabadonsDeathcap"
         ],
         "DA_18_Hecarim": [
           "DA_Evenshroud",
@@ -1984,16 +1970,24 @@
       },
       "buildStats": {
         "DA_18_Rengar": {
-          "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_Quicksilver"],
-          "avg": 3.51,
-          "delta": -1.36,
-          "n": 53
+          "items": [
+            "DA_EdgeOfNight",
+            "DA_GuinsoosRageblade",
+            "DA_TitansResolve"
+          ],
+          "avg": 4.48,
+          "delta": -0.38,
+          "n": 1832
         },
         "DA_18_KhaZix": {
-          "items": ["DA_HandOfJustice", "DA_HandOfJustice", "DA_NashorsTooth"],
-          "avg": 4.22,
-          "delta": -0.65,
-          "n": 174
+          "items": [
+            "DA_HandOfJustice",
+            "DA_HandOfJustice",
+            "DA_RabadonsDeathcap"
+          ],
+          "avg": 4.44,
+          "delta": -0.43,
+          "n": 597
         },
         "DA_18_Hecarim": {
           "items": [
@@ -2001,18 +1995,18 @@
             "DA_GargoyleStoneplate",
             "DA_SteadfastHeart"
           ],
-          "avg": 2.88,
-          "delta": -1.98,
-          "n": 26
+          "avg": 2.89,
+          "delta": -1.97,
+          "n": 27
         },
         "DA_18_Diana": {
           "items": ["DA_SunfireCape"],
-          "avg": 3.85,
+          "avg": 3.86,
           "delta": -1.01,
-          "n": 116
+          "n": 125
         }
       },
-      "games": 60020,
+      "games": 63108,
       "avg": 4.68,
       "top4": 46.8,
       "win": 9.9
@@ -2051,17 +2045,17 @@
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ],
-        "DA_18_Akali_AD": [
-          "DA_EdgeOfNight",
-          "DA_HandOfJustice",
-          "DA_InfinityEdge"
-        ],
         "DA_18_Camille": [
           "DA_HandOfJustice",
           "DA_InfinityEdge",
           "DA_Quicksilver"
         ],
-        "DA_18_Varus": ["DA_InfinityEdge", "DA_LastWhisper", "DA_SpearOfShojin"]
+        "DA_18_Akali_AD": [
+          "DA_EdgeOfNight",
+          "DA_HandOfJustice",
+          "DA_InfinityEdge"
+        ],
+        "DA_18_Varus": ["DA_Deathblade", "DA_GiantSlayer", "DA_SpearOfShojin"]
       },
       "buildStats": {
         "DA_18_Ornn": {
@@ -2072,29 +2066,29 @@
           ],
           "avg": 3.94,
           "delta": -0.56,
-          "n": 1483
-        },
-        "DA_18_Akali_AD": {
-          "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_InfinityEdge"],
-          "avg": 4.28,
-          "delta": -0.22,
-          "n": 1691
+          "n": 1557
         },
         "DA_18_Camille": {
           "items": ["DA_HandOfJustice", "DA_InfinityEdge", "DA_Quicksilver"],
-          "avg": 3.7,
-          "delta": -0.8,
-          "n": 135
+          "avg": 3.69,
+          "delta": -0.81,
+          "n": 144
+        },
+        "DA_18_Akali_AD": {
+          "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_InfinityEdge"],
+          "avg": 4.29,
+          "delta": -0.21,
+          "n": 1745
         },
         "DA_18_Varus": {
-          "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_SpearOfShojin"],
-          "avg": 3.77,
-          "delta": -0.73,
-          "n": 643
+          "items": ["DA_Deathblade", "DA_GiantSlayer", "DA_SpearOfShojin"],
+          "avg": 3.15,
+          "delta": -1.35,
+          "n": 80
         }
       },
-      "games": 75907,
-      "avg": 4.6,
+      "games": 79691,
+      "avg": 4.61,
       "top4": 49.4,
       "win": 9
     },
@@ -2113,48 +2107,56 @@
       ],
       "key": ["DA_18_Lunar", "DA_18_Aphelios", "DA_18_Lillia"],
       "levelling": "Fast 8",
-      "stars": ["DA_18_Rengar"],
+      "stars": ["DA_18_Rengar", "DA_18_Elise"],
       "builds": {
-        "DA_18_Lillia": ["DA_Evenshroud", "DA_SpiritVisage", "DA_SunfireCape"],
+        "DA_18_Lillia": [
+          "DA_Evenshroud",
+          "DA_ProtectorsVow",
+          "DA_SteadfastHeart"
+        ],
         "DA_18_Aphelios": [
           "DA_InfinityEdge",
           "DA_KrakensFury",
           "DA_LastWhisper"
         ],
         "DA_18_Alune": [
-          "DA_RabadonsDeathcap",
-          "DA_SpearOfShojin",
-          "DA_VoidStaff"
+          "DA_JeweledGauntlet",
+          "DA_NashorsTooth",
+          "DA_SpearOfShojin"
         ],
-        "DA_18_Diana": ["DA_SteadfastHeart"]
+        "DA_18_Diana": ["DA_IonicSpark"]
       },
       "buildStats": {
         "DA_18_Lillia": {
-          "items": ["DA_Evenshroud", "DA_SpiritVisage", "DA_SunfireCape"],
-          "avg": 3.58,
-          "delta": -1.27,
-          "n": 31
+          "items": ["DA_Evenshroud", "DA_ProtectorsVow", "DA_SteadfastHeart"],
+          "avg": 3.21,
+          "delta": -1.64,
+          "n": 14
         },
         "DA_18_Aphelios": {
           "items": ["DA_InfinityEdge", "DA_KrakensFury", "DA_LastWhisper"],
-          "avg": 3.94,
-          "delta": -0.91,
-          "n": 48
+          "avg": 3.96,
+          "delta": -0.89,
+          "n": 50
         },
         "DA_18_Alune": {
-          "items": ["DA_RabadonsDeathcap", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 3.2,
-          "delta": -1.65,
-          "n": 15
+          "items": [
+            "DA_JeweledGauntlet",
+            "DA_NashorsTooth",
+            "DA_SpearOfShojin"
+          ],
+          "avg": 3.56,
+          "delta": -1.29,
+          "n": 32
         },
         "DA_18_Diana": {
-          "items": ["DA_SteadfastHeart"],
-          "avg": 3,
-          "delta": -1.85,
-          "n": 13
+          "items": ["DA_IonicSpark"],
+          "avg": 3.96,
+          "delta": -0.89,
+          "n": 25
         }
       },
-      "games": 27751,
+      "games": 29216,
       "avg": 4.67,
       "top4": 46.7,
       "win": 10.2
@@ -2176,7 +2178,7 @@
       "stars": [],
       "builds": {
         "DA_18_Morgana": [
-          "DA_18_EmblemVanguard",
+          "DA_Bloodthirster",
           "DA_Morellonomicon",
           "DA_VoidStaff"
         ],
@@ -2198,14 +2200,10 @@
       },
       "buildStats": {
         "DA_18_Morgana": {
-          "items": [
-            "DA_18_EmblemVanguard",
-            "DA_Morellonomicon",
-            "DA_VoidStaff"
-          ],
-          "avg": 3.47,
-          "delta": -0.98,
-          "n": 134
+          "items": ["DA_Bloodthirster", "DA_Morellonomicon", "DA_VoidStaff"],
+          "avg": 3.53,
+          "delta": -0.93,
+          "n": 150
         },
         "DA_18_Alune": {
           "items": [
@@ -2213,9 +2211,9 @@
             "DA_RabadonsDeathcap",
             "DA_SpearOfShojin"
           ],
-          "avg": 2.62,
-          "delta": -1.84,
-          "n": 55
+          "avg": 2.59,
+          "delta": -1.87,
+          "n": 56
         },
         "DA_Sentinel18": {
           "items": [
@@ -2223,9 +2221,9 @@
             "DA_ProtectorsVow",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.9,
-          "delta": -0.55,
-          "n": 703
+          "avg": 3.88,
+          "delta": -0.58,
+          "n": 730
         },
         "DA_18_Ahri": {
           "items": [
@@ -2234,11 +2232,11 @@
             "DA_StrikersFlail"
           ],
           "avg": 3.81,
-          "delta": -0.64,
+          "delta": -0.65,
           "n": 112
         }
       },
-      "games": 77241,
+      "games": 80695,
       "avg": 4.26,
       "top4": 53.1,
       "win": 19.3
@@ -2294,9 +2292,9 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.09,
-          "delta": -0.52,
-          "n": 3555
+          "avg": 4.1,
+          "delta": -0.51,
+          "n": 3675
         },
         "DA_18_Zyra": {
           "items": [
@@ -2304,9 +2302,9 @@
             "DA_SpearOfShojin",
             "DA_VoidStaff"
           ],
-          "avg": 4.02,
-          "delta": -0.59,
-          "n": 2248
+          "avg": 4.03,
+          "delta": -0.58,
+          "n": 2339
         },
         "DA_18_Soraka": {
           "items": [
@@ -2314,9 +2312,9 @@
             "DA_RabadonsDeathcap",
             "DA_SpearOfShojin"
           ],
-          "avg": 3.99,
-          "delta": -0.62,
-          "n": 345
+          "avg": 3.97,
+          "delta": -0.64,
+          "n": 353
         },
         "DA_18_Azir": {
           "items": [
@@ -2324,12 +2322,12 @@
             "DA_HextechGunblade",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.69,
-          "delta": -0.92,
-          "n": 1842
+          "avg": 3.7,
+          "delta": -0.91,
+          "n": 1895
         }
       },
-      "games": 178859,
+      "games": 186527,
       "avg": 4.56,
       "top4": 49.4,
       "win": 9
@@ -2361,12 +2359,12 @@
           "DA_EdgeOfNight",
           "DA_GuinsoosRageblade"
         ],
+        "DA_KogMaw18_AD": ["DA_InfinityEdge", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_Nidalee18_AP": [
           "DA_Bloodthirster",
           "DA_InfinityEdge",
           "DA_SteraksGage"
         ],
-        "DA_KogMaw18_AD": ["DA_InfinityEdge", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_Vi18": [
           "DA_18_EmblemBrawler",
           "DA_GargoyleStoneplate",
@@ -2380,21 +2378,21 @@
             "DA_EdgeOfNight",
             "DA_GuinsoosRageblade"
           ],
-          "avg": 4.33,
+          "avg": 4.34,
           "delta": -0.14,
-          "n": 1846
-        },
-        "DA_Nidalee18_AP": {
-          "items": ["DA_Bloodthirster", "DA_InfinityEdge", "DA_SteraksGage"],
-          "avg": 2.46,
-          "delta": -2.01,
-          "n": 28
+          "n": 1923
         },
         "DA_KogMaw18_AD": {
           "items": ["DA_InfinityEdge", "DA_RedBuff", "DA_SpearOfShojin"],
           "avg": 3.87,
           "delta": -0.6,
-          "n": 330
+          "n": 343
+        },
+        "DA_Nidalee18_AP": {
+          "items": ["DA_Bloodthirster", "DA_InfinityEdge", "DA_SteraksGage"],
+          "avg": 2.57,
+          "delta": -1.91,
+          "n": 30
         },
         "DA_Vi18": {
           "items": [
@@ -2402,15 +2400,15 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 2.9,
-          "delta": -1.57,
-          "n": 40
+          "avg": 2.88,
+          "delta": -1.59,
+          "n": 42
         }
       },
-      "games": 36153,
-      "avg": 4.5,
+      "games": 38017,
+      "avg": 4.51,
       "top4": 51.1,
-      "win": 6.9
+      "win": 6.8
     },
     {
       "id": "426030",
@@ -2452,15 +2450,15 @@
       "buildStats": {
         "DA_18_ElderDragon": {
           "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_StrikersFlail"],
-          "avg": 3.37,
-          "delta": -1.1,
-          "n": 3767
+          "avg": 3.36,
+          "delta": -1.11,
+          "n": 3909
         },
         "DA_Draven18": {
           "items": ["DA_GuinsoosRageblade", "DA_KrakensFury", "DA_KrakensFury"],
-          "avg": 3.28,
-          "delta": -1.19,
-          "n": 2931
+          "avg": 3.29,
+          "delta": -1.18,
+          "n": 3032
         },
         "DA_18_Maokai": {
           "items": [
@@ -2470,19 +2468,19 @@
           ],
           "avg": 3.28,
           "delta": -1.19,
-          "n": 6091
+          "n": 6271
         },
         "DA_18_Kennen": {
           "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_JeweledGauntlet"],
-          "avg": 3.24,
-          "delta": -1.23,
-          "n": 328
+          "avg": 3.23,
+          "delta": -1.25,
+          "n": 339
         }
       },
-      "games": 605833,
-      "avg": 4.51,
+      "games": 632816,
+      "avg": 4.52,
       "top4": 48.8,
-      "win": 19
+      "win": 18.9
     },
     {
       "id": "426031",
@@ -2519,8 +2517,16 @@
         "DA_18_Yunara"
       ],
       "builds": {
-        "DA_18_Xayah": ["DA_Deathblade", "DA_InfinityEdge", "DA_RedBuff"],
-        "DA_18_Kayle": ["DA_GiantSlayer", "DA_JeweledGauntlet", "DA_RedBuff"],
+        "DA_18_Xayah": [
+          "DA_GiantSlayer",
+          "DA_GuinsoosRageblade",
+          "DA_InfinityEdge"
+        ],
+        "DA_18_Kayle": [
+          "DA_GuinsoosRageblade",
+          "DA_RabadonsDeathcap",
+          "DA_RabadonsDeathcap"
+        ],
         "DA_18_Sejuani": [
           "DA_Crownguard",
           "DA_GargoyleStoneplate",
@@ -2534,16 +2540,24 @@
       },
       "buildStats": {
         "DA_18_Xayah": {
-          "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_RedBuff"],
-          "avg": 3.72,
-          "delta": -1.12,
-          "n": 136
+          "items": [
+            "DA_GiantSlayer",
+            "DA_GuinsoosRageblade",
+            "DA_InfinityEdge"
+          ],
+          "avg": 4.15,
+          "delta": -0.69,
+          "n": 573
         },
         "DA_18_Kayle": {
-          "items": ["DA_GiantSlayer", "DA_JeweledGauntlet", "DA_RedBuff"],
-          "avg": 4.18,
-          "delta": -0.65,
-          "n": 99
+          "items": [
+            "DA_GuinsoosRageblade",
+            "DA_RabadonsDeathcap",
+            "DA_RabadonsDeathcap"
+          ],
+          "avg": 4.21,
+          "delta": -0.63,
+          "n": 96
         },
         "DA_18_Sejuani": {
           "items": [
@@ -2551,9 +2565,9 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.5,
+          "avg": 3.51,
           "delta": -1.33,
-          "n": 206
+          "n": 218
         },
         "DA_18_Ornn": {
           "items": [
@@ -2562,11 +2576,11 @@
             "DA_WarmogsArmor"
           ],
           "avg": 4.78,
-          "delta": -0.06,
-          "n": 2131
+          "delta": -0.05,
+          "n": 2174
         }
       },
-      "games": 144111,
+      "games": 150476,
       "avg": 4.74,
       "top4": 45.9,
       "win": 11.6
@@ -2592,7 +2606,8 @@
         "DA_18_Veigar",
         "DA_18_Cassiopeia",
         "DA_18_Kobuko",
-        "DA_18_Ornn"
+        "DA_18_Ornn",
+        "DA_18_Camille"
       ],
       "builds": {
         "DA_18_Zyra": [
@@ -2620,8 +2635,8 @@
             "DA_HextechGunblade"
           ],
           "avg": 4.11,
-          "delta": -0.55,
-          "n": 7666
+          "delta": -0.56,
+          "n": 7870
         },
         "DA_18_Maokai": {
           "items": [
@@ -2630,8 +2645,8 @@
             "DA_WarmogsArmor"
           ],
           "avg": 3.06,
-          "delta": -1.61,
-          "n": 885
+          "delta": -1.6,
+          "n": 905
         },
         "DA_Amumu18": {
           "items": [
@@ -2639,20 +2654,20 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.35,
-          "delta": -0.32,
-          "n": 1493
+          "avg": 4.34,
+          "delta": -0.33,
+          "n": 1537
         },
         "DA_18_Sivir": {
           "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_RedBuff"],
           "avg": 4.16,
           "delta": -0.51,
-          "n": 541
+          "n": 556
         }
       },
-      "games": 140768,
+      "games": 146397,
       "avg": 4.65,
-      "top4": 46.7,
+      "top4": 46.8,
       "win": 10.8
     },
     {
@@ -2675,7 +2690,6 @@
         "DA_18_Diana",
         "DA_18_Hecarim",
         "DA_Krug18",
-        "DA_KogMaw18_AD",
         "DA_18_KhaZix",
         "DA_Vi18",
         "DA_18_Tristana"
@@ -2686,15 +2700,15 @@
           "DA_WarmogsArmor",
           "DA_WarmogsArmor"
         ],
+        "DA_CrimsonRaptor18": [
+          "DA_Deathblade",
+          "DA_InfinityEdge",
+          "DA_LastWhisper"
+        ],
         "DA_18_Rengar": [
           "DA_EdgeOfNight",
           "DA_GuinsoosRageblade",
           "DA_TitansResolve"
-        ],
-        "DA_CrimsonRaptor18": [
-          "DA_Deathblade",
-          "DA_GuinsoosRageblade",
-          "DA_LastWhisper"
         ],
         "DA_18_Diana": [
           "DA_HandOfJustice",
@@ -2705,9 +2719,15 @@
       "buildStats": {
         "DA_18_Hecarim": {
           "items": ["DA_ProtectorsVow", "DA_WarmogsArmor", "DA_WarmogsArmor"],
-          "avg": 2.94,
-          "delta": -1.9,
-          "n": 16
+          "avg": 3.06,
+          "delta": -1.78,
+          "n": 18
+        },
+        "DA_CrimsonRaptor18": {
+          "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_LastWhisper"],
+          "avg": 3.3,
+          "delta": -1.54,
+          "n": 10
         },
         "DA_18_Rengar": {
           "items": [
@@ -2716,14 +2736,8 @@
             "DA_TitansResolve"
           ],
           "avg": 4.34,
-          "delta": -0.49,
-          "n": 489
-        },
-        "DA_CrimsonRaptor18": {
-          "items": ["DA_Deathblade", "DA_GuinsoosRageblade", "DA_LastWhisper"],
-          "avg": 4.13,
-          "delta": -0.7,
-          "n": 83
+          "delta": -0.5,
+          "n": 514
         },
         "DA_18_Diana": {
           "items": ["DA_HandOfJustice", "DA_IonicSpark", "DA_JeweledGauntlet"],
@@ -2732,9 +2746,9 @@
           "n": 8
         }
       },
-      "games": 15374,
+      "games": 16070,
       "avg": 4.74,
-      "top4": 45.2,
+      "top4": 45.3,
       "win": 10.6
     },
     {
@@ -2791,8 +2805,8 @@
             "DA_RabadonsDeathcap"
           ],
           "avg": 4.11,
-          "delta": -0.63,
-          "n": 747
+          "delta": -0.64,
+          "n": 778
         },
         "DA_Vi18": {
           "items": [
@@ -2800,9 +2814,9 @@
             "DA_GargoyleStoneplate",
             "DA_SpiritVisage"
           ],
-          "avg": 3.24,
-          "delta": -1.5,
-          "n": 34
+          "avg": 3.23,
+          "delta": -1.52,
+          "n": 35
         },
         "DA_18_Zyra": {
           "items": [
@@ -2811,7 +2825,7 @@
             "DA_VoidStaff"
           ],
           "avg": 2.36,
-          "delta": -2.38,
+          "delta": -2.39,
           "n": 14
         },
         "DA_18_Sett": {
@@ -2820,15 +2834,15 @@
             "DA_GargoyleStoneplate",
             "DA_GargoyleStoneplate"
           ],
-          "avg": 3.28,
-          "delta": -1.46,
-          "n": 18
+          "avg": 3.37,
+          "delta": -1.38,
+          "n": 19
         }
       },
-      "games": 35382,
+      "games": 37013,
       "avg": 4.62,
       "top4": 48.4,
-      "win": 9.1
+      "win": 9.2
     },
     {
       "id": "426035",
@@ -2883,30 +2897,30 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.1,
-          "delta": -0.77,
-          "n": 625
+          "avg": 4.09,
+          "delta": -0.78,
+          "n": 643
         },
         "DA_18_Yunara": {
           "items": ["DA_Deathblade", "DA_LastWhisper", "DA_SpearOfShojin"],
-          "avg": 4.61,
-          "delta": -0.27,
-          "n": 2463
+          "avg": 4.6,
+          "delta": -0.28,
+          "n": 2565
         },
         "DA_18_LeBlanc": {
           "items": ["DA_Morellonomicon", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 3.51,
-          "delta": -1.37,
-          "n": 97
+          "avg": 3.47,
+          "delta": -1.41,
+          "n": 103
         },
         "DA_Karma18": {
           "items": ["DA_ArchangelsStaff", "DA_BlueBuff", "DA_JeweledGauntlet"],
-          "avg": 2.97,
-          "delta": -1.91,
-          "n": 29
+          "avg": 3,
+          "delta": -1.87,
+          "n": 30
         }
       },
-      "games": 41984,
+      "games": 44087,
       "avg": 5,
       "top4": 41.7,
       "win": 9.2
@@ -2936,8 +2950,8 @@
         "DA_18_Hecarim": ["DA_Evenshroud", "DA_SunfireCape", "DA_WarmogsArmor"],
         "DA_18_Soraka": [
           "DA_18_EmblemElderwood",
-          "DA_JeweledGauntlet",
-          "DA_NashorsTooth"
+          "DA_RabadonsDeathcap",
+          "DA_SpearOfShojin"
         ],
         "DA_18_GnarSmall": [
           "DA_Bloodthirster",
@@ -2948,34 +2962,34 @@
       "buildStats": {
         "DA_18_Ezreal": {
           "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_SpearOfShojin"],
-          "avg": 4.04,
-          "delta": -0.42,
-          "n": 712
+          "avg": 4.05,
+          "delta": -0.43,
+          "n": 751
         },
         "DA_18_Hecarim": {
           "items": ["DA_Evenshroud", "DA_SunfireCape", "DA_WarmogsArmor"],
-          "avg": 3.42,
-          "delta": -1.04,
-          "n": 73
+          "avg": 3.43,
+          "delta": -1.05,
+          "n": 75
         },
         "DA_18_Soraka": {
           "items": [
             "DA_18_EmblemElderwood",
-            "DA_JeweledGauntlet",
-            "DA_NashorsTooth"
+            "DA_RabadonsDeathcap",
+            "DA_SpearOfShojin"
           ],
-          "avg": 3.62,
-          "delta": -0.84,
-          "n": 69
+          "avg": 4.08,
+          "delta": -0.39,
+          "n": 680
         },
         "DA_18_GnarSmall": {
           "items": ["DA_Bloodthirster", "DA_SteraksGage", "DA_TitansResolve"],
-          "avg": 3.06,
-          "delta": -1.41,
-          "n": 86
+          "avg": 3.04,
+          "delta": -1.43,
+          "n": 92
         }
       },
-      "games": 155263,
+      "games": 163661,
       "avg": 4.51,
       "top4": 49,
       "win": 13.4
@@ -2999,8 +3013,8 @@
         "DA_18_Warwick",
         "DA_18_Camille",
         "DA_18_Elise",
-        "DA_18_KhaZix",
         "DA_18_Rengar",
+        "DA_18_KhaZix",
         "DA_18_MasterYi_AD"
       ],
       "builds": {
@@ -3032,20 +3046,20 @@
             "DA_GuinsoosRageblade",
             "DA_TitansResolve"
           ],
-          "avg": 3.9,
-          "delta": -0.45,
-          "n": 233
+          "avg": 3.87,
+          "delta": -0.47,
+          "n": 248
         },
         "DA_Brambleback18": {
           "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_SteraksGage"],
-          "avg": 3.33,
-          "delta": -1.02,
-          "n": 15
+          "avg": 3.39,
+          "delta": -0.95,
+          "n": 18
         },
         "DA_18_Diana": {
           "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_JeweledGauntlet"],
           "avg": 3.13,
-          "delta": -1.23,
+          "delta": -1.22,
           "n": 8
         },
         "DA_Sentinel18": {
@@ -3055,13 +3069,13 @@
             "DA_WarmogsArmor"
           ],
           "avg": 3.94,
-          "delta": -0.41,
+          "delta": -0.4,
           "n": 18
         }
       },
-      "games": 13411,
-      "avg": 4.35,
-      "top4": 54.5,
+      "games": 14194,
+      "avg": 4.36,
+      "top4": 54.3,
       "win": 7.5
     },
     {
@@ -3107,13 +3121,13 @@
           ],
           "avg": 4.36,
           "delta": -0.36,
-          "n": 1564
+          "n": 1611
         },
         "DA_18_Ashe": {
           "items": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
-          "avg": 3.48,
-          "delta": -1.24,
-          "n": 581
+          "avg": 3.47,
+          "delta": -1.25,
+          "n": 603
         },
         "DA_18_Sett": {
           "items": [
@@ -3123,16 +3137,16 @@
           ],
           "avg": 4.19,
           "delta": -0.53,
-          "n": 627
+          "n": 651
         },
         "DA_Lux18_Base": {
           "items": ["DA_RabadonsDeathcap", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 2.86,
-          "delta": -1.86,
-          "n": 37
+          "avg": 2.85,
+          "delta": -1.88,
+          "n": 39
         }
       },
-      "games": 128991,
+      "games": 135315,
       "avg": 4.7,
       "top4": 45.3,
       "win": 10.9
@@ -3186,13 +3200,13 @@
           ],
           "avg": 4.61,
           "delta": -0.42,
-          "n": 2404
+          "n": 2486
         },
         "DA_18_Sivir": {
           "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_RedBuff"],
-          "avg": 3.94,
-          "delta": -1.09,
-          "n": 397
+          "avg": 3.92,
+          "delta": -1.11,
+          "n": 408
         },
         "DA_Scuttlecrab18": {
           "items": [
@@ -3200,9 +3214,9 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.74,
-          "delta": -0.29,
-          "n": 611
+          "avg": 4.75,
+          "delta": -0.28,
+          "n": 629
         },
         "DA_18_Sejuani": {
           "items": [
@@ -3212,12 +3226,12 @@
           ],
           "avg": 4.08,
           "delta": -0.95,
-          "n": 36
+          "n": 38
         }
       },
-      "games": 47987,
-      "avg": 5,
-      "top4": 41.1,
+      "games": 50258,
+      "avg": 4.99,
+      "top4": 41.2,
       "win": 5.4
     },
     {
@@ -3238,7 +3252,11 @@
       "stars": ["DA_18_Rengar"],
       "builds": {
         "DA_18_Ashe": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
-        "DA_18_Sivir": ["DA_Deathblade", "DA_InfinityEdge", "DA_StrikersFlail"],
+        "DA_18_Sivir": [
+          "DA_InfinityEdge",
+          "DA_LastWhisper",
+          "DA_StrikersFlail"
+        ],
         "DA_18_Maokai": [
           "DA_GargoyleStoneplate",
           "DA_SpiritVisage",
@@ -3253,15 +3271,15 @@
       "buildStats": {
         "DA_18_Ashe": {
           "items": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
-          "avg": 3.74,
-          "delta": -0.98,
-          "n": 2638
+          "avg": 3.75,
+          "delta": -0.97,
+          "n": 2716
         },
         "DA_18_Sivir": {
-          "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_StrikersFlail"],
-          "avg": 3.77,
-          "delta": -0.95,
-          "n": 256
+          "items": ["DA_InfinityEdge", "DA_LastWhisper", "DA_StrikersFlail"],
+          "avg": 3.85,
+          "delta": -0.87,
+          "n": 331
         },
         "DA_18_Maokai": {
           "items": [
@@ -3269,9 +3287,9 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.51,
-          "delta": -1.21,
-          "n": 1180
+          "avg": 3.5,
+          "delta": -1.22,
+          "n": 1214
         },
         "DA_Amumu18": {
           "items": [
@@ -3279,12 +3297,12 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.03,
-          "delta": -0.69,
-          "n": 291
+          "avg": 4.06,
+          "delta": -0.66,
+          "n": 304
         }
       },
-      "games": 188644,
+      "games": 196799,
       "avg": 4.63,
       "top4": 46.4,
       "win": 13.2
@@ -3306,9 +3324,9 @@
       "stars": ["DA_Gromp18_AP", "DA_18_Rengar"],
       "builds": {
         "DA_Nidalee18_AP": [
-          "DA_JeweledGauntlet",
-          "DA_RabadonsDeathcap",
-          "DA_SpearOfShojin"
+          "DA_EdgeOfNight",
+          "DA_HandOfJustice",
+          "DA_InfinityEdge"
         ],
         "DA_Sentinel18": [
           "DA_GargoyleStoneplate",
@@ -3316,18 +3334,14 @@
           "DA_WarmogsArmor"
         ],
         "DA_18_Morgana": ["DA_HextechGunblade", "DA_RedBuff", "DA_VoidStaff"],
-        "DA_KogMaw18_AD": ["DA_Component_BFSword"]
+        "DA_KogMaw18_AD": ["DA_TacticiansCrown"]
       },
       "buildStats": {
         "DA_Nidalee18_AP": {
-          "items": [
-            "DA_JeweledGauntlet",
-            "DA_RabadonsDeathcap",
-            "DA_SpearOfShojin"
-          ],
-          "avg": 3.39,
-          "delta": -1.49,
-          "n": 18
+          "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_InfinityEdge"],
+          "avg": 3.44,
+          "delta": -1.43,
+          "n": 27
         },
         "DA_Sentinel18": {
           "items": [
@@ -3335,9 +3349,9 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.01,
-          "delta": -0.87,
-          "n": 94
+          "avg": 4.06,
+          "delta": -0.81,
+          "n": 101
         },
         "DA_18_Morgana": {
           "items": ["DA_HextechGunblade", "DA_RedBuff", "DA_VoidStaff"],
@@ -3346,13 +3360,13 @@
           "n": 22
         },
         "DA_KogMaw18_AD": {
-          "items": ["DA_Component_BFSword"],
-          "avg": 3.91,
-          "delta": -0.97,
-          "n": 65
+          "items": ["DA_TacticiansCrown"],
+          "avg": 3.23,
+          "delta": -1.64,
+          "n": 13
         }
       },
-      "games": 23829,
+      "games": 24917,
       "avg": 4.75,
       "top4": 46.1,
       "win": 7.3
@@ -3371,8 +3385,8 @@
       "key": ["DA_18_Fae", "DA_18_Tristana"],
       "levelling": "lvl 7",
       "stars": [
-        "DA_18_Tristana",
         "DA_18_Rengar",
+        "DA_18_Tristana",
         "DA_18_Rammus",
         "DA_Vi18",
         "DA_18_Hecarim",
@@ -3388,32 +3402,32 @@
         ],
         "DA_18_Rengar": [
           "DA_18_EmblemFae",
-          "DA_18_EmblemHunter",
-          "DA_TitansResolve"
+          "DA_18_EmblemSprykin",
+          "DA_SteraksGage"
         ],
         "DA_18_Rammus": [
           "DA_18_EmblemVanguard",
           "DA_GargoyleStoneplate",
           "DA_SpiritVisage"
         ],
-        "DA_Vi18": ["DA_Crownguard", "DA_GargoyleStoneplate", "DA_WarmogsArmor"]
+        "DA_Vi18": [
+          "DA_GargoyleStoneplate",
+          "DA_SpiritVisage",
+          "DA_SunfireCape"
+        ]
       },
       "buildStats": {
         "DA_18_Tristana": {
           "items": ["DA_GuinsoosRageblade", "DA_KrakensFury", "DA_KrakensFury"],
-          "avg": 3.75,
-          "delta": -1.36,
-          "n": 83
+          "avg": 3.74,
+          "delta": -1.37,
+          "n": 84
         },
         "DA_18_Rengar": {
-          "items": [
-            "DA_18_EmblemFae",
-            "DA_18_EmblemHunter",
-            "DA_TitansResolve"
-          ],
-          "avg": 4.1,
-          "delta": -1.01,
-          "n": 148
+          "items": ["DA_18_EmblemFae", "DA_18_EmblemSprykin", "DA_SteraksGage"],
+          "avg": 3.82,
+          "delta": -1.28,
+          "n": 68
         },
         "DA_18_Rammus": {
           "items": [
@@ -3427,16 +3441,16 @@
         },
         "DA_Vi18": {
           "items": [
-            "DA_Crownguard",
             "DA_GargoyleStoneplate",
-            "DA_WarmogsArmor"
+            "DA_SpiritVisage",
+            "DA_SunfireCape"
           ],
-          "avg": 3.88,
-          "delta": -1.23,
-          "n": 25
+          "avg": 4.16,
+          "delta": -0.95,
+          "n": 45
         }
       },
-      "games": 37611,
+      "games": 39321,
       "avg": 5.07,
       "top4": 39,
       "win": 11.7
@@ -3486,7 +3500,7 @@
             "DA_VoidStaff"
           ],
           "avg": 4.08,
-          "delta": -1.12,
+          "delta": -1.13,
           "n": 61
         },
         "DA_18_Azir": {
@@ -3505,9 +3519,9 @@
             "DA_SteadfastHeart",
             "DA_SunfireCape"
           ],
-          "avg": 3.75,
-          "delta": -1.46,
-          "n": 20
+          "avg": 3.9,
+          "delta": -1.3,
+          "n": 21
         },
         "DA_18_Maokai": {
           "items": [
@@ -3520,9 +3534,9 @@
           "n": 62
         }
       },
-      "games": 35853,
-      "avg": 4.98,
-      "top4": 40.6,
+      "games": 37497,
+      "avg": 4.99,
+      "top4": 40.5,
       "win": 6.3
     },
     {
@@ -3560,13 +3574,13 @@
           "DA_GargoyleStoneplate"
         ],
         "DA_18_Teemo": [
-          "DA_JeweledGauntlet",
-          "DA_Morellonomicon",
+          "DA_HextechGunblade",
+          "DA_RabadonsDeathcap",
           "DA_VoidStaff"
         ],
         "DA_18_Rammus": [
+          "DA_BrambleVest",
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
           "DA_WarmogsArmor"
         ]
       },
@@ -3578,7 +3592,7 @@
             "DA_SpearOfShojin"
           ],
           "avg": 3.4,
-          "delta": -1.68,
+          "delta": -1.67,
           "n": 10
         },
         "DA_18_RekSai": {
@@ -3588,27 +3602,31 @@
             "DA_GargoyleStoneplate"
           ],
           "avg": 3.6,
-          "delta": -1.48,
+          "delta": -1.47,
           "n": 15
         },
         "DA_18_Teemo": {
-          "items": ["DA_JeweledGauntlet", "DA_Morellonomicon", "DA_VoidStaff"],
-          "avg": 3.83,
-          "delta": -1.24,
-          "n": 24
+          "items": [
+            "DA_HextechGunblade",
+            "DA_RabadonsDeathcap",
+            "DA_VoidStaff"
+          ],
+          "avg": 3.2,
+          "delta": -1.87,
+          "n": 10
         },
         "DA_18_Rammus": {
           "items": [
+            "DA_BrambleVest",
             "DA_GargoyleStoneplate",
-            "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.09,
-          "delta": -0.98,
-          "n": 43
+          "avg": 3.69,
+          "delta": -1.38,
+          "n": 16
         }
       },
-      "games": 51653,
+      "games": 54316,
       "avg": 4.89,
       "top4": 43.3,
       "win": 5
@@ -3635,47 +3653,39 @@
           "DA_SteraksGage"
         ],
         "DA_18_Sivir": ["DA_Deathblade", "DA_RedBuff", "DA_SpearOfShojin"],
-        "DA_Amumu18": [
-          "DA_Crownguard",
-          "DA_GargoyleStoneplate",
-          "DA_ProtectorsVow"
-        ],
+        "DA_Amumu18": ["DA_Crownguard", "DA_DragonsClaw", "DA_WarmogsArmor"],
         "DA_18_Ashe": ["DA_18_EmblemPrimal", "DA_RedBuff", "DA_SpearOfShojin"]
       },
       "buildStats": {
         "DA_Nidalee18_AP": {
           "items": ["DA_18_EmblemHunter", "DA_EdgeOfNight", "DA_SteraksGage"],
-          "avg": 3.47,
-          "delta": -1.59,
-          "n": 19
+          "avg": 3.35,
+          "delta": -1.71,
+          "n": 20
         },
         "DA_18_Sivir": {
           "items": ["DA_Deathblade", "DA_RedBuff", "DA_SpearOfShojin"],
-          "avg": 3.19,
-          "delta": -1.88,
-          "n": 27
+          "avg": 3.11,
+          "delta": -1.95,
+          "n": 28
         },
         "DA_Amumu18": {
-          "items": [
-            "DA_Crownguard",
-            "DA_GargoyleStoneplate",
-            "DA_ProtectorsVow"
-          ],
-          "avg": 3.84,
-          "delta": -1.23,
-          "n": 19
+          "items": ["DA_Crownguard", "DA_DragonsClaw", "DA_WarmogsArmor"],
+          "avg": 2.92,
+          "delta": -2.15,
+          "n": 12
         },
         "DA_18_Ashe": {
           "items": ["DA_18_EmblemPrimal", "DA_RedBuff", "DA_SpearOfShojin"],
-          "avg": 3.39,
-          "delta": -1.67,
-          "n": 76
+          "avg": 3.37,
+          "delta": -1.69,
+          "n": 79
         }
       },
-      "games": 25940,
+      "games": 27231,
       "avg": 4.92,
-      "top4": 42.1,
-      "win": 6.4
+      "top4": 42.2,
+      "win": 6.5
     },
     {
       "id": "426046",
@@ -3696,7 +3706,7 @@
         "DA_18_Ashe": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
         "DA_18_Sett": [
           "DA_GargoyleStoneplate",
-          "DA_SteadfastHeart",
+          "DA_IonicSpark",
           "DA_WarmogsArmor"
         ],
         "DA_18_Sivir": [
@@ -3704,58 +3714,53 @@
           "DA_InfinityEdge",
           "DA_SpearOfShojin"
         ],
-        "DA_18_GnarSmall": [
-          "DA_Bloodthirster",
-          "DA_SteraksGage",
-          "DA_TitansResolve"
-        ]
+        "DA_18_GnarSmall": ["DA_Component_BFSword"]
       },
       "buildStats": {
         "DA_18_Ashe": {
           "items": ["DA_LastWhisper", "DA_RedBuff", "DA_SpearOfShojin"],
           "avg": 3.81,
-          "delta": -1.02,
-          "n": 431
+          "delta": -1.01,
+          "n": 442
         },
         "DA_18_Sett": {
           "items": [
             "DA_GargoyleStoneplate",
-            "DA_SteadfastHeart",
+            "DA_IonicSpark",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.28,
-          "delta": -0.54,
-          "n": 118
+          "avg": 3.96,
+          "delta": -0.87,
+          "n": 23
         },
         "DA_18_Sivir": {
           "items": ["DA_GiantSlayer", "DA_InfinityEdge", "DA_SpearOfShojin"],
-          "avg": 3.76,
-          "delta": -1.07,
-          "n": 33
+          "avg": 3.74,
+          "delta": -1.09,
+          "n": 34
         },
         "DA_18_GnarSmall": {
-          "items": ["DA_Bloodthirster", "DA_SteraksGage", "DA_TitansResolve"],
-          "avg": 3.6,
-          "delta": -1.22,
-          "n": 15
+          "items": ["DA_Component_BFSword"],
+          "avg": 3.11,
+          "delta": -1.71,
+          "n": 18
         }
       },
-      "games": 31977,
-      "avg": 4.74,
-      "top4": 45.2,
+      "games": 33412,
+      "avg": 4.75,
+      "top4": 45.1,
       "win": 10.1
     },
     {
       "id": "426047",
       "units": [
-        "DA_18_GnarSmall",
         "DA_18_Kobuko",
+        "DA_18_Lillia",
+        "DA_18_Morgana",
         "DA_18_Rammus",
-        "DA_18_Rengar",
         "DA_18_Teemo",
         "DA_18_Tristana",
-        "DA_18_Veigar",
-        "DA_Fiddlesticks18"
+        "DA_18_Veigar"
       ],
       "key": ["DA_18_Sprykin", "DA_18_Rammus"],
       "levelling": "lvl 7",
@@ -3819,11 +3824,11 @@
         "DA_18_GnarSmall": {
           "items": ["DA_Bloodthirster", "DA_SteraksGage", "DA_TitansResolve"],
           "avg": 3.33,
-          "delta": -2.04,
+          "delta": -2.05,
           "n": 6
         }
       },
-      "games": 27333,
+      "games": 28760,
       "avg": 5.01,
       "top4": 40.6,
       "win": 4.2
@@ -3856,17 +3861,17 @@
           "DA_WarmogsArmor"
         ],
         "DA_18_Lillia": [
-          "DA_AdaptiveHelm",
           "DA_ProtectorsVow",
-          "DA_SpiritVisage"
+          "DA_SpiritVisage",
+          "DA_WarmogsArmor"
         ]
       },
       "buildStats": {
         "DA_18_Sivir": {
           "items": ["DA_18_EmblemFae", "DA_LastWhisper", "DA_RedBuff"],
-          "avg": 3.74,
-          "delta": -1.26,
-          "n": 360
+          "avg": 3.72,
+          "delta": -1.29,
+          "n": 371
         },
         "DA_18_Tristana": {
           "items": [
@@ -3874,9 +3879,9 @@
             "DA_GuinsoosRageblade",
             "DA_HextechGunblade"
           ],
-          "avg": 4.54,
-          "delta": -0.46,
-          "n": 809
+          "avg": 4.57,
+          "delta": -0.44,
+          "n": 845
         },
         "DA_18_Rammus": {
           "items": [
@@ -3884,19 +3889,19 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.34,
-          "delta": -0.66,
-          "n": 395
+          "avg": 4.33,
+          "delta": -0.67,
+          "n": 411
         },
         "DA_18_Lillia": {
-          "items": ["DA_AdaptiveHelm", "DA_ProtectorsVow", "DA_SpiritVisage"],
-          "avg": 3.65,
-          "delta": -1.35,
-          "n": 26
+          "items": ["DA_ProtectorsVow", "DA_SpiritVisage", "DA_WarmogsArmor"],
+          "avg": 3.93,
+          "delta": -1.08,
+          "n": 41
         }
       },
-      "games": 58064,
-      "avg": 4.83,
+      "games": 60861,
+      "avg": 4.84,
       "top4": 43.4,
       "win": 8.7
     },
@@ -3939,7 +3944,7 @@
           "DA_VoidStaff"
         ],
         "DA_18_RekSai": [
-          "DA_GargoyleStoneplate",
+          "DA_Crownguard",
           "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ]
@@ -3947,9 +3952,9 @@
       "buildStats": {
         "DA_18_Veigar": {
           "items": ["DA_BlueBuff", "DA_HextechGunblade", "DA_JeweledGauntlet"],
-          "avg": 3.99,
-          "delta": -0.69,
-          "n": 187
+          "avg": 3.92,
+          "delta": -0.75,
+          "n": 196
         },
         "DA_18_Malphite": {
           "items": [
@@ -3957,9 +3962,9 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.66,
-          "delta": -1.01,
-          "n": 68
+          "avg": 3.61,
+          "delta": -1.06,
+          "n": 70
         },
         "DA_18_Azir": {
           "items": [
@@ -3968,24 +3973,24 @@
             "DA_VoidStaff"
           ],
           "avg": 3.75,
-          "delta": -0.93,
+          "delta": -0.92,
           "n": 12
         },
         "DA_18_RekSai": {
           "items": [
-            "DA_GargoyleStoneplate",
+            "DA_Crownguard",
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.08,
-          "delta": -0.6,
-          "n": 26
+          "avg": 3.83,
+          "delta": -0.84,
+          "n": 12
         }
       },
-      "games": 20883,
+      "games": 21983,
       "avg": 4.96,
-      "top4": 41.9,
-      "win": 7.6
+      "top4": 42,
+      "win": 7.5
     },
     {
       "id": "426050",
@@ -4017,16 +4022,16 @@
         "DA_18_Kennen": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_VoidStaff"],
         "DA_Amumu18": [
           "DA_GargoyleStoneplate",
-          "DA_SpiritVisage",
+          "DA_GargoyleStoneplate",
           "DA_WarmogsArmor"
         ]
       },
       "buildStats": {
         "DA_18_Soraka": {
           "items": ["DA_BlueBuff", "DA_RabadonsDeathcap", "DA_StrikersFlail"],
-          "avg": 3,
-          "delta": -2.21,
-          "n": 9
+          "avg": 3.3,
+          "delta": -1.91,
+          "n": 10
         },
         "DA_18_Ezreal": {
           "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_SpearOfShojin"],
@@ -4036,24 +4041,24 @@
         },
         "DA_18_Kennen": {
           "items": ["DA_EdgeOfNight", "DA_HandOfJustice", "DA_VoidStaff"],
-          "avg": 3.6,
-          "delta": -1.61,
-          "n": 10
+          "avg": 3.25,
+          "delta": -1.96,
+          "n": 12
         },
         "DA_Amumu18": {
           "items": [
             "DA_GargoyleStoneplate",
-            "DA_SpiritVisage",
+            "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.6,
-          "delta": -0.61,
-          "n": 65
+          "avg": 4.51,
+          "delta": -0.7,
+          "n": 49
         }
       },
-      "games": 21182,
+      "games": 22216,
       "avg": 4.99,
-      "top4": 40,
+      "top4": 40.1,
       "win": 7.4
     },
     {
@@ -4091,9 +4096,9 @@
           "DA_VoidStaff"
         ],
         "DA_Scuttlecrab18": [
+          "DA_18_EmblemBrawler",
           "DA_GargoyleStoneplate",
-          "DA_IonicSpark",
-          "DA_SunfireCape"
+          "DA_WarmogsArmor"
         ],
         "DA_18_Sentry": [
           "DA_ArchangelsStaff",
@@ -4109,15 +4114,19 @@
       "buildStats": {
         "DA_Gromp18_AP": {
           "items": ["DA_Morellonomicon", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 3.87,
+          "avg": 3.88,
           "delta": -1.14,
-          "n": 47
+          "n": 48
         },
         "DA_Scuttlecrab18": {
-          "items": ["DA_GargoyleStoneplate", "DA_IonicSpark", "DA_SunfireCape"],
-          "avg": 3.7,
+          "items": [
+            "DA_18_EmblemBrawler",
+            "DA_GargoyleStoneplate",
+            "DA_WarmogsArmor"
+          ],
+          "avg": 3.71,
           "delta": -1.31,
-          "n": 20
+          "n": 31
         },
         "DA_18_Sentry": {
           "items": [
@@ -4125,9 +4134,9 @@
             "DA_ArchangelsStaff",
             "DA_JeweledGauntlet"
           ],
-          "avg": 4.08,
-          "delta": -0.93,
-          "n": 63
+          "avg": 4.05,
+          "delta": -0.97,
+          "n": 66
         },
         "DA_Krug18": {
           "items": [
@@ -4135,14 +4144,14 @@
             "DA_SpiritVisage",
             "DA_WarmogsArmor"
           ],
-          "avg": 4.15,
-          "delta": -0.86,
-          "n": 121
+          "avg": 4.13,
+          "delta": -0.89,
+          "n": 123
         }
       },
-      "games": 34327,
+      "games": 35937,
       "avg": 5.07,
-      "top4": 40.1,
+      "top4": 40,
       "win": 5.6
     },
     {
@@ -4185,15 +4194,15 @@
             "DA_SpearOfShojin",
             "DA_StrikersFlail"
           ],
-          "avg": 3.64,
-          "delta": -1.29,
-          "n": 28
+          "avg": 3.71,
+          "delta": -1.22,
+          "n": 31
         },
         "DA_18_Alune": {
           "items": ["DA_RedBuff", "DA_SpearOfShojin", "DA_VoidStaff"],
-          "avg": 3.3,
-          "delta": -1.63,
-          "n": 46
+          "avg": 3.26,
+          "delta": -1.67,
+          "n": 47
         },
         "DA_18_Sett": {
           "items": [
@@ -4201,9 +4210,9 @@
             "DA_GargoyleStoneplate",
             "DA_WarmogsArmor"
           ],
-          "avg": 3.48,
-          "delta": -1.45,
-          "n": 33
+          "avg": 3.54,
+          "delta": -1.39,
+          "n": 37
         },
         "DA_18_Lillia": {
           "items": [
@@ -4213,12 +4222,12 @@
           ],
           "avg": 3.73,
           "delta": -1.2,
-          "n": 49
+          "n": 51
         }
       },
-      "games": 25836,
+      "games": 27165,
       "avg": 4.97,
-      "top4": 41.3,
+      "top4": 41.4,
       "win": 7.3
     },
     {
@@ -4259,7 +4268,7 @@
         "DA_18_Aphelios": {
           "items": ["DA_Deathblade", "DA_GiantSlayer", "DA_LastWhisper"],
           "avg": 3.39,
-          "delta": -1.37,
+          "delta": -1.38,
           "n": 23
         },
         "DA_18_Alune": {
@@ -4268,14 +4277,14 @@
             "DA_JeweledGauntlet",
             "DA_SpearOfShojin"
           ],
-          "avg": 3.57,
-          "delta": -1.19,
-          "n": 61
+          "avg": 3.63,
+          "delta": -1.14,
+          "n": 65
         },
         "DA_Sentinel18": {
           "items": ["DA_AdaptiveHelm", "DA_ProtectorsVow", "DA_ProtectorsVow"],
           "avg": 3.06,
-          "delta": -1.7,
+          "delta": -1.71,
           "n": 32
         },
         "DA_18_Maokai": {
@@ -4284,14 +4293,14 @@
             "DA_GargoyleStoneplate",
             "DA_SpiritVisage"
           ],
-          "avg": 2.83,
-          "delta": -1.93,
-          "n": 18
+          "avg": 2.74,
+          "delta": -2.04,
+          "n": 19
         }
       },
-      "games": 47816,
+      "games": 50273,
       "avg": 4.73,
-      "top4": 45.6,
+      "top4": 45.7,
       "win": 10.7
     },
     {
@@ -4313,6 +4322,7 @@
         "DA_18_Cassiopeia",
         "DA_18_Alistar",
         "DA_Murkwolf18",
+        "DA_18_Warwick",
         "DA_18_KhaZix",
         "DA_18_RekSai",
         "DA_18_Varus",
@@ -4350,9 +4360,9 @@
             "DA_GuinsoosRageblade",
             "DA_TitansResolve"
           ],
-          "avg": 4.21,
+          "avg": 4.22,
           "delta": -0.88,
-          "n": 15439
+          "n": 16096
         },
         "DA_18_Cassiopeia": {
           "items": [
@@ -4360,24 +4370,24 @@
             "DA_JeweledGauntlet",
             "DA_SpearOfShojin"
           ],
-          "avg": 3.79,
-          "delta": -1.3,
-          "n": 1194
+          "avg": 3.78,
+          "delta": -1.32,
+          "n": 1241
         },
         "DA_18_Morgana": {
           "items": ["DA_AdaptiveHelm", "DA_Morellonomicon", "DA_VoidStaff"],
-          "avg": 3.6,
+          "avg": 3.59,
           "delta": -1.5,
-          "n": 1050
+          "n": 1086
         },
         "DA_Sentinel18": {
           "items": ["DA_ProtectorsVow", "DA_SpiritVisage", "DA_WarmogsArmor"],
-          "avg": 3.73,
-          "delta": -1.37,
-          "n": 95
+          "avg": 3.68,
+          "delta": -1.41,
+          "n": 98
         }
       },
-      "games": 250076,
+      "games": 263100,
       "avg": 5.34,
       "top4": 33.2,
       "win": 10.5
@@ -4419,15 +4429,15 @@
       "buildStats": {
         "DA_18_Aphelios": {
           "items": ["DA_Deathblade", "DA_InfinityEdge", "DA_KrakensFury"],
-          "avg": 3.62,
-          "delta": -1.69,
-          "n": 21
+          "avg": 3.5,
+          "delta": -1.81,
+          "n": 22
         },
         "DA_Amumu18": {
           "items": ["DA_DragonsClaw", "DA_SpiritVisage", "DA_WarmogsArmor"],
-          "avg": 3.55,
-          "delta": -1.77,
-          "n": 11
+          "avg": 3.75,
+          "delta": -1.56,
+          "n": 12
         },
         "DA_18_Alune": {
           "items": [
@@ -4436,7 +4446,7 @@
             "DA_SpearOfShojin"
           ],
           "avg": 2.67,
-          "delta": -2.64,
+          "delta": -2.65,
           "n": 9
         },
         "DA_18_Kennen": {
@@ -4450,9 +4460,9 @@
           "n": 9
         }
       },
-      "games": 27358,
+      "games": 28848,
       "avg": 5.22,
-      "top4": 36.4,
+      "top4": 36.5,
       "win": 7
     },
     {
@@ -4472,14 +4482,14 @@
       "stars": ["DA_18_Azir", "DA_18_KhaZix", "DA_18_Rengar"],
       "builds": {
         "DA_18_Azir": [
-          "DA_HextechGunblade",
+          "DA_GuinsoosRageblade",
           "DA_JeweledGauntlet",
           "DA_RabadonsDeathcap"
         ],
         "DA_18_Malphite": [
+          "DA_Crownguard",
           "DA_GargoyleStoneplate",
-          "DA_ProtectorsVow",
-          "DA_SteadfastHeart"
+          "DA_SpiritVisage"
         ],
         "DA_18_KhaZix": [
           "DA_18_EmblemBlackthorn",
@@ -4491,23 +4501,23 @@
       "buildStats": {
         "DA_18_Azir": {
           "items": [
-            "DA_HextechGunblade",
+            "DA_GuinsoosRageblade",
             "DA_JeweledGauntlet",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 3.35,
-          "delta": -1.83,
-          "n": 20
+          "avg": 3.5,
+          "delta": -1.68,
+          "n": 18
         },
         "DA_18_Malphite": {
           "items": [
+            "DA_Crownguard",
             "DA_GargoyleStoneplate",
-            "DA_ProtectorsVow",
-            "DA_SteadfastHeart"
+            "DA_SpiritVisage"
           ],
-          "avg": 3.17,
-          "delta": -2.02,
-          "n": 12
+          "avg": 3.99,
+          "delta": -1.2,
+          "n": 69
         },
         "DA_18_KhaZix": {
           "items": [
@@ -4516,8 +4526,8 @@
             "DA_RabadonsDeathcap"
           ],
           "avg": 4.34,
-          "delta": -0.85,
-          "n": 229
+          "delta": -0.84,
+          "n": 239
         },
         "DA_Lux18_Base": {
           "items": ["DA_RedBuff", "DA_SpearOfShojin", "DA_VoidStaff"],
@@ -4526,7 +4536,7 @@
           "n": 18
         }
       },
-      "games": 30975,
+      "games": 32516,
       "avg": 5.23,
       "top4": 36.5,
       "win": 6.5
@@ -4581,9 +4591,9 @@
             "DA_HandOfJustice",
             "DA_RabadonsDeathcap"
           ],
-          "avg": 5.59,
-          "delta": -0.45,
-          "n": 97
+          "avg": 5.53,
+          "delta": -0.5,
+          "n": 101
         },
         "DA_18_Aphelios": {
           "items": [
@@ -4591,9 +4601,9 @@
             "DA_InfinityEdge",
             "DA_KrakensFury"
           ],
-          "avg": 5.5,
-          "delta": -0.54,
-          "n": 28
+          "avg": 5.48,
+          "delta": -0.55,
+          "n": 29
         },
         "DA_Fiddlesticks18": {
           "items": [
@@ -4612,14 +4622,14 @@
             "DA_RabadonsDeathcap"
           ],
           "avg": 3.33,
-          "delta": -2.71,
+          "delta": -2.7,
           "n": 6
         }
       },
-      "games": 9516,
+      "games": 9999,
       "avg": 5.68,
-      "top4": 28.5,
-      "win": 4.6
+      "top4": 28.4,
+      "win": 4.7
     },
     {
       "id": "426058",
@@ -4641,7 +4651,6 @@
         "DA_18_Ornn",
         "DA_18_Varus",
         "DA_18_Leona",
-        "DA_18_Yorick",
         "DA_18_Elise"
       ],
       "builds": {
@@ -4669,9 +4678,9 @@
       "buildStats": {
         "DA_18_Xayah": {
           "items": ["DA_Deathblade", "DA_GuinsoosRageblade", "DA_KrakensFury"],
-          "avg": 5.25,
-          "delta": -0.77,
-          "n": 110
+          "avg": 5.27,
+          "delta": -0.76,
+          "n": 117
         },
         "DA_18_Rakan": {
           "items": [
@@ -4680,13 +4689,13 @@
             "DA_WarmogsArmor"
           ],
           "avg": 4.74,
-          "delta": -1.27,
+          "delta": -1.28,
           "n": 43
         },
         "DA_18_Varus": {
           "items": ["DA_GiantSlayer", "DA_InfinityEdge", "DA_SpearOfShojin"],
           "avg": 3.73,
-          "delta": -2.29,
+          "delta": -2.3,
           "n": 11
         },
         "DA_18_Ornn": {
@@ -4696,13 +4705,13 @@
             "DA_WarmogsArmor"
           ],
           "avg": 4.56,
-          "delta": -1.45,
+          "delta": -1.46,
           "n": 16
         }
       },
-      "games": 21667,
+      "games": 22807,
       "avg": 5.82,
-      "top4": 26.9,
+      "top4": 26.8,
       "win": 3.9
     },
     {
@@ -4733,9 +4742,9 @@
           "DA_TitansResolve"
         ],
         "DA_18_Hecarim": [
-          "DA_Crownguard",
-          "DA_GargoyleStoneplate",
-          "DA_WarmogsArmor"
+          "DA_ProtectorsVow",
+          "DA_SpiritVisage",
+          "DA_SunfireCape"
         ],
         "DA_18_Cassiopeia": [
           "DA_JeweledGauntlet",
@@ -4755,19 +4764,15 @@
             "DA_GuinsoosRageblade",
             "DA_TitansResolve"
           ],
-          "avg": 5.21,
-          "delta": -0.99,
-          "n": 1122
+          "avg": 5.2,
+          "delta": -1,
+          "n": 1168
         },
         "DA_18_Hecarim": {
-          "items": [
-            "DA_Crownguard",
-            "DA_GargoyleStoneplate",
-            "DA_WarmogsArmor"
-          ],
-          "avg": 4.89,
-          "delta": -1.31,
-          "n": 18
+          "items": ["DA_ProtectorsVow", "DA_SpiritVisage", "DA_SunfireCape"],
+          "avg": 4.09,
+          "delta": -2.11,
+          "n": 11
         },
         "DA_18_Cassiopeia": {
           "items": ["DA_JeweledGauntlet", "DA_SpearOfShojin", "DA_VoidStaff"],
@@ -4782,7 +4787,7 @@
           "n": 10
         }
       },
-      "games": 26572,
+      "games": 28000,
       "avg": 6.08,
       "top4": 21.4,
       "win": 2.8

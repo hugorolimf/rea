@@ -9,12 +9,13 @@
 // Contagem em "cópias": uma peça de `s` estrelas vale 3^(s-1) cópias de 1 estrela, o que torna a fusão neutra e dispensa
 // seguir as estrelas uma a uma.
 
+import { starCopies } from "./core/pool/copies.mjs";
+
 /** Tamanho da reserva do jogo (9 vagas). A sobra acima disso prova que houve vendas. */
 export const BENCH_CAPACITY = 9;
 
 /** Cópias de 1 estrela que uma peça de `star` estrelas representa. */
-export const copies = (star) =>
-  3 ** (Math.max(1, Math.floor(Number(star)) || 1) - 1);
+export const copies = starCopies;
 
 /**
  * Resultado medido da validação do livro-razão contra o jogo real (8 partidas de 2026-10-09/10, 197 retratos do

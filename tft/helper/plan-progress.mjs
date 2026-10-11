@@ -12,7 +12,9 @@
 // - Os itens-alvo de cada peça são congelados na primeira vez que aparecem e só mudam quando concluídos ou impossíveis;
 //   sem isso a build "ideal" do motor reordena a cada leitura e a lista pisca.
 import { copies } from "./unit-ledger.mjs";
-import { baseItemId } from "./item-tiers.mjs";
+import { baseItemId } from "./core/catalog/items.mjs";
+import { progressStatus } from "./core/items/holdings.mjs";
+import { movesInto } from "./core/items/moves.mjs";
 
 /** Rodadas de aprimoramento do Set 18 (estágio-rodada) e quantas há. */
 export const AUGMENT_ROUNDS = ["2-1", "3-2", "4-2"];
@@ -202,23 +204,19 @@ export function buildChecklist({ shown, analysis, state, memory = {} }) {
       // Item que já existe em outra peça (a que sai, por exemplo) e o plano passa para esta: não falta, só se move.
       const moved = built
         ? null
-        : (shown.itemMoves ?? []).find((m) =>
-            (m.moves ?? []).some(
-              (x) =>
-                x.to?.id === id && baseItemId(x.item.id) === baseItemId(t.id),
-            ),
+        : movesInto(shown.itemMoves, id).find(
+            (x) => x.itemId === baseItemId(t.id),
           );
-      let status = "missing";
-      if (built) status = "built";
-      else if (moved) status = "move";
-      else if (live?.craftable) status = "ready";
-      else if (
-        Array.isArray(live?.missing) &&
-        live.missing.length < (live.components?.length ?? 0)
-      )
-        status = "partial";
-      // Sem o plano de itens desta peça na leitura: o que já foi visto montado segue montado.
-      else if (!plan && next.items[key]) status = "built";
+      // Situação do item (vocabulário do checklist) pela regra única da posse de itens; sem o plano de itens desta
+      // peça na leitura, o que já foi visto montado segue montado.
+      const status =
+        progressStatus({
+          built,
+          moved: !!moved,
+          craftable: !!live?.craftable,
+          missing: live?.missing,
+          parts: live?.components?.length ?? 0,
+        }) ?? (!plan && next.items[key] ? "built" : "missing");
       if (built && !next.items[key]) {
         if (seeded)
           events.push({

@@ -6,7 +6,8 @@
 // central do carry parece fraco). A variação publicada por build (`place_change`) compara a build com
 // qualquer outra build de 3 itens no mesmo campeão daquela comp: a quantidade de itens fica controlada.
 
-import { baseItemId } from "./item-tiers.mjs";
+import { baseItemId } from "./core/catalog/items.mjs";
+import { takeAll, takeOne } from "./core/items/stock.mjs";
 
 // Encolhimento forte: a fonte publica só a melhor build de cada campeão, então a variação vem inflada
 // (escolher a melhor entre várias exagera o efeito; 235 de 236 builds aparecem como ganho, mediana −1,07
@@ -64,12 +65,6 @@ export function itemEdge(
   // Radiante conta como o item base: os buildName publicados usam só o id comum.
   const completed = (have?.completed ?? []).map(baseItemId),
     components = [...(have?.components ?? [])];
-  const take = (list, id) => {
-    const at = list.indexOf(id);
-    if (at < 0) return false;
-    list.splice(at, 1);
-    return true;
-  };
   const candidates = Object.entries(comp.buildStats ?? {})
     .map(([unit, b]) => [unit, b, shrunk(b) * weightOf(unit)])
     .filter(([unit, , s]) => comp.units?.includes(unit) && s < 0)
@@ -83,22 +78,19 @@ export function itemEdge(
     if (given) {
       const left = [...given];
       for (const id of b.items) {
-        const at = left.findIndex((e) => e.id === id),
-          e = at >= 0 ? left.splice(at, 1)[0] : null;
+        const e = takeOne(left, (x) => x.id === id);
         if (!e?.available) continue;
         (/craft/i.test(e.kind) ? craft : ready).push(id);
         value += e.value;
       }
     } else
+      // Sem localização (só o estoque agregado): item pronto, ou os dois componentes livres (gastos uma vez).
       for (const id of b.items) {
-        if (take(completed, id)) ready.push(id);
+        if (takeOne(completed, id) !== null) ready.push(id);
         else {
           const parts = recipes.get(id) ?? [];
-          const spare = [...components];
-          if (parts.length === 2 && parts.every((p) => take(spare, p))) {
-            components.splice(0, components.length, ...spare);
+          if (parts.length === 2 && takeAll(components, parts) !== null)
             craft.push(id);
-          }
         }
       }
     const hits = ready.length + craft.length;

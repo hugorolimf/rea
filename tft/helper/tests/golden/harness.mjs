@@ -1,10 +1,10 @@
 // Harness golden do pipeline de recomendação (M0 da migração, ver ARQUITETURA.md).
 //
-// Roda, offline e sem rede, a MESMA sequência que `POST /api/recommend` executa em server.mjs: montagem de `options`,
-// `analyze` (com cache da base como o servidor), `tactics`, `playbook`/`stagePlan`/`strategy` por plano, plano em
-// andamento, aprimoramentos, decisão, disputa e tabuleiro visto. É uma TRANSCRIÇÃO do trecho de server.mjs (que é
-// transporte e não exporta o pipeline): enquanto o pipeline não sai do servidor (M9), `tests/golden.test.mjs`
-// confere que a ordem das chamadas e `augmentEmblem` continuam iguais às do servidor.
+// Roda, offline e sem rede, a MESMA sequência que `POST /api/recommend` executa (app/recommend.mjs): montagem de
+// `options`, a base, a tática e os planos (fatos do grafo, app/recommend-facts.mjs: os mesmos que o servidor usa, com o
+// mesmo histórico por conteúdo), plano em andamento, aprimoramentos, disputa e tabuleiro visto. É uma TRANSCRIÇÃO do
+// trecho de app/recommend.mjs (que depende de estado e de E/S do servidor): `tests/golden.test.mjs` confere que a
+// ordem das chamadas continua igual (o emblema de aprimoramento é o fato `traits.grants`, de core/catalog/traits.mjs).
 //
 // O relógio é injetado (`now`), a evidência vem de um subconjunto congelado (fixtures/evidence.json) e a simulação de
 // rolagem usa semente fixa: a saída é determinística. Nada aqui lê `data/`; isso é feito só por scripts/golden-freeze.mjs.
@@ -13,31 +13,29 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { analyze } from "../../engine.mjs";
-import { tactics } from "../../tactics.mjs";
-import { playbook } from "../../playbook.mjs";
-import { stagePlan } from "../../stage.mjs";
-import { strategy } from "../../strategy.mjs";
-import { decide } from "../../decision.mjs";
 import { augmentAdvice } from "../../augment-advice.mjs";
 import { contestAlert } from "../../contest.mjs";
-import { suggestTargetLevel } from "../../target-level.mjs";
 import { teamCode } from "../../team-code.mjs";
 import { planTracker } from "../../plan-state.mjs";
 import { gepBenchUnits } from "../../gep-reader.mjs";
+import { analysisInputs } from "../../core/state/inputs.mjs";
 import { recommendInventory } from "../../item-holdings.mjs";
 import { loadComps } from "../../meta-comps.mjs";
 import { loadMeta } from "../../meta-builds.mjs";
 import { loadStats } from "../../meta-stats.mjs";
 import { loadAugmentStats } from "../../augment-stats.mjs";
 import {
-  baseId as baseIdOf,
-  baseInputs as baseInputsOf,
-  snapshotSignature,
-} from "../../analysis-keys.mjs";
+  MAX_PLANS,
+  bindRun,
+  composeAnalysis,
+  createRecommendGraph,
+  plansOf,
+  recommendValues,
+} from "../../app/recommend-facts.mjs";
 import { filterKey } from "../../evidence.mjs";
 import {
   emblemTraitMap,
+  traitBook,
   traitsWithEmblems,
 } from "../../core/catalog/traits.mjs";
 
@@ -92,33 +90,8 @@ export async function loadContext({
   };
 }
 
-/** Aprimoramento que dá emblema (transcrição de server.mjs:augmentEmblem; o teste confere o texto). */
-export function makeAugmentEmblem(catalog) {
-  const traitApiByName = new Map(
-    catalog.traits.map((t) => [t.name, t.apiName]),
-  );
-  return function augmentEmblem(a) {
-    if (!a.id.startsWith("DA_")) return null;
-    const named = /^(.+) (?:Crest|Crown|Circlet|Emblem)$/.exec(
-        a.nameEn ?? "",
-      )?.[1],
-      given = /Recebe um Emblema de (.+?)[.,]/.exec(a.desc ?? "")?.[1],
-      trait =
-        traitApiByName.get(named) ??
-        traitApiByName.get(given) ??
-        (given && a.traits.length === 1 ? a.traits[0] : null),
-      name = catalog.traits.find((t) => t.apiName === trait)?.name,
-      item = name
-        ? catalog.items.find(
-            (i) =>
-              i.name === `${name} Emblem` &&
-              i.apiName.startsWith("DA_") &&
-              !i.apiName.endsWith("Augment"),
-          )?.apiName
-        : null;
-    return trait ? { trait, item: item ?? null } : null;
-  };
-}
+/** Aprimoramento que dá emblema: a regra única do núcleo (M9; antes era uma cópia de server.mjs conferida por texto). */
+export const makeAugmentEmblem = (catalog) => traitBook(catalog).augmentEmblem;
 
 /** Entrada do cliente com os mesmos padrões de `validate` em server.mjs. */
 export function clientInput(input = {}) {
@@ -147,16 +120,12 @@ export function clientInput(input = {}) {
 const NO_TIMER = (label, fn) => fn();
 
 /**
- * Uma execução do pipeline (um POST /api/recommend). `run` acumula o que o servidor mantém entre chamadas:
- * `tracker` (plano em andamento), `baseCache` (análise base por entrada, como `baseAnalysisCache`).
- * `step`: { snapshot, metadata, client, seen, hidden, streak, trend, now }.
+ * A montagem de uma leitura (o começo de um POST /api/recommend, até as entradas do grafo): `options`, o estado lido, a
+ * comp fixada, os aprimoramentos escolhidos e `values` (as entradas dos fatos, de `recommendValues`). `run` acumula o
+ * que o servidor mantém entre chamadas; `step`: { snapshot, metadata, client, seen, hidden, streak, trend, now }.
+ * Separada de `runStep` para os testes de invalidação (tests/recommend-graph.test.mjs) mudarem uma entrada de cada vez.
  */
-export function runStep(
-  ctx,
-  run,
-  step,
-  { time = NO_TIMER, observeOptions = null } = {},
-) {
+export function assembleStep(ctx, run, step) {
   const { catalog, metaComps, meta, boardStats, augmentStats, augmentById } =
     ctx;
   const snapshot = structuredClone(step.snapshot),
@@ -170,7 +139,18 @@ export function runStep(
     };
   const options = clientInput(step.client);
   // Partida revista: a leitura de tela é da partida de agora e não vale para ela (server.mjs).
-  const seen = options.replayGameId ? {} : (step.seen ?? {});
+  // Ao vivo, ouro e nível saem do estado do servidor (M7). Os cenários os declaram em `client` (herança do payload antigo,
+  // em que o cliente os mandava); aqui viram a leitura do servidor, que dá a mesma entrada para a análise.
+  const seen = options.replayGameId
+    ? {}
+    : {
+        ...step.seen,
+        level: options.levelEstimated ? null : options.level,
+        gold: options.gold,
+        sources: {
+          level: options.levelSource === "derivado" ? "derived" : "screen",
+        },
+      };
   // Luva de Ladrão: só a luva é um item real (server.mjs, antes de tudo).
   for (const p of snapshot.statsBlock.players)
     for (const u of p.boardPieces ?? [])
@@ -200,184 +180,105 @@ export function runStep(
   }
   const itemIds = new Set(catalog.items.map((i) => i.apiName));
   options.bench = gepBenchUnits(seen, HERO_ID);
-  options.inventory = recommendInventory(options.inventory, seen, (id) =>
-    itemIds.has(id),
+  options.inventory = recommendInventory(
+    options.replayGameId ? options.inventory : [],
+    seen,
+    (id) => itemIds.has(id),
   );
   options.bankRead =
     !options.replayGameId &&
     (Array.isArray(seen.items) || options.inventory.length > 0);
-  options.shop = (seen.shop ?? []).map((card) => card?.id ?? null);
-  options.augmentIds = (seen.augments ?? []).some((id) =>
-    options.augments.includes(id),
-  )
-    ? []
-    : (seen.augments ?? []);
-  options.xp = seen.xp;
-  options.removers = seen.removers === 0 ? 0 : null;
-  options.hasRemover = (seen.removers ?? 0) > 0;
-  const stageRead = /^(\d)-(\d)$/.exec(seen.stage ?? "");
-  options.stage = stageRead
-    ? { stage: Number(stageRead[1]), round: Number(stageRead[2]) }
-    : null;
+  Object.assign(
+    options,
+    analysisInputs(seen, {
+      augments: options.augments,
+      // Nível só estimado: o cenário dizia o nível em `client.level` com `levelEstimated` (o tabuleiro).
+      estimatedLevel: options.levelEstimated ? options.level : null,
+      live: !options.replayGameId,
+    }),
+  );
   const chosen = options.augments
       .map((id) => augmentById.get(id))
       .filter(Boolean),
-    traitNameByApi = new Map(catalog.traits.map((t) => [t.apiName, t.name])),
-    augmentEmblem = makeAugmentEmblem(catalog);
-  const emblemOf = new Map(chosen.map((a) => [a.id, augmentEmblem(a)])),
-    traitsOfAug = (a) => [
-      ...new Set([...a.traits, emblemOf.get(a.id)?.trait].filter(Boolean)),
-    ];
-  options.augmentTraits = [
-    ...new Set(
-      chosen.flatMap((a) =>
-        traitsOfAug(a)
-          .map((t) => traitNameByApi.get(t))
-          .filter(Boolean),
-      ),
-    ),
-  ];
-  options.augmentTraitsById = Object.fromEntries(
-    chosen.map((a) => [a.id, traitsOfAug(a)]),
-  );
-  options.augmentNames = Object.fromEntries(chosen.map((a) => [a.id, a.name]));
+    book = traitBook(catalog);
   options.sticky = options.replayGameId
     ? null
     : run.tracker.sticky(metadata.gameId);
-  options.stickyCompId = options.sticky?.id ?? null;
   options.holdPlan =
     !options.replayGameId && run.tracker.holdFor(metadata.gameId);
   options.streak = options.replayGameId ? null : (step.streak ?? null);
   options.trend = options.replayGameId ? null : (step.trend ?? null);
   options.hidden = step.hidden ?? {};
-  const signature = snapshotSignature(snapshot);
-  options.metaComps = metaComps.comps.map((c) => {
-    const list = (options.compSwaps[c.id] ?? []).filter(
-      (x) =>
-        x.out !== c.carry && c.units.includes(x.out) && !c.units.includes(x.in),
-    );
-    if (!list.length) return c;
-    const units = [...c.units];
-    for (const x of list) units.splice(units.indexOf(x.out), 1, x.in);
-    return { ...c, units, appliedSwaps: list };
-  });
-  options.metaBuilds = meta.builds;
-  options.metaRoles = meta.roles;
-  options.metaLabel = meta.label;
-  let targetAuto = null;
-  if (options.targetLevel === "auto") {
-    targetAuto = suggestTargetLevel(
-      snapshot,
-      HERO_ID,
-      options.level,
-      options.gold,
-    );
-    options.targetLevel = targetAuto.level;
-  }
-  options.baseAvg = boardStats?.base?.[0] ?? 4.466;
-  options.stats = boardStats;
-  options.itemStats = meta.items ?? {};
   options.augmentStats = augmentStats;
-  options.augmentEmblems = chosen
-    .map((a) => emblemOf.get(a.id)?.item)
-    .filter(Boolean);
-  options.conditional = run.conditional;
-  options.evidence = run.evidence;
-  const baseInputs = baseInputsOf(options, {
-    source: signature,
-    builds: meta.fetchedAt,
-    comps: metaComps.fetchedAt,
-    stats: boardStats?.fetchedAt ?? null,
+  // Os fatos do pipeline (app/recommend-facts.mjs): `recommendValues` traduz `options` + cópias de meta em entradas do
+  // grafo. A escolha de nível-alvo ("auto" ou um nível) vai como veio do cliente.
+  const values = recommendValues({
+    snapshot,
+    catalog,
+    options,
+    meta,
+    metaComps,
+    boardStats,
+    augmentStats,
+    chosen,
+    goal,
+    targetLevel: options.targetLevel,
   });
-  // Mesmo critério do servidor: base só é guardada sem perguntas abertas; versão da evidência constante offline.
-  const baseKey = `0|${baseInputs}`;
-  let built = run.baseCache.get(baseKey);
-  if (!built) {
-    built = time("analyze", () => {
-      // `observeOptions` embrulha `options` só para `analyze` (o teste de arquitetura registra o que a base lê).
-      const observed = observeOptions ? observeOptions(options) : options;
-      let fresh = analyze(snapshot, catalog, observed);
-      // O servidor busca as perguntas abertas e refaz a análise (até 3 passes). Offline, o que não está na evidência
-      // congelada responde como a rede indisponível (null: a análise segue sem ela), então a base converge.
-      for (
-        let pass = 0;
-        pass < 3 &&
-        (fresh.conditionalRequests.length || fresh.evidenceRequests.length);
-        pass++
-      ) {
-        for (const f of fresh.conditionalRequests)
-          if (!run.conditional.has(f)) run.conditional.set(f, null);
-        for (const f of fresh.evidenceRequests)
-          if (!run.evidence.has(filterKey(f)))
-            run.evidence.set(filterKey(f), null);
-        fresh = analyze(snapshot, catalog, observed);
-      }
-      return fresh;
+  return { snapshot, metadata, options, seen, goal, chosen, book, values };
+}
+
+/**
+ * Uma execução do pipeline (um POST /api/recommend). `run` acumula o que o servidor mantém entre chamadas:
+ * `tracker` (plano em andamento) e `graph` (os fatos memoizados, como o servidor).
+ */
+export function runStep(ctx, run, step, { time = NO_TIMER } = {}) {
+  const { catalog, metaComps, meta, augmentById } = ctx;
+  const { snapshot, metadata, options, seen, chosen, book, values } =
+    assembleStep(ctx, run, step);
+  // Cada leitura reafirma todas as entradas e lê o fato no mesmo trecho síncrono (bindRun).
+  const graph = run.fresh ? createRecommendGraph(run.graphOptions) : run.graph;
+  const view = bindRun(graph, values, () => evidenceInputs(run));
+  const target = view.target();
+  options.targetLevel = target.level;
+  time("analyze", () => {
+    let fresh = view.base();
+    // O servidor busca as perguntas abertas e refaz a análise (até 3 passes). Offline, o que não está na evidência
+    // congelada responde como a rede indisponível (null: a análise segue sem ela), então a base converge.
+    for (
+      let pass = 0;
+      pass < 3 &&
+      (fresh.conditionalRequests.length || fresh.evidenceRequests.length);
+      pass++
+    ) {
+      for (const f of fresh.conditionalRequests)
+        if (!run.conditional.has(f)) {
+          run.conditional.set(f, null);
+          run.evidenceVersion++;
+        }
+      for (const f of fresh.evidenceRequests)
+        if (!run.evidence.has(filterKey(f))) {
+          run.evidence.set(filterKey(f), null);
+          run.evidenceVersion++;
+        }
+      fresh = view.base();
+    }
+    return fresh;
+  });
+  const tactical = time("tactics", () => view.tactical());
+  const planCount = plansOf(tactical).length;
+  if (planCount > MAX_PLANS)
+    throw Error(`${planCount} planos; o grafo tem fatos para ${MAX_PLANS}.`);
+  const perPlan = [];
+  for (let slot = 0; slot < planCount; slot++)
+    perPlan.push({
+      stage: time("stagePlan", () => view.field(slot)),
+      strategy: time("strategy", () => view.strategy(slot)),
     });
-    if (!built.conditionalRequests.length && !built.evidenceRequests.length)
-      run.baseCache.set(baseKey, built);
-  }
-  const base = time("clone", () => structuredClone(built));
-  if (base.previewGrow.length)
-    options.previewIds = [
-      ...options.previewIds,
-      ...base.previewGrow.map((g) => g.id),
-    ];
-  options.goalComp = goal;
-  const analysis = time("tactics", () => tactics(base, catalog, options));
-  analysis.goalIds = base.previewGrow.length ? options.previewIds : null;
-  analysis.goal = options.goalCompId
-    ? { id: options.goalCompId, found: !!goal, swaps: options.goalSwaps }
-    : null;
-  const shownId = analysis.recommendations[0]?.meta?.id;
-  analysis.autoSwaps = goal
-    ? []
-    : (options.metaComps.find((c) => c.id === shownId)?.appliedSwaps ?? []);
-  if (analysis.preview) analysis.preview.flex = base.previewFlex ?? [];
-  const ranked = goal
-    ? analysis.compRanking?.find((r) => r.id === goal.id)
-    : null;
-  if (goal && analysis.preview)
-    Object.assign(analysis.preview, {
-      emblems: ranked?.emblem ?? [],
-      evidence: ranked?.evidence ?? null,
-      title: goal.title,
-      meta: {
-        id: goal.id,
-        tier: goal.tier,
-        avg: goal.avg,
-        top4: goal.top4,
-        win: goal.win,
-        games: goal.games,
-        levelling: goal.levelling,
-        rerollLevel: goal.rerollLevel,
-        stars3: goal.stars3,
-        builds: goal.builds,
-      },
-    });
-  for (const plan of [
-    ...analysis.recommendations,
-    ...(analysis.preview ? [analysis.preview] : []),
-  ]) {
-    plan.playbook = time("playbook", () =>
-      playbook(plan, analysis, options, metadata),
-    );
-    plan.stage = time("stagePlan", () =>
-      stagePlan(plan, analysis, catalog, options),
-    );
-    plan.strategy = time("strategy", () => strategy(plan, analysis, options));
-    if (plan.playbook && metadata.actionable && analysis.self.health > 0)
-      Object.assign(plan.playbook, {
-        headline: plan.strategy.headline,
-        style: plan.strategy.style || plan.playbook.style,
-        actions: [...plan.strategy.steps, ...plan.strategy.reasons],
-        note: "Regras de economia aplicadas a estágio, nível, XP, ouro, HP, pool e loja lidos; sequência inferida pelo HP entre rodadas. Não simula combate.",
-      });
-    plan.teamCode = teamCode(
-      plan.board.map((u) => u.id),
-      ctx.plannerCatalog,
-    );
-  }
+  const analysis = time("clone", () =>
+    composeAnalysis(tactical, perPlan, (ids) =>
+      teamCode(ids, ctx.plannerCatalog),
+    ),
+  );
   analysis.currentLevel = options.level;
   let switched = null;
   if (
@@ -398,7 +299,7 @@ export function runStep(
         analysis,
         chosen: chosen.map((a) => ({ id: a.id, name: a.name })),
         ledger: step.ledger ?? null,
-        baseId: baseIdOf(baseInputs),
+        baseId: view.readingId(),
         pinned: !!analysis.preview,
       }),
     );
@@ -409,7 +310,7 @@ export function runStep(
     id: a.id,
     name: a.name,
     desc: a.desc,
-    traits: a.traits.map((t) => traitNameByApi.get(t)).filter(Boolean),
+    traits: a.traits.map((t) => book.nameOf(t)).filter(Boolean),
   }));
   options.chosenAugments = chosen;
   analysis.augmentAdvice = time("augmentAdvice", () =>
@@ -422,7 +323,6 @@ export function runStep(
       ctx.localNames,
     ),
   );
-  analysis.decision = time("decide", () => decide(analysis, options));
   analysis.contest = time("contest", () =>
     contestAlert({
       plan: analysis.preview ?? analysis.recommendations[0],
@@ -441,8 +341,8 @@ export function runStep(
       }
     : null;
   analysis.targetLevel = options.targetLevel;
-  analysis.targetLevelAuto = targetAuto !== null;
-  analysis.targetLevelReasons = targetAuto?.reasons ?? [];
+  analysis.targetLevelAuto = target.auto;
+  analysis.targetLevelReasons = target.reasons;
   analysis.levelEstimated = options.levelEstimated;
   analysis.levelSource = options.levelSource;
   const emblemTraits = emblemTraitMap(
@@ -477,17 +377,48 @@ export function runStep(
   return { response, switched, bytes: JSON.stringify(response).length };
 }
 
-/** Estado que o servidor mantém entre chamadas, recriado a cada cenário. */
-export function newRun(ctx, now = 0) {
+/**
+ * Estado que o servidor mantém entre chamadas, recriado a cada cenário: o plano em andamento, as respostas do explorer
+ * e o grafo de fatos (o histórico por conteúdo faz o papel do cache da base). `opts.fresh`: cada leitura usa um grafo novo
+ * (sem histórico: tudo recalcula); `opts.overrides`: fatos que substituem os do pipeline pelo id (o espião do teste D1); `opts.verify`: o modo de teste do grafo
+ * (cada fato roda duas vezes, a saída é congelada e a mutação de entrada acusa `IMPURE`).
+ */
+export function newRun(ctx, now = 0, opts = {}) {
   let t = now;
+  const graphOptions = {
+      overrides: opts.overrides ?? [],
+      verify: opts.verify === true,
+    },
+    cloneMap = ctx.cloneMap ?? ((m) => new Map(m));
   return {
     tracker: planTracker({ file: null, now: () => t }),
-    baseCache: new Map(),
+    graph: createRecommendGraph(graphOptions),
+    graphOptions,
+    fresh: opts.fresh === true,
     // Respostas do explorer: o servidor as acumula entre chamadas; aqui cada cenário parte do congelado.
-    evidence: (ctx.cloneMap ?? ((m) => new Map(m)))(ctx.evidence),
-    conditional: (ctx.cloneMap ?? ((m) => new Map(m)))(ctx.conditional),
+    evidence: cloneMap(ctx.evidence),
+    conditional: cloneMap(ctx.conditional),
+    // A mesma cópia serve às cópias que o grafo recebe (scripts/golden-freeze.mjs põe um espião de leituras nos mapas).
+    cloneMap,
+    // Muda a cada resposta nova dos mapas acima (o grafo recebe cópias: as entradas são imutáveis).
+    evidenceVersion: 0,
+    evidenceCopy: { version: -1, evidence: null, conditional: null },
     advance: (ms) => (t += ms),
     clock: () => t,
+  };
+}
+
+/** Cópias dos mapas do explorer para o grafo, refeitas só quando mudaram. */
+export function evidenceInputs(run) {
+  if (run.evidenceCopy.version !== run.evidenceVersion)
+    run.evidenceCopy = {
+      version: run.evidenceVersion,
+      evidence: run.cloneMap(run.evidence),
+      conditional: run.cloneMap(run.conditional),
+    };
+  return {
+    evidence: run.evidenceCopy.evidence,
+    conditional: run.evidenceCopy.conditional,
   };
 }
 
@@ -542,11 +473,14 @@ export function loadSnapshots() {
 
 /** Executa um cenário inteiro (todos os passos, em ordem, com o mesmo estado de servidor). */
 export function runScenario(ctx, scenario, snapshots, opts = {}) {
-  const run = newRun(ctx, Date.parse("2026-10-10T20:00:00Z")),
+  // `noBaseCache`: cada leitura recalcula tudo (um grafo novo por leitura, sem histórico); `overrides`: ver `newRun`.
+  const run = newRun(ctx, Date.parse("2026-10-10T20:00:00Z"), {
+      fresh: opts.noBaseCache === true,
+      overrides: opts.overrides,
+      verify: opts.verify,
+    }),
     steps = resolveSteps(ctx, scenario, snapshots),
     out = [];
-  // `noBaseCache`: cada leitura recalcula a base (o que o servidor faria sem acerto no `baseAnalysisCache`).
-  if (opts.noBaseCache) run.baseCache = { get: () => undefined, set() {} };
   for (const step of steps) {
     out.push(runStep(ctx, run, step, opts));
     run.advance(30_000);

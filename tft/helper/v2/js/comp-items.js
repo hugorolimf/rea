@@ -15,9 +15,12 @@
  * O item equipado no campeão (`equipped`) conta como `on` e não gasta o banco.
  */
 import { countUnitTraits, firstBreakpoint } from "./traits.js";
+import { baseItemId, recipeOf } from "../../core/catalog/items.mjs";
+import { spendBankHalves, spendBankOnBuilds } from "../../core/items/bank.mjs";
+import { takeAll, takeOne } from "../../core/items/stock.mjs";
 
-/** Id do item base de um radiante ("DA_VoidStaffRadiant" e "DA_TitansResolve_Radiant" valem o item comum). */
-export const baseItemId = (id) => String(id).replace(/_?Radiant$/, "");
+// Id do item base de um radiante: regra em core/catalog/items.mjs (reexportada para quem importava daqui).
+export { baseItemId };
 
 const REASONS = {
   component: "componente sem receita útil para esta comp",
@@ -33,7 +36,7 @@ const REASONS = {
 export function emblemBases(items) {
   const count = new Map();
   for (const i of items.values())
-    if (i.kind === "emblem" && i.composition?.length === 2)
+    if (i.kind === "emblem" && recipeOf(i))
       for (const p of i.composition) count.set(p, (count.get(p) ?? 0) + 1);
   return new Set([...count].filter(([, n]) => n >= 5).map(([p]) => p));
 }
@@ -68,10 +71,7 @@ export function compItems(
     excluded = [];
   for (const id of read ? bank : [])
     (items.get(id)?.consumable ? excluded : stock).push(id);
-  const take = (match) => {
-    const at = stock.findIndex(match);
-    return at < 0 ? null : stock.splice(at, 1)[0];
-  };
+  const take = (match) => takeOne(stock, match);
   const units = [comp.carry, ...comp.units.filter((u) => u !== comp.carry)]
     .filter((u, i, all) => comp.builds?.[u]?.length && all.indexOf(u) === i)
     .map((unit) => ({
@@ -88,36 +88,8 @@ export function compItems(
       owned: [...(equipped[unit] ?? [])],
     }));
   // Passo 1: equipado, o próprio item, o radiante e a montagem completa (carry antes, cada item do banco uma vez só).
-  for (const u of units)
-    for (const row of u.rows) {
-      const worn = u.owned.findIndex((id) => baseItemId(id) === row.want);
-      if (worn >= 0) {
-        u.owned.splice(worn, 1);
-        row.state = "on";
-        continue;
-      }
-      const exact =
-        take((id) => id === row.want) ??
-        take((id) => baseItemId(id) === row.want);
-      if (exact) {
-        Object.assign(row, {
-          state: exact === row.want ? "ready" : "radiant",
-          spent: [exact],
-        });
-        continue;
-      }
-      if (row.recipe.length === 2) {
-        const probe = [...stock];
-        const parts = row.recipe.map((p) => {
-          const at = probe.indexOf(p);
-          return at < 0 ? null : probe.splice(at, 1)[0];
-        });
-        if (parts.every(Boolean)) {
-          for (const p of parts) take((id) => id === p);
-          Object.assign(row, { state: "craft", spent: parts, have: parts });
-        }
-      }
-    }
+  // A regra de gastar o banco entre as builds é uma só: core/items/bank.mjs.
+  spendBankOnBuilds(units, stock);
   // Emblemas que dão ao carry uma sinergia ativa da comp que ele ainda não tem.
   const carryTraits = new Set(champions.get(comp.carry)?.traits ?? []),
     wanted = traitsToGain(comp, carryTraits, champions, breakpoints),
@@ -142,17 +114,12 @@ export function compItems(
     if (
       item.kind === "emblem" &&
       wanted.has(item.trait) &&
-      item.composition?.length === 2 &&
+      recipeOf(item) &&
       !inBuild.has(id) &&
       !emblems.some((e) => e.trait === item.trait)
     ) {
-      const probe = [...stock],
-        parts = item.composition.map((p) => {
-          const at = probe.indexOf(p);
-          return at < 0 ? null : probe.splice(at, 1)[0];
-        });
-      if (parts.every(Boolean)) {
-        for (const p of parts) take((x) => x === p);
+      const parts = takeAll(stock, item.composition);
+      if (parts) {
         emblems.push({
           id,
           trait: item.trait,
@@ -165,29 +132,14 @@ export function compItems(
       }
     }
   // Passo 2: metade de uma receita (um componente no banco; diz o que falta). Emblema só com Espátula/Frigideira.
-  for (const u of units)
-    for (const row of u.rows)
-      if (row.state === "missing" && row.recipe.length === 2) {
-        const part = row.recipe.find((p) => stock.includes(p));
-        if (part) {
-          take((id) => id === part);
-          const rest = [...row.recipe];
-          rest.splice(rest.indexOf(part), 1);
-          Object.assign(row, {
-            state: "half",
-            spent: [part],
-            have: [part],
-            missing: rest,
-          });
-        }
-      }
+  spendBankHalves(units, stock);
   // A Espátula/Frigideira serve a qualquer emblema útil: cada um vira uma alternativa (`alt`) e só a primeira gasta a peça.
   const spentBase = new Set();
   for (const [id, item] of items)
     if (
       item.kind === "emblem" &&
       wanted.has(item.trait) &&
-      item.composition?.length === 2 &&
+      recipeOf(item) &&
       !inBuild.has(id) &&
       !emblems.some((e) => e.trait === item.trait)
     ) {
@@ -237,4 +189,55 @@ export function equippedBy(units = []) {
     if (u?.championName && Array.isArray(u.itemNames) && u.itemNames.length)
       out[u.championName] = [...(out[u.championName] ?? []), ...u.itemNames];
   return out;
+}
+
+const round3 = (v) => Math.round(v * 1000) / 1000;
+
+/**
+ * Leitura do plano de itens do motor (`compRanking[].itemPlan`, item-plan.mjs) para a tela. Puro; não decide nada.
+ * Devolve `null` sem plano; senão `{ read, total, groups, wishlist }`:
+ *  - `read`: o banco foi lido. Sem leitura NUNCA há atribuição (mesmo que o plano traga alguma, é ignorada): só `wishlist`;
+ *  - `groups`: um por campeão, do de maior impacto ao menor (ordem de `champions` do motor), com `items` (as atribuições dele,
+ *    maior valor primeiro), `total` (soma do campeão) e `acc` (total acumulado até este campeão, inclusive);
+ *  - `total`: soma do plano (`plan.total`; sem ele, a soma das atribuições);
+ *  - `wishlist`: por campeão, os itens do meta que o jogador ainda não tem (separada das atribuições).
+ */
+export function planView(plan) {
+  if (!plan || typeof plan !== "object") return null;
+  const read = plan.bankRead !== false,
+    list = read && Array.isArray(plan.assignments) ? plan.assignments : [],
+    byChampion = new Map();
+  for (const a of list) {
+    const id = a?.champion?.id;
+    if (id == null || !a.item?.id) continue;
+    if (!byChampion.has(id))
+      byChampion.set(id, { champion: a.champion, items: [] });
+    byChampion.get(id).items.push(a);
+  }
+  const order = [
+    ...(Array.isArray(plan.champions) ? plan.champions : []).map(
+      (c) => c?.champion?.id,
+    ),
+    ...byChampion.keys(),
+  ].filter((id, i, all) => byChampion.has(id) && all.indexOf(id) === i);
+  let acc = 0;
+  const groups = order.map((id) => {
+    const g = byChampion.get(id),
+      items = [...g.items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
+      total = round3(items.reduce((n, a) => n + (a.value ?? 0), 0));
+    acc = round3(acc + total);
+    return { champion: g.champion, items, total, acc };
+  });
+  return {
+    read,
+    total: read
+      ? Number.isFinite(plan.total)
+        ? plan.total
+        : (groups.at(-1)?.acc ?? 0)
+      : 0,
+    groups,
+    wishlist: Array.isArray(plan.wishlist)
+      ? plan.wishlist.filter((w) => w?.champion?.id && w.items?.length)
+      : [],
+  };
 }

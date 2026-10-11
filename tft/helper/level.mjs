@@ -2,7 +2,8 @@
 // jogo permite naquele estágio-rodada, com um piso derivado quando a leitura falta ou está velha.
 // Precedência (ver FONTES-DE-DADOS.md, "Nível"): leitura fresca e plausível > piso derivado do XP passivo >
 // estimativa pelo tabuleiro (feita fora daqui, sempre marcada "estimado"). Nunca se inventa nível a partir do tabuleiro.
-import { levelFloor, levelsForXp } from "./rules.mjs";
+// A regra mora em core/state/level.mjs (`reduceLevel`, pura); aqui fica só a memória por partida.
+import { reduceLevel } from "./core/state/level.mjs";
 
 /**
  * Cria o rastreador de nível de uma partida. `apply(seen, gameId)` recebe o estado já mesclado (leitor de tela +
@@ -15,78 +16,16 @@ import { levelFloor, levelsForXp } from "./rules.mjs";
  * garante no estágio-rodada, ou abaixo do último nível confirmado (o nível nunca cai).
  */
 export function levelTracker() {
-  let game = null,
-    anchor = null; // último nível confirmado: { level, xp, stage }
+  const fresh = () => ({ game: null, anchor: null });
+  let memory = fresh();
   return {
     reset() {
-      game = null;
-      anchor = null;
+      memory = fresh();
     },
     apply(seen, gameId = null) {
-      if (gameId !== game) {
-        game = gameId;
-        anchor = null;
-      }
-      const stage = /^\d-\d$/.test(seen.stage ?? "") ? seen.stage : null,
-        read = Number.isInteger(seen.level) ? seen.level : null,
-        stale = seen.stale?.level === true,
-        corroborated = read !== null && levelsForXp(seen.xp).includes(read),
-        // Piso global: o que o XP passivo garante a quem nunca comprou XP. Só vale a partir do estágio 2.
-        globalFloor = stage && Number(stage[0]) >= 2 ? levelFloor(stage) : null;
-      let level = null,
-        source = null,
-        rejected = null;
-      if (read !== null && !stale) {
-        if (!corroborated && globalFloor !== null && read < globalFloor)
-          rejected = {
-            read,
-            reason: `abaixo do mínimo ${globalFloor} garantido em ${stage}`,
-          };
-        else if (!corroborated && anchor && read < anchor.level)
-          rejected = {
-            read,
-            reason: `abaixo do último nível confirmado (${anchor.level})`,
-          };
-        else {
-          level = read;
-          source = "screen";
-          anchor = { level, xp: corroborated ? seen.xp : null, stage };
-        }
-      }
-      if (level === null) {
-        // Sem leitura aproveitável: o maior piso conhecido. A leitura velha também é piso (o nível só sobe).
-        const floors = [];
-        if (anchor && stage)
-          floors.push({ level: levelFloor(stage, anchor), source: "derived" });
-        if (globalFloor !== null)
-          floors.push({ level: globalFloor, source: "derived" });
-        if (read !== null && stale && !rejected)
-          floors.push({ level: read, source: "screen" });
-        const best = floors.sort((a, b) => b.level - a.level)[0];
-        if (best) ({ level, source } = best);
-      }
-      const sources = { ...seen.sources, level: source },
-        // XP de outro nível não pode desenhar a barra do nível mostrado.
-        xp =
-          seen.xp && level !== null && !levelsForXp(seen.xp).includes(level)
-            ? null
-            : (seen.xp ?? null);
-      return {
-        ...seen,
-        level,
-        xp,
-        stale: { ...seen.stale, level: source === "screen" ? stale : false },
-        sources: { ...sources, xp: xp === null ? null : sources.xp },
-        levelInfo: {
-          source,
-          minimum: source === "derived",
-          stale: source === "screen" && stale,
-          rejected,
-          conflict: seen.levelConflict === true,
-          ambiguous: seen.levelAmbiguous === true,
-          read,
-        },
-      };
+      const out = reduceLevel(memory, seen, gameId);
+      memory = out.memory;
+      return out.seen;
     },
   };
 }

@@ -309,6 +309,113 @@
     color: var(--faint);
     font-size: 11px;
   }
+  /* Plano de itens: seus itens distribuídos pelos campeões de maior impacto, com o valor acumulando. */
+  .cp-total {
+    margin-left: auto;
+    color: var(--go);
+    font-variant-numeric: tabular-nums;
+  }
+  .cp-note {
+    color: var(--amber);
+    font-size: 12px;
+  }
+  .cp-note[data-unread] {
+    padding: 6px 10px;
+    border: 1px dashed var(--amber);
+    border-radius: 8px;
+  }
+  .cp-sub {
+    color: var(--muted);
+  }
+  .cp-champs,
+  .cp-wish-list {
+    display: grid;
+    gap: 8px;
+  }
+  .cp-champ,
+  .cp-wish-champ {
+    display: grid;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--surface), var(--bg) 20%);
+  }
+  .cp-champ[data-rank="1"] {
+    border-color: var(--line);
+  }
+  .cp-who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    & .rt {
+      min-width: 0;
+    }
+  }
+  .cp-sum {
+    margin-left: auto;
+    display: grid;
+    justify-items: end;
+    font-variant-numeric: tabular-nums;
+    & b {
+      color: var(--go);
+    }
+    & small {
+      color: var(--faint);
+      font-size: 10px;
+    }
+  }
+  .cp-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    & li {
+      display: grid;
+      grid-template-columns: auto auto;
+      align-items: center;
+      justify-content: start;
+      gap: 2px 8px;
+    }
+    & small {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 10px;
+      & b {
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+    }
+    & li[data-state="on"] small,
+    & li[data-state="bank"] small {
+      color: var(--go);
+    }
+    & li[data-state="move"] small,
+    & li[data-state="moveStay"] small,
+    & li[data-state="craftMove"] small {
+      color: var(--amber);
+    }
+    & li[data-state="craft"] small {
+      color: var(--blue);
+    }
+    /* Valor com pouca amostra: mostrado, mas apagado. */
+    & li[data-weak] > .pt {
+      opacity: 0.7;
+    }
+  }
+  .cp-wish {
+    color: var(--muted);
+    & summary {
+      width: max-content;
+      cursor: pointer;
+      padding: 2px 0;
+      &::marker {
+        color: var(--faint);
+      }
+    }
+    & .cp-wish-list {
+      margin-top: 6px;
+    }
+  }
   .dispute {
     &[data-level="baixa"] {
       color: var(--go);

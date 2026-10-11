@@ -176,7 +176,7 @@ export const scenarios = [
   },
   {
     id: "shop-cache-d1",
-    desc: "D1: depois de adotado o plano, só a loja muda (leitura 3); a base vem do cache sem a loja (compScore defasado).",
+    desc: "D1: depois de adotado o plano, só a loja muda (leitura 3); desde o M8b a loja é entrada da base, que é refeita (antes vinha do cache sem a loja, com compScore defasado).",
     snapshot: "items-8u",
     steps: [
       {

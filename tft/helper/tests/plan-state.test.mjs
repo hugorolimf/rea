@@ -706,3 +706,67 @@ test("motor: com holdPlan o plano mantido fica no topo e a vantagem do desafiant
   );
   assert.ok(sw.gain > sw.noise + sw.cost);
 });
+
+test("as decisões do usuário ficam por partida, só tocam o estado quando mudam e sobrevivem ao reinício (M10b)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-state-dec-"));
+  try {
+    const file = path.join(dir, "data", "plan-state.json");
+    const a = make({ file });
+    step(0);
+    assert.equal(a.decisions("G1"), null, "sem POST ainda: valem os padrões");
+    const picked = {
+      goalCompId: "c1",
+      goalSwaps: [{ out: "A", in: "B" }],
+      compSwaps: {},
+      augments: ["Aug1"],
+      augmentsKnown: true,
+    };
+    assert.equal(a.setDecisions("G1", picked), true);
+    const rev = a.snapshot().revision;
+    assert.deepEqual(a.decisions("G1"), picked);
+    assert.equal(
+      a.setDecisions("G1", { ...picked }),
+      false,
+      "igual: nada muda",
+    );
+    assert.equal(a.snapshot().revision, rev);
+    // É cópia: mexer no que foi devolvido não altera o guardado.
+    a.decisions("G1").augments.push("x");
+    assert.deepEqual(a.decisions("G1").augments, ["Aug1"]);
+    assert.equal(a.decisions("G2"), null, "outra partida não herda");
+    // Decisões e plano convivem no mesmo estado (uma partida por vez).
+    a.track({
+      gameId: "G1",
+      stage: "2-1",
+      level: 3,
+      top: recommendation(),
+      analysis: analysisOf([["Carry", 1]]),
+    });
+    assert.deepEqual(
+      a.decisions("G1"),
+      picked,
+      "o plano adotado não apaga as decisões",
+    );
+    await a.flush();
+    const b = make({ file });
+    assert.deepEqual(
+      b.decisions("G1"),
+      picked,
+      "servidor reiniciado no meio da partida",
+    );
+    assert.equal(b.sticky("G1").id, "m1");
+    // Mudou a decisão: muda e persiste; fim da partida (reset) zera.
+    assert.equal(b.setDecisions("G1", { ...picked, goalCompId: "" }), true);
+    assert.equal(b.decisions("G1").goalCompId, "");
+    b.reset();
+    assert.equal(b.decisions("G1"), null);
+    await b.flush();
+    // Estado de versão anterior (sem o campo) continua carregando.
+    const old = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete old.decisions;
+    fs.writeFileSync(file, JSON.stringify({ ...old, gameId: "G1" }));
+    assert.equal(make({ file }).decisions("G1"), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

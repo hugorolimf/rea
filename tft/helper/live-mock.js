@@ -366,7 +366,9 @@
       rollAt = o.rollAt ?? 8,
       curveAt = rolling ? level : Math.max(level, rollAt);
     // Pool do mock: 12 campeões de custo 4 (~96 cópias livres) e 13 de custo 1 (~360).
-    const rollBudget = rolling ? spend : Math.max(0, (cash ?? 0) - 50);
+    const budgetGold = rolling
+      ? spend
+      : Math.max(0, (cash ?? 0) - E.POLICY.floor.healthy);
     const target = (ref, cost, own, goal, enemy, free, denom, extra = {}) => {
       const exact = E.closeCurve({
         level: curveAt,
@@ -378,8 +380,8 @@
       });
       const slot = E.slotChance(curveAt, cost, free, denom),
         chance =
-          rollBudget >= 2
-            ? exact[Math.min(rollBudget, exact.length - 1)]
+          budgetGold >= 2
+            ? exact[Math.min(budgetGold, exact.length - 1)]
             : null;
       return {
         id: ref.id,
@@ -439,7 +441,7 @@
     const max = rolling ? (o.max ?? spend) : null;
     const text = {
       ECONOMIZAR: {
-        head: `Economize até ${E.nextTier(cash) ?? 50}g e suba no tempo certo`,
+        head: `Economize até ${E.nextTier(cash) ?? E.maxInterestGold()}g e suba no tempo certo`,
         steps: [
           "Economize: o carry Aphelios (custo 4) só aparece bem a partir do nível 8. Não role agora.",
           "Ajuste itens e posições com o ouro parado.",
@@ -505,7 +507,8 @@
       spend,
       keep,
       sellable: { gold: 0, units: [] },
-      interestAt: gold == null ? null : (E.nextTier(gold) ?? 50),
+      interestAt:
+        gold == null ? null : (E.nextTier(gold) ?? E.maxInterestGold()),
       panels: {
         economy: {
           gold,
@@ -519,9 +522,10 @@
           income: keep == null ? null : E.incomeOf(keep, streak),
           projection,
           reach50:
-            keep == null || keep >= 50
+            keep == null || keep >= E.maxInterestGold()
               ? null
-              : (projection.find((r) => r.gold >= 50)?.label ?? null),
+              : (projection.find((r) => r.gold >= E.maxInterestGold())?.label ??
+                null),
           streak: streak
             ? { ...streak, gold: E.streakGold(streak.length) }
             : null,
@@ -580,7 +584,7 @@
             reason: rolling
               ? `${Math.round(rows[0].chance * 100)}% de evoluir alguma peça com ${spend}g; Aphelios 2★ ${Math.round(rows[0].chance * 100)}%.`
               : "Só 32% de evoluir alguma peça com 24g; passa de 50% com ~40g.",
-            budget: rollBudget,
+            budget: budgetGold,
             any: rows[0].chance,
             gain: 3.4,
             main: { id: APH.id, name: APH.name, stars: 2 },
@@ -692,55 +696,8 @@
     c.plan.transitions = transitions();
     c.plan.itemMoves = itemMoves();
     c.plan.carousel = carousel();
-    c.rec.decision = decisionFor("ajustar", c);
     c.rec.self.augments = ["Anel de Ouro II", "Pacto Ofensivo"];
     return x;
-  }
-  function decisionFor(verdict, c) {
-    const label = {
-      montar: "Montar comp",
-      evoluir: "Evoluir a comp atual",
-      ajustar: "Ajustar a comp",
-      estabilizar: "Estabilizar antes de trocar",
-      trocar: "Trocar de comp",
-      encerrado: "Partida encerrada",
-    }[verdict];
-    const by = {
-      montar: [
-        3,
-        0,
-        "Início de partida (3 unidades em campo): ainda não há comp para trocar.",
-      ],
-      evoluir: [7, 1, "A melhor rota mantém 7 de 8 unidades suas; só 1 troca."],
-      ajustar: [5, 2, "Mantenha 5 de 7 unidades e troque 2."],
-      estabilizar: [
-        2,
-        5,
-        "HP 31 e 18g: trocar 5 de 7 unidades é arriscado agora.",
-      ],
-      trocar: [2, 5, "Só 2 de 7 unidades suas servem na melhor rota."],
-      encerrado: [
-        6,
-        2,
-        "Hero está eliminado neste snapshot; as rotas abaixo servem só para revisão.",
-      ],
-    }[verdict];
-    return {
-      verdict,
-      label,
-      rank: 0,
-      title: c.plan.title,
-      carry: c.plan.carry,
-      kept: by[0],
-      leaving: by[1],
-      current: by[0] + by[1],
-      reasons: [
-        by[2],
-        "2 item(ns) estão em unidades que sairiam: só troque com a substituta pronta.",
-        "2 campeão(ões) a comprar, 1 com cópias em rivais.",
-      ],
-      note: "Regra heurística sobre o snapshot; não simula combate.",
-    };
   }
   /** Mantém só as linhas pedidas na referência (campo e título ficam). */
   function only(c, ...keep) {
@@ -1066,7 +1023,6 @@
       c.plan.stage.board = c.plan.stage.board.slice(0, 4);
       c.plan.stage.goalProgress = { onBoard: 2, goal: 5 };
       c.plan.transitions = c.plan.transitions.slice(3);
-      c.rec.decision = decisionFor("montar", c);
     },
   );
 
@@ -1284,25 +1240,17 @@
     },
     { follow: true },
   );
-  const dec = (v, label, hint) =>
-    add(
-      G.alert,
-      "decisao-" + v,
-      "Decisão: " + label,
-      hint,
-      (c) => {
-        live(c, v === "estabilizar" ? { hp: 31, gold: 18 } : {});
-        c.rec.decision = decisionFor(v, c);
-        if (v === "encerrado") patchMeta(c, { actionable: false });
-      },
-      { open: true },
-    );
-  dec("montar", "montar", "Banner 'Montar comp'.");
-  dec("evoluir", "evoluir", "Banner 'Evoluir a comp atual'.");
-  dec("ajustar", "ajustar", "Banner 'Ajustar a comp'.");
-  dec("estabilizar", "estabilizar", "Banner 'Estabilizar antes de trocar'.");
-  dec("trocar", "trocar", "Banner 'Trocar de comp'.");
-  dec("encerrado", "encerrado", "Banner de partida encerrada (não acionável).");
+  add(
+    G.alert,
+    "encerrado",
+    "Partida encerrada",
+    "Leitura não acionável (partida encerrada).",
+    (c) => {
+      live(c);
+      patchMeta(c, { actionable: false });
+    },
+    { open: true },
+  );
   add(
     G.alert,
     "movimento",

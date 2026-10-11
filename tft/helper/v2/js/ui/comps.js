@@ -1,8 +1,9 @@
 import { esc } from "../dom.js";
-import { compItems } from "../comp-items.js";
+import { compItems, planView } from "../comp-items.js";
 import {
   SORTS,
   STYLES,
+  activeTraits,
   disputeLevel,
   filterComps,
   itemUpgrade,
@@ -11,11 +12,14 @@ import {
   sortComps,
 } from "../comps.js";
 import {
+  champName,
   getCatalog,
   glyph,
   itemName,
   itemPortrait,
   portrait,
+  traitIcon,
+  unitPortrait,
 } from "./glyphs.js";
 import { nameChip, richText } from "./rich-text.js";
 
@@ -139,15 +143,121 @@ export function compItemsBlock(r, champions = getCatalog().champions) {
   </div>`;
 }
 
-function card(c, { goalId, open, items }) {
+// Plano de itens do motor (item-plan.mjs): o que fazer com cada item, em texto (nomes de campeões viram imagem em richText).
+const planText = (a) => {
+  switch (a.kind) {
+    case "on":
+      return "equipado";
+    case "bank":
+      return "no banco";
+    case "move":
+    case "moveStay":
+      return a.from ? `mover de ${a.from}` : "mover";
+    case "craft":
+      return "montar";
+    case "craftMove":
+      return a.from ? `montar com peças de ${a.from}` : "montar";
+    default:
+      return a.situation ?? "";
+  }
+};
+// Componentes em imagem (a receita do item que falta montar ou ainda não se tem).
+const recipeImages = (ids = []) =>
+  ids?.length
+    ? `<span class="cb-recipe">${ids.map((id) => `<span class="got">${itemPortrait({ id }, { size: 18 })}</span>`).join("")}</span>`
+    : "";
+// Valor em colocações: menor é melhor, como o resto da aba ("média 4,10 (−0,12)").
+const placing = (v) => (Number.isFinite(v) ? signed(-v) : "—");
+const planItem = (a) => {
+  const name = a.item.name ?? itemName(a.item.id),
+    text = planText(a),
+    weak = !(a.confidence >= 0.5),
+    basis = [
+      Number.isFinite(a.samples) ? `${thousands(a.samples)} partidas` : "",
+      a.source === "build-meta" ? "estimado pela build de meta" : "",
+    ].filter(Boolean);
+  return `<li data-state="${esc(a.kind)}"${weak ? ' data-weak=""' : ""} title="${esc(`${name}: ${text}${a.item.radiant ? " (radiante)" : ""}. Melhora ${num(a.value)} na colocação (medido ${num(a.measured)}${basis.length ? "; " + basis.join(", ") : ""})`)}">${itemPortrait({ id: a.item.id, name }, { size: 30 })}${recipeImages(a.componentsNeeded)}<small><b>${placing(a.value)}</b> · ${richText(text, { size: 16 })}${a.item.radiant ? " · radiante" : ""}</small></li>`;
+};
+const wishItem = (w) => {
+  const name = w.item.name ?? itemName(w.item.id);
+  return `<li title="${esc(`${name}: melhora ${num(w.value)} na colocação (medido${Number.isFinite(w.samples) ? `, ${thousands(w.samples)} partidas` : ""})`)}">${itemPortrait({ id: w.item.id, name }, { size: 26 })}${recipeImages(w.componentsNeeded)}<small>${placing(w.value)}</small></li>`;
+};
+
+/**
+ * Plano de itens da comp (`fit.itemPlan` do motor): os itens que você tem, distribuídos pelos campeões de maior impacto
+ * (vários carries), cada um com o estado (equipado, no banco, mover de quem, montar com os componentes em imagem) e o valor;
+ * os valores somam por campeão e no total. A lista de desejos (o que o meta valoriza e você ainda não tem) vem separada.
+ * Sem leitura do banco não há atribuição: só o aviso e a lista de desejos. `emblems` são os emblemas do banco úteis à comp.
+ */
+export function itemPlanBlock(
+  plan,
+  champions = getCatalog().champions,
+  { id = "", openWish = false, emblems = [] } = {},
+) {
+  const v = planView(plan);
+  if (!v) return "";
+  const groups = v.groups
+      .map(
+        (g, i) =>
+          `<li class="cp-champ" data-rank="${i + 1}"><div class="cp-who">${nameChip("champion", g.champion.id, g.champion.name ?? champName(g.champion.id), { size: 30, legend: true })}<span class="cp-sum" title="Soma dos itens deste campeão; acumulado até aqui no plano"><b>${placing(g.total)}</b><small>acumulado ${placing(g.acc)}</small></span></div><ul class="cp-items" aria-label="Itens de ${esc(g.champion.name ?? g.champion.id)}">${g.items.map(planItem).join("")}</ul></li>`,
+      )
+      .join(""),
+    wish = v.wishlist
+      .map(
+        (w) =>
+          `<li class="cp-wish-champ">${nameChip("champion", w.champion.id, w.champion.name ?? champName(w.champion.id), { size: 26, legend: true })}<ul class="cp-items cp-wish-items">${w.items.map(wishItem).join("")}</ul></li>`,
+      )
+      .join(""),
+    wishTitle = `Lista de desejos: o que o meta mais valoriza e você ainda não tem (${v.wishlist.length} campeã${v.wishlist.length === 1 ? "o" : "os"})`,
+    wishBlock = !wish
+      ? ""
+      : v.read
+        ? `<details class="cp-wish" data-more="${esc(id)}:wish"${openWish ? " open" : ""}><summary>${esc(wishTitle)}</summary><ul class="cp-wish-list">${wish}</ul></details>`
+        : `<div class="cp-wish"><p class="cp-sub">${esc(wishTitle)}</p><ul class="cp-wish-list">${wish}</ul></div>`,
+    emblemList =
+      v.read && emblems.length
+        ? `<ul class="cb-list cp-emblems" aria-label="Emblemas do banco">${emblems.map((e) => bankItem(e, { unit: null, champions, trait: e.trait })).join("")}</ul>`
+        : "";
+  return `<div class="comp-bank comp-plan" data-read="${v.read}">
+    <p class="cb-head">${glyph("items")}<span>${v.read ? "Seus itens nesta comp" : "Itens do meta para esta comp"}</span>${v.read && v.groups.length ? `<b class="cp-total" title="Soma das melhoras medidas dos itens do plano, em colocações (os valores se sobrepõem; no score entram com retorno decrescente)">${placing(v.total)}</b>` : ""}</p>
+    ${v.read ? "" : '<p class="cp-note" data-unread="">Banco não lido: sem a leitura do banco não dá para dizer quais dos seus itens vão para quem. Abaixo, só os itens que o meta mais valoriza em cada campeão.</p>'}
+    ${v.read && !v.groups.length ? '<p class="cp-note">Nenhum item seu (banco ou tabuleiro) tem valor medido nesta comp.</p>' : ""}
+    ${groups ? `<ul class="cp-champs">${groups}</ul>` : ""}
+    ${emblemList}
+    ${wishBlock}
+  </div>`;
+}
+
+// Sinergia ativa da comp com o ícone do jogo (máscara tingida); sem ícone, só o texto.
+const traitChip = ({ name: trait, count }) => {
+  const icon = traitIcon(trait);
+  return `<li class="chip comp-trait">${icon ? `<em class="trait-icon" style="--icon:url('${esc(icon)}')" aria-hidden="true"></em>` : ""}${esc(trait)} ${count}</li>`;
+};
+
+/**
+ * Cartão de uma comp (o mesmo da aba Comps e do modal do HUD). `actions: false` tira o botão de seguir/liberar (o modal
+ * tem o dele); `synergies: true` acrescenta as sinergias ativas da comp.
+ */
+function card(
+  c,
+  { goalId, open, openWish = false, items, actions = true, synergies = false },
+) {
   const pinned = c.id === goalId,
     f = c.fit,
     dispute = disputeLevel(f?.dispute),
     up = itemUpgrade(c),
     sc = scoreOf(c);
   const { champions } = getCatalog();
-  // Itens do banco que combinam com o carry: sempre que a comp tem build publicada do carry, com ou sem leitura.
-  const bank = compItemsBlock(compItems(c, items), champions);
+  // Com o plano de itens do motor (comp avaliada na partida): os itens que você tem distribuídos pelos campeões de maior
+  // impacto, mais a lista de desejos. Sem plano (comp fora do ranking ou motor antigo), a build publicada do carry.
+  const placed = compItems(c, items),
+    bank = f?.itemPlan
+      ? itemPlanBlock(f.itemPlan, champions, {
+          id: c.id,
+          openWish,
+          emblems: placed.read ? placed.emblems : [],
+        })
+      : compItemsBlock(placed, champions);
   // Com seus itens: nova média esperada e de onde vem (campeão e itens da build que você tem ou monta).
   const edge = up
     ? `<p class="comp-edge">${glyph("items")}<span>Com seus itens: média <b>${num(up.avg)}</b> (${signed(-up.gain)})</span><small>${f.itemGains
@@ -191,15 +301,40 @@ function card(c, { goalId, open, items }) {
       ${pinned ? `<span class="chip chip-amber">${glyph("flag")} Seguindo</span>` : ""}
     </header>
     <ul class="comp-units">${units(c)}</ul>
+    ${synergies ? `<ul class="comp-traits" aria-label="Sinergias ativas">${activeTraits(c, champions, getCatalog().traits).map(traitChip).join("")}</ul>` : ""}
     <p class="comp-stats"><span>média <b>${c.avg.toFixed(2)}</b></span><span>top 4 <b>${pct(c.top4)}</b></span><span>1º <b>${pct(c.win)}</b></span><span>${thousands(c.games)} partidas</span></p>
     <p class="comp-fit">${fit}</p>
     ${bank}
     ${edge}
     <div class="comp-actions">
-      ${pinned ? '<button type="button" class="btn" data-release>Liberar</button>' : `<button type="button" class="btn btn-go" data-pick="${esc(c.id)}">Seguir esta comp</button>`}
+      ${actions ? (pinned ? '<button type="button" class="btn" data-release>Liberar</button>' : `<button type="button" class="btn btn-go" data-pick="${esc(c.id)}">Seguir esta comp</button>`) : ""}
       <details class="comp-more" data-more="${esc(c.id)}"${open ? " open" : ""}><summary>Builds e 3★</summary>${details(c)}</details>
     </div>
   </li>`;
+}
+export { card as compCard };
+
+/**
+ * Contexto dos cartões a partir dos dados da tela de comps (`update` de `mountComps`): as comps de meta já juntas ao
+ * encaixe da partida, o banco/equipados para o plano de itens e o catálogo. Usado pela aba Comps e pelo modal do HUD.
+ */
+export function compsContext(data) {
+  const { champions, traits, items } = getCatalog();
+  return {
+    all: mergeComps(data.comps ?? [], data.ranking ?? []).map((c) => ({
+      ...c,
+      ownedIds: data.ownedIds,
+    })),
+    items: {
+      bank: data.bank ?? null,
+      equipped: data.equipped ?? {},
+      items: items ?? new Map(),
+      champions,
+      breakpoints: traits,
+    },
+    champions,
+    traits,
+  };
 }
 
 /**
@@ -264,18 +399,7 @@ export function mountComps(root, { onPick, onRelease }) {
 
   function draw() {
     if (!data) return;
-    const { champions, traits, items } = getCatalog(),
-      itemsCtx = {
-        bank: data.bank ?? null,
-        equipped: data.equipped ?? {},
-        items: items ?? new Map(),
-        champions,
-        breakpoints: traits,
-      },
-      all = mergeComps(data.comps, data.ranking).map((c) => ({
-        ...c,
-        ownedIds: data.ownedIds,
-      })),
+    const { champions, traits, items: itemsCtx, all } = compsContext(data),
       list = sortComps(filterComps(all, prefs, champions, traits), prefs.sort),
       goal = all.find((c) => c.id === data.goalId) ?? null,
       // Título do plano que o Ao vivo mostra (vem de main.js), não deduzido do ranking.
@@ -308,6 +432,7 @@ export function mountComps(root, { onPick, onRelease }) {
             card(c, {
               goalId: data.goalId,
               open: openIds.has(c.id),
+              openWish: openIds.has(`${c.id}:wish`),
               items: itemsCtx,
             }),
           )

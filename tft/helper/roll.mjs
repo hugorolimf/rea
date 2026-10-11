@@ -5,45 +5,41 @@
 // encolhendo); uma simulação do time inteiro (economy.rollSim) divide ouro e pool entre todas as peças e entrega
 // o ganho esperado de força e a chance de "pelo menos uma evolui" para qualquer orçamento.
 // A regra de "vale rolar agora" é uma só (rollRule): strategy.mjs a aplica à decisão e o painel a mostra.
-import { GAME, ODDS } from "./rules.mjs";
+import { GAME } from "./rules.mjs";
 import {
   POLICY,
   closeCurve,
   curveSummary,
-  freeByCost,
   goldFor,
   isContested,
-  likelyFree,
-  rollSim,
-  slotChance,
 } from "./economy.mjs";
+import { simulate } from "./roll-sim.mjs";
+import {
+  freeByCost,
+  freeOf,
+  starCopies,
+  starsForCopies,
+} from "./core/pool/copies.mjs";
+import { oddsAt, shopChance, slotChance } from "./core/pool/shop.mjs";
+import { LEVELS } from "./core/pool/tables.mjs";
 
 const STAR = POLICY.star,
   R = POLICY.roll,
   CURVE_MAX = POLICY.simulation.maxGold;
-const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+// Cópias de 1★ que fecham a 2★ (3) e a 3★ (9): a regra de cópias por estrela é de core/pool.
+const TWO_STAR = starCopies(2),
+  THREE_STAR = starCopies(3);
 const round1 = (v) => Math.round(v * 10) / 10;
 const round2 = (v) => Math.round(v * 100) / 100;
 const pct = (p) => `${Math.round(p * 100)}%`;
-const starOf = (copies) =>
-  copies >= 9 ? 3 : copies >= 3 ? 2 : copies >= 1 ? 1 : 0;
+const starOf = starsForCopies;
 const listNames = (xs) =>
   xs.length <= 1
     ? (xs[0] ?? "")
     : `${xs.slice(0, -1).join(", ")} e ${xs.at(-1)}`;
 
-// A simulação só depende do nível, dos alvos e da pool, não do ouro: quando só o ouro muda, reaproveita.
-const SIMS = new Map();
-function simulate(level, denom, targets) {
-  const key = JSON.stringify([level, denom, targets]);
-  let sim = SIMS.get(key);
-  if (!sim) {
-    sim = rollSim({ level, targets, denom, maxGold: CURVE_MAX });
-    if (SIMS.size >= 24) SIMS.delete(SIMS.keys().next().value);
-    SIMS.set(key, sim);
-  }
-  return sim;
-}
+// A simulação só depende do nível, dos alvos e da pool, não do ouro: quando só o ouro muda, reaproveita. É um fato do
+// grafo (roll-sim.mjs, `roll.sim`, 24 no histórico), não mais um cache com chave montada à mão.
 
 /** Por que a peça não fecha a próxima estrela rolando (texto curto para a lista). */
 const WHY = {
@@ -51,7 +47,7 @@ const WHY = {
   "sem-copias": (p) =>
     `faltam ${p.need} cópias e só ${p.upper} estão fora dos tabuleiros`,
   bancos: (p) =>
-    `faltam ${p.need}; só ~${p.free} livres (o resto deve estar no banco dos rivais)`,
+    `faltam ${p.need}; só ~${round1(p.free)} livres (o resto deve estar no banco dos rivais)`,
   disputada: (p) =>
     `3★ disputado: ${p.enemy + Math.round(p.hidden)} cópias com rivais`,
 };
@@ -64,7 +60,6 @@ const WHY = {
  */
 export function teamOf(plan, analysis, options) {
   const level = options.level,
-    odds = ODDS[clamp(level, 1, 11)],
     pool = new Map(analysis.pool.map((p) => [p.name, p])),
     denom = { ...freeByCost(analysis.pool) },
     stars3 = new Set(plan.meta?.stars3 ?? []),
@@ -136,12 +131,12 @@ export function teamOf(plan, analysis, options) {
     const cost = p.cost ?? t.cost,
       bought = shop.get(t.id)?.buy ?? 0,
       own = (p.own ?? 0) + bought;
-    if (own >= 9) continue;
+    if (own >= THREE_STAR) continue;
     const inPlan = planIds.has(t.id),
       carry = t.name === plan.carry;
     if (!own && !inPlan) continue;
     const core = carry || cores.has(t.id) || t.items >= 2,
-      free = Math.max(0, likelyFree(p) - bought),
+      free = Math.max(0, freeOf(p) - bought),
       upper = Math.max(0, (p.remainingUpper ?? 0) - bought),
       w =
         (carry ? POLICY.carryWeight : core ? R.coreWeight : 1) *
@@ -153,14 +148,16 @@ export function teamOf(plan, analysis, options) {
       far = false;
     if (!own) {
       steps = [{ copies: 1, value: w * cost * STAR[1] * POLICY.newUnitWeight }];
-      if (carry && upper >= 3) steps.push({ copies: 3, value: star(2) });
-    } else if (own < 3) {
-      steps = [{ copies: 3 - own, value: star(2) }];
-      if (stars3.has(t.id)) steps.push({ copies: 9 - own, value: star(3) });
-    } else if (stars3.has(t.id) || carry || 9 - own <= 3)
-      steps = [{ copies: 9 - own, value: star(3) }];
+      if (carry && upper >= TWO_STAR)
+        steps.push({ copies: TWO_STAR, value: star(2) });
+    } else if (own < TWO_STAR) {
+      steps = [{ copies: TWO_STAR - own, value: star(2) }];
+      if (stars3.has(t.id))
+        steps.push({ copies: THREE_STAR - own, value: star(3) });
+    } else if (stars3.has(t.id) || carry || THREE_STAR - own <= TWO_STAR)
+      steps = [{ copies: THREE_STAR - own, value: star(3) }];
     else far = true; // 3★ distante: aparece na lista, mas não entra na simulação
-    const goal = !own ? 1 : own < 3 ? 3 : 9,
+    const goal = !own ? 1 : own < TWO_STAR ? TWO_STAR : THREE_STAR,
       need = goal - own;
     const piece = {
       id: t.id,
@@ -186,23 +183,25 @@ export function teamOf(plan, analysis, options) {
       chancePerSlot: slotChance(level, cost, free, denom[cost] ?? 0),
       // O mesmo no nível seguinte (a subida muda as odds do custo e, por isso, a chance de achar a peça).
       chancePerSlotNext:
-        level < 11 ? slotChance(level + 1, cost, free, denom[cost] ?? 0) : null,
+        level < LEVELS.max
+          ? slotChance(level + 1, cost, free, denom[cost] ?? 0)
+          : null,
       value: steps[0]?.value ?? star(starOf(goal)),
       shop: shop.get(t.id) ?? null,
     };
-    piece.chancePerShop = 1 - (1 - piece.chancePerSlot) ** GAME.shopSlots;
+    piece.chancePerShop = shopChance(piece.chancePerSlot);
     piece.chancePerShopNext =
       piece.chancePerSlotNext == null
         ? null
-        : 1 - (1 - piece.chancePerSlotNext) ** GAME.shopSlots;
+        : shopChance(piece.chancePerSlotNext);
     piece.why =
-      (odds[cost - 1] ?? 0) <= 0
+      oddsAt(level, cost) <= 0
         ? "nivel"
         : upper < need
           ? "sem-copias"
           : free < need
             ? "bancos"
-            : goal === 9 && piece.contested
+            : goal === THREE_STAR && piece.contested
               ? "disputada"
               : null;
     piece.status = piece.why ? "inviavel" : far ? "longe" : "ok";
@@ -474,8 +473,9 @@ export function rollRows(team, { budget }) {
       inPlan: p.inPlan,
       onBoard: p.onBoard,
       inBench: p.inBench,
-      // Livres: provável (descontado o banco estimado dos rivais) e teto observado.
-      left: p.free,
+      // Livres: provável (descontado o banco estimado dos rivais; fracionário, arredondado a 0,1 só para exibir)
+      // e teto observado.
+      left: round1(p.free),
       upper: p.upper,
       enemy: p.enemy,
       hidden: p.hidden,

@@ -3,6 +3,7 @@
 // quando a amostra é pequena) mais o tier dele na comp do seu plano (MetaTFT). Sem dados, vale o encaixe na comp
 // e no momento da partida (sinergia, campeões citados, HP, ouro, estágio, itens), que fica como explicação.
 import { TIER_PLACE } from "./augment-stats.mjs";
+import { POLICY } from "./core/economy/policy.mjs";
 const BASE_PLACE = 4.47,
   SHRINK_GAMES = 300;
 const fold = (text) =>
@@ -129,7 +130,11 @@ export function augmentAdvice(
     }
     if (/\bouro\b|juros|gold/.test(text)) {
       const v =
-        hp >= 60 && (stage === null || stage <= 3) ? 3 : hp < 40 ? -2 : 1;
+        hp >= POLICY.hp.hurt && (stage === null || stage <= 3)
+          ? 3
+          : hp < POLICY.hp.shaky
+            ? -2
+            : 1;
       score += v;
       reasons.push(
         v > 0
@@ -142,7 +147,7 @@ export function augmentAdvice(
       score += v;
       reasons.push(itemCount < 6 ? "Dá itens e você tem poucos." : "Dá itens.");
     }
-    if (/\bvida\b|cura|escudo|heal|shield/.test(text) && hp < 50) {
+    if (/\bvida\b|cura|escudo|heal|shield/.test(text) && hp < POLICY.hp.weak) {
       score += 2;
       reasons.push("Sustentação ajuda com a vida baixa.");
     }

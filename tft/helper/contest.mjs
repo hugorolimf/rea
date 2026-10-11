@@ -2,7 +2,9 @@
 // meta parecida e menos disputada vale a troca. Usa só tabuleiros observados (bancos rivais não aparecem),
 // então a disputa real costuma ser maior que a medida.
 
-const copies = (stars) => 3 ** Math.max(0, (stars ?? 1) - 1);
+import { starCopies } from "./core/pool/copies.mjs";
+
+const copies = starCopies;
 
 /**
  * `plan`: comp exibida ({board:[{id,name}], carry}); `opponents`: rivais vivos ({name, units:[{id,stars}]});

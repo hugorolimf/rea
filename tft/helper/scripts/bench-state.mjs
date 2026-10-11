@@ -16,7 +16,7 @@ import { gepReader, mergeGep } from "../gep-reader.mjs";
 import { levelTracker } from "../level.mjs";
 import { screenReader } from "../screen-reader.mjs";
 import { streakTracker } from "../streak.mjs";
-import { snapshotSignature } from "../analysis-keys.mjs";
+import { snapshotSignature } from "../core/state/snapshot-identity.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2),

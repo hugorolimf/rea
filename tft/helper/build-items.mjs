@@ -5,7 +5,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { kindOf, normalizeStats, renderDesc } from "./item-tiers.mjs";
+import { normalizeStats, renderDesc } from "./item-tiers.mjs";
+import { kindOf } from "./core/catalog/items.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url)),
   source = "https://raw.communitydragon.org/latest/cdragon/tft/";
@@ -35,7 +36,7 @@ function twinOf(id) {
   const name = english.get(id);
   // Preferência: TFT_Item_* genérico, depois TFT<set>_Item_*; eventos, assistentes e aprimoramentos nunca.
   const rank = (api) =>
-    api.startsWith('TFT_Item_') ? 0 : /^TFT\d+_Item_/.test(api) ? 1 : 2;
+    api.startsWith("TFT_Item_") ? 0 : /^TFT\d+_Item_/.test(api) ? 1 : 2;
   return (
     en
       .filter(

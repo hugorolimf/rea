@@ -1,6 +1,8 @@
 import { el, svg, setVars, esc } from "../dom.js";
 import { clamp, polar } from "../math.js";
-import { INTEREST_CAP, INTEREST_STEP } from "../model.js";
+import { interestTiers, maxInterestGold } from "../../../core/economy/gold.mjs";
+import { POLICY } from "../../../core/economy/policy.mjs";
+import { HP } from "../../../core/economy/tables.mjs";
 import { nameChip } from "./rich-text.js";
 
 const R = 26,
@@ -45,7 +47,11 @@ const cell = (cls, label, ...kids) =>
     ...kids,
   );
 
-export function mountHud(root) {
+/**
+ * HUD da partida. `onOpenGoal(botão)` abre o modal da comp sugerida a partir do botão da célula "Meta"; o botão é
+ * passado para o modal devolver o foco a ele ao fechar.
+ */
+export function mountHud(root, { onOpenGoal = null } = {}) {
   /* Fase */
   const stageNum = el("strong", { class: "stage-num" }, "—"),
     rounds = el(
@@ -65,22 +71,18 @@ export function mountHud(root) {
     xpText = el("small", { class: "sub" }),
     lvlWrap = el("div", { class: "ring-wrap" }, lvlRing, lvlNum);
   /* Ouro */
-  const ticks = Array.from(
-      { length: INTEREST_CAP / INTEREST_STEP + 1 },
-      (_, i) => {
-        const deg =
-            GAUGE_START + (GAUGE_SWEEP * i) / (INTEREST_CAP / INTEREST_STEP),
-          a = polar(32, 32, R + 4, deg),
-          b = polar(32, 32, R + 7, deg);
-        return svg("line", {
-          class: "tick",
-          x1: a.x,
-          y1: a.y,
-          x2: b.x,
-          y2: b.y,
-        });
-      },
-    ),
+  const ticks = Array.from({ length: interestTiers() + 1 }, (_, i) => {
+      const deg = GAUGE_START + (GAUGE_SWEEP * i) / interestTiers(),
+        a = polar(32, 32, R + 4, deg),
+        b = polar(32, 32, R + 7, deg);
+      return svg("line", {
+        class: "tick",
+        x1: a.x,
+        y1: a.y,
+        x2: b.x,
+        y2: b.y,
+      });
+    }),
     floor = svg("circle", { class: "floor-mark", r: 2.6, cx: 32, cy: 32 }),
     goldGauge = ring("ring-gold", ...ticks, floor),
     goldNum = num(),
@@ -95,7 +97,18 @@ export function mountHud(root) {
   const goalRing = ring("ring-goal"),
     goalText = el("strong", { class: "ring-center" }, "—"),
     goalSub = el("small", { class: "sub" }),
-    goalLink = el("a", { class: "goal-link", href: "#comps" }, "Escolher comp"),
+    // Abre o modal da comp sugerida (ver ui/comp-modal.js); sem ele, cai para a aba Comps.
+    goalLink = el(
+      "button",
+      {
+        type: "button",
+        class: "goal-link",
+        "aria-haspopup": "dialog",
+        onclick: (e) =>
+          onOpenGoal ? onOpenGoal(e.currentTarget) : (location.hash = "#comps"),
+      },
+      "Escolher comp",
+    ),
     goalWrap = el("div", { class: "ring-wrap" }, goalRing, goalText);
 
   root.append(
@@ -183,8 +196,12 @@ export function mountHud(root) {
       /* Vida */
       // O jogo grava vida negativa de quem foi eliminado; na tela, eliminado é 0.
       setNum(hpNum, hero.hp == null ? null : Math.max(0, hero.hp));
-      setVars(hpBar, { "--p": hero.hp == null ? 0 : clamp(hero.hp / 100) });
-      hpBar.dataset.low = hero.hp != null && hero.hp <= 30 ? "1" : "0";
+      setVars(hpBar, {
+        "--p": hero.hp == null ? 0 : clamp(hero.hp / HP.max),
+      });
+      // Barra "baixa" = faixa de perigo da política (POLICY.hp.danger).
+      hpBar.dataset.low =
+        hero.hp != null && hero.hp <= POLICY.hp.danger ? "1" : "0";
       /* Nível */
       // "≥N" = piso derivado do XP passivo e "~N" = estimado pelo tabuleiro: nenhum dos dois é leitura.
       lvlNum.textContent =
@@ -222,15 +239,15 @@ export function mountHud(root) {
       setNum(goldNum, hero.gold);
       goldWrap.dataset.stale = hero.goldStale ? "1" : "0";
       setVars(goldGauge, {
-        "--p": hero.gold == null ? 0 : clamp(hero.gold / INTEREST_CAP),
+        "--p": hero.gold == null ? 0 : clamp(hero.gold / maxInterestGold()),
       });
       const keep = plan?.panel?.economy?.keep;
-      if (keep != null && keep <= INTEREST_CAP) {
+      if (keep != null && keep <= maxInterestGold()) {
         const p = polar(
           32,
           32,
           R,
-          GAUGE_START + GAUGE_SWEEP * clamp(keep / INTEREST_CAP),
+          GAUGE_START + GAUGE_SWEEP * clamp(keep / maxInterestGold()),
         );
         floor.setAttribute("cx", p.x);
         floor.setAttribute("cy", p.y);
@@ -275,8 +292,14 @@ export function mountHud(root) {
         .filter(Boolean)
         .join(" · ");
       goalLink.textContent = status.pinned ? "Trocar comp" : "Escolher comp";
+      goalLink.title = status.pinned
+        ? "Ver a comp escolhida e as sugestões; trocar ou desfazer"
+        : "Ver a comp sugerida e as outras sugestões; escolher uma";
+      // Partida revista: só leitura, a escolha valeria para a partida de agora.
+      goalLink.hidden = !!status.replay;
+      // O "N/M" do anel são as peças da comp que já estão em campo (não a posição entre as sugestões).
       goalWrap.title = plan
-        ? `${plan.title}${sc ? ` · score ${sc.value}/100 (itens, o que você tem, força, chance de montar no nível ${sc.level ?? "?"}, loja e disputa)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
+        ? `${g ? `${g.have}/${g.total} peças da comp já em campo · ` : ""}${plan.title}${sc ? ` · score ${sc.value}/100 (itens, o que você tem, força, chance de montar no nível ${sc.level ?? "?"}, loja e disputa)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
         : "";
     },
   };

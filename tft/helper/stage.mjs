@@ -3,27 +3,29 @@
 // Entram no cálculo: nível (odds de loja), pool (cópias livres e disputa), ouro (o que cabe comprar),
 // o que você já tem em campo e, quando lida da tela, a loja atual (que carta comprar agora).
 // Heurística; não simula combate.
-import { ODDS } from "./rules.mjs";
+import { isBuyable, levelOdds, unlockLevel } from "./core/pool/shop.mjs";
+import { BUYABLE_ODDS } from "./core/pool/tables.mjs";
 import { lobbyStrength, pressureOf, tierFloor } from "./economy.mjs";
 import { wishlist } from "./tactics.mjs";
-import { baseItemId } from "./item-tiers.mjs";
-const MIN_ODDS = 10; // % por slot de loja a partir do qual um custo é tratado como comprável no nível
-const unlockLevel = (cost) => {
-  for (let level = 1; level <= 11; level++)
-    if (ODDS[level][cost - 1] >= MIN_ODDS) return level;
-  return 11;
-};
+import {
+  baseItemId,
+  isComponent,
+  isConsumable,
+  itemRole,
+} from "./core/catalog/items.mjs";
+import { isAvatar } from "./core/catalog/champions.mjs";
+import { movedInto } from "./core/items/moves.mjs";
 /** Devolve o campo sugerido para `options.level`, as compras com chance por loja e o que da meta fica para depois. */
 export function stagePlan(plan, analysis, catalog, options) {
   const level = Math.max(1, Math.min(11, options.level)),
-    odds = ODDS[level],
+    odds = levelOdds(level),
     gold = options.gold;
   const byId = new Map(catalog.champions.map((c) => [c.apiName, c])),
     pool = new Map(analysis.pool.map((p) => [p.name, p]));
   const field = new Map(analysis.self.units.map((u) => [u.championName, u])),
     reserve = new Set((analysis.self.reserve ?? []).map((u) => u.championName));
   const have = (id) => field.has(id) || reserve.has(id),
-    buyable = (cost) => odds[cost - 1] >= MIN_ODDS;
+    buyable = (cost) => isBuyable(level, cost);
   const goalIds = new Set(plan.board.map((u) => u.id)),
     goalTraits = new Set(
       (plan.traits ?? []).filter((t) => t.active).map((t) => t.name),
@@ -106,7 +108,7 @@ export function stagePlan(plan, analysis, catalog, options) {
     const candidates = catalog.champions
       .filter(
         (c) =>
-          !c.traits.includes("Avatar") &&
+          !isAvatar(c) &&
           !taken.has(c.apiName) &&
           buyable(c.cost) &&
           (pool.get(c.name)?.remainingUpper ?? 0) > 0,
@@ -227,12 +229,7 @@ export function stagePlan(plan, analysis, catalog, options) {
   const advice = analysis.ownedItemAdvice;
   // Item que já existe em outra peça (a que sai, por exemplo) e a comp passa para esta ("Passar itens"):
   // não falta, não se monta de novo e já ocupa o slot de quem o recebe.
-  const movedIn = new Map();
-  for (const m of plan.itemMoves ?? [])
-    for (const x of m.moves ?? []) {
-      if (!movedIn.has(x.to.id)) movedIn.set(x.to.id, new Set());
-      movedIn.get(x.to.id).add(baseItemId(x.item.id));
-    }
+  const movedIn = movedInto(plan.itemMoves);
   for (const u of board) {
     const ready = (advice?.ready ?? [])
       .filter((r) => r.championId === u.id)
@@ -266,20 +263,7 @@ export function stagePlan(plan, analysis, catalog, options) {
   // Item pronto no banco: vai para a unidade em campo que mais o usa. Ordem: está na build de meta dela
   // (melhor posição primeiro), depois papel compatível; peça da meta antes de temporária; precisa de slot livre.
   const itemNames = new Map(catalog.items.map((i) => [i.apiName, i.name])),
-    kind = (id) =>
-      /Gargoyle|Warmog|SpiritVisage|Crownguard|DragonsClaw|ProtectorsVow|Steadfast|Sunfire|Bramble|AdaptiveHelm|Redemption|Evenshroud/.test(
-        id,
-      )
-        ? "tank"
-        : /Rabadon|Jeweled|Archangel|VoidStaff|Nashor|Shojin|BlueBuff|Morello/.test(
-              id,
-            )
-          ? "ap"
-          : /InfinityEdge|Deathblade|LastWhisper|GiantSlayer|Kraken|Bloodthirster|EdgeOfNight|Sterak|Titans|RedBuff|Runaan/.test(
-                id,
-              )
-            ? "ad"
-            : "flex";
+    kind = itemRole;
   // Mesma lista de desejo de build() e Passar itens (tactics.mjs); completar componente equipado não gasta slot.
   const wishOf = (id) => wishlist(id, plan.meta?.builds, options.metaBuilds),
     room = new Map(
@@ -290,7 +274,7 @@ export function stagePlan(plan, analysis, catalog, options) {
     );
   const bankItems = [];
   for (const id of (options.inventory ?? []).filter(
-    (id) => !/Component_|Consumable_|Reforger/.test(id),
+    (id) => !isComponent(id) && !isConsumable(id),
   )) {
     if (
       board.some((u) =>
@@ -347,7 +331,7 @@ export function stagePlan(plan, analysis, catalog, options) {
   const notes = [];
   if (later.length)
     notes.push(
-      `${later.length} peça(s) da meta ficam para depois: no nível ${level} a loja oferece menos de ${MIN_ODDS}% por slot para esse custo.`,
+      `${later.length} peça(s) da meta ficam para depois: no nível ${level} a loja oferece menos de ${BUYABLE_ODDS}% por slot para esse custo.`,
     );
   if (gold !== null && buyNow.length) {
     const cost = buyNow.reduce((n, b) => n + b.cost, 0);

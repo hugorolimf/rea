@@ -171,6 +171,31 @@ const EXCEPTIONS = [
   { file: "main.js", snippet: "name,", why: "nome de aprimoramento guardado" },
   { file: "main.js", snippet: "a.name", why: "nome de aprimoramento" },
   { file: "main.js", snippet: "const name =", why: "nome de aprimoramento" },
+  {
+    file: "main.js",
+    snippet: "augPicks.add(key, p.id, p.stage, p.name)",
+    why: "nome de aprimoramento escolhido (copia as escolhas do GEP para o registro manual)",
+  },
+  {
+    file: "ui/comps.js",
+    snippet: "const name = a.item.name ?? itemName(a.item.id)",
+    why: "nome só para a dica (title) e o alt do ícone: o item é desenhado por itemPortrait({ id, name }) na mesma função",
+  },
+  {
+    file: "ui/comps.js",
+    snippet: "const name = w.item.name ?? itemName(w.item.id)",
+    why: "nome só para a dica (title) e o alt do ícone: o item é desenhado por itemPortrait({ id, name }) na mesma função",
+  },
+  {
+    file: "ui/steps.js",
+    snippet: 'title = u.name, attrs = ""',
+    why: "valor padrão da dica (title) da peça; o campeão é o retrato (portrait) na mesma linha de saída e o nome fica em .sr",
+  },
+  {
+    file: "ui/steps.js",
+    snippet: "${r.unit.name}\\n${s.title}",
+    why: "texto da dica (title) da peça na loja; o campeão é o retrato do tile",
+  },
 ];
 
 const attrFree = (line) => line.replace(ATTR, "");

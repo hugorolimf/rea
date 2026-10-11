@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BENCH_POLICY, hiddenHoldings } from "../pool-tracker.mjs";
-import { isContested, likelyFree } from "../economy.mjs";
+import { isContested } from "../economy.mjs";
+import { freeOf } from "../core/pool/copies.mjs";
 
 const t0 = Date.parse("2026-10-09T20:00:00Z");
 const row = (id, ms, units, health = 50) => ({
@@ -67,6 +68,19 @@ test("banco estimado entra na disputa e sai da pool provável, mas não do teto"
   };
   assert.equal(isContested(p), true);
   assert.equal(isContested({ ...p, hidden: 0 }), false);
-  assert.equal(likelyFree(p), 6);
-  assert.equal(likelyFree({ remainingUpper: 5 }), 5);
+  assert.equal(freeOf(p), 6);
+  assert.equal(freeOf({ remainingUpper: 5 }), 5);
+  // Pool livre fracionária: nada de arredondar a fração do banco estimado; `free` exato vale mais que o exibido.
+  assert.equal(
+    freeOf({ remainingUpper: 8, remainingLikely: 6.4, free: 6.35 }),
+    6.35,
+  );
+  assert.equal(freeOf({ remainingUpper: 8, remainingLikely: 6.4 }), 6.4);
+});
+
+test("sem relógio explícito a estimativa usa a hora da última captura, não Date.now()", () => {
+  const rows = [row("r1", 0, [["A", 2]]), row("r1", 1000, [])];
+  const implicit = hiddenHoldings(rows).get("A");
+  const explicit = hiddenHoldings(rows, { now: t0 + 1000 }).get("A");
+  assert.equal(implicit, explicit);
 });

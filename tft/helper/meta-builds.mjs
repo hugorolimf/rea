@@ -2,21 +2,17 @@
 // O servidor guarda uma cópia local com origem/data e segue funcionando com ela se a rede falhar.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { itemRole } from "./core/catalog/items.mjs";
 export const META_SOURCE =
   "https://api-hc.metatft.com/tft-comps-api/unit_items_processed";
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
-const TANK =
-  /Gargoyle|Warmog|SpiritVisage|Crownguard|DragonsClaw|ProtectorsVow|Steadfast|Sunfire|Bramble|AdaptiveHelm|Redemption|Evenshroud/;
-const AP = /Rabadon|Jeweled|Archangel|VoidStaff|Nashor|Shojin|BlueBuff|Morello/;
-const AD =
-  /InfinityEdge|Deathblade|LastWhisper|GiantSlayer|Kraken|Bloodthirster|EdgeOfNight|Sterak|Titans|HandOfJustice|RedBuff|Runaan/;
-// Papel inferido dos cinco primeiros itens de meta; empate ou lista curta devolve null e o chamador usa sua heurística.
+// Papel inferido dos cinco primeiros itens de meta (papel do item: core/catalog/items.mjs); empate ou lista curta
+// devolve null e o chamador usa sua heurística.
 function roleOf(ids) {
   const n = { tank: 0, ap: 0, ad: 0 };
   for (const id of ids.slice(0, 5)) {
-    if (TANK.test(id)) n.tank++;
-    else if (AP.test(id)) n.ap++;
-    else if (AD.test(id)) n.ad++;
+    const role = itemRole(id);
+    if (role !== "flex") n[role]++;
   }
   const ranked = Object.entries(n).sort((a, b) => b[1] - a[1]);
   return ranked[0][1] >= 2 && ranked[0][1] > ranked[1][1] ? ranked[0][0] : null;
