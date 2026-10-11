@@ -20,7 +20,7 @@ Lê as pesquisas em `tft/helper/pesquisa/` (00 = inventário do sistema atual; 0
 
 ## Entrega
 
-Escreva o plano em `C:\Users\Hugo\Desktop\Hugo\rea\tft\helper\pesquisa\PLANO-TOTAL.md`. Resposta final ao orquestrador: até 30 linhas (arquivo, as fases e o que depende de decisão do usuário).
+Escreva o plano em `C:\Users\Hugo\Desktop\Hugo\rea\tft\helper\planos\a-fazer\` (o roadmap atual é `PLANO-TOTAL.md`) e registre-o no índice `planos/README.md`. Resposta final ao orquestrador: até 30 linhas (arquivo, as fases e o que depende de decisão do usuário).
 
 ## Subagentes (autorizado pelo usuário)
 
