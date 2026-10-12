@@ -58,8 +58,20 @@ export const REACH = {
   reserve: POLICY.shopsAhead.reserve,
   // Cada rival que também tem a peça leva esta fração das cópias que aparecerem para ele.
   rivalShare: 0.5,
-  // Carry de custo até este: a comp precisa dele 2★ (custo 5 joga 1★). Peças de 3★ da comp reroll: 3★.
+  // Carry de custo até este: a comp precisa dele 2★ (custo 5 joga 1★).
   carryTwoStarMaxCost: 4,
+  // Comp de reroll (meta-comps.mjs `stars3`: as peças que APARECEM em 3★ no cluster, não todas obrigatórias): a peça
+  // principal (o carry, se está na lista; senão a primeira) precisa do 3★; as demais da lista contam como "3★ com
+  // probabilidade `secondaryThree`, senão 2★" (a chance delas é a mistura das duas). Medido no explorer da MetaTFT
+  // (Set 18, recorte de meta-scope.mjs, 2026-10-11, tabuleiros com as peças da lista): a principal fecha 3★ em 27–96%
+  // (mediana ~70%) e as demais em 24–92% (mediana ~55%); exigir as 3 em 3★ (27 cópias) zerava a chance de toda reroll.
+  secondaryThree: 0.5,
+  // Prazo da reroll: quem faz reroll no nível N rola devagar até o lobby chegar ao nível N + `rerollExtraLevel` (lvl 6 →
+  // até o 4-1; lvl 7 → até o 4-5), não só até o ponto em que o lobby chega ao nível N.
+  rerollExtraLevel: 1,
+  // Peça que a loja do nível de poder da comp quase não mostra (core/pool isBuyable: abaixo de 10% por vaga), como o custo
+  // 4 e 5 que a reroll põe no fim do jogo: pesa isto no expoente (entra tarde, não decide o prazo).
+  lateWeight: 0.25,
   // Peças fora do núcleo (carry e principais) pesam isto no expoente: a comp tem alternativas para elas.
   flexWeight: 0.5,
   // Lojas a mais que a busca do custo esperado tenta além do horizonte.
@@ -74,7 +86,8 @@ export function powerLevelOf({
   levelling = null,
   size = 8,
 } = {}) {
-  if (Number.isInteger(rerollLevel) && rerollLevel > 0) return rerollLevel;
+  if (Number.isInteger(rerollLevel) && rerollLevel > 0)
+    return rerollLevel + REACH.rerollExtraLevel;
   const fast = /(\d+)/.exec(levelling ?? "");
   return fast ? Number(fast[1]) : size;
 }
@@ -204,6 +217,16 @@ export function levelGold(from, to, rounds) {
 export const copiesNeeded = (goal, own = 0) =>
   Math.max(0, starCopies(goal) - Math.max(0, own));
 
+/**
+ * Chance de a peça cumprir a meta dela: `need` cópias; com `soft` (0..1), a mistura "3★ com probabilidade `soft`, senão a
+ * estrela abaixo" (`needLow` cópias) das peças secundárias da comp de reroll.
+ */
+const goalChance = (x, at) =>
+  x.soft == null
+    ? pieceChance(x, x.need, at)
+    : x.soft * pieceChance(x, x.need, at) +
+      (1 - x.soft) * pieceChance(x, x.needLow ?? 0, at);
+
 /** Chance de UMA peça juntar `need` cópias (as cartas dela na loja agora já contam) em `shops` lojas no nível. */
 export function pieceChance(x, need, { level, shops, denom }) {
   const left = Math.max(0, need - Math.min(need, x.seen ?? 0));
@@ -223,7 +246,7 @@ export function piecesChance(pieces, at) {
   let p = 1;
   for (const x of pieces) {
     if (x.need <= 0) continue;
-    p *= pieceChance(x, x.need, at) ** (x.weight ?? 1);
+    p *= goalChance(x, at) ** (x.weight ?? 1);
     if (p <= 0) return 0;
   }
   return clamp01(p);
@@ -242,7 +265,7 @@ export function piecesShare(pieces, at) {
       have = (x.own ?? 0) > 0 ? 1 : pieceChance(x, 1, at),
       v =
         (x.goal ?? 1) > 1 && x.need > 0
-          ? (have + pieceChance(x, x.need, at)) / 2
+          ? (have + goalChance(x, at)) / 2
           : x.need > 0
             ? have
             : 1;
@@ -296,18 +319,31 @@ export function compReach({
     want = pieces.map((x) => ({
       ...x,
       need: copiesNeeded(x.goal ?? 1, x.own),
+      needLow:
+        x.soft == null ? undefined : copiesNeeded((x.goal ?? 1) - 1, x.own),
     })),
-    buyGold = want.reduce((n, x) => n + x.need * x.cost, 0);
+    // Ouro esperado das cópias (a meta mista conta pela média das duas metas).
+    buyGold = want.reduce(
+      (n, x) =>
+        n +
+        x.cost *
+          (x.soft == null
+            ? x.need
+            : x.soft * x.need + (1 - x.soft) * (x.needLow ?? 0)),
+      0,
+    );
   let best = null;
   const top = Math.max(level, Math.min(10, maxLevel));
   for (let lv = level; lv <= top; lv++) {
     const xpGold = levelGold(level, lv, rounds),
       left = budget - xpGold - buyGold;
-    // Sem ouro para comprar todas as cópias, a comp inteira não fecha; a parte esperada conta só as lojas grátis.
+    // Sem ouro para comprar todas as cópias: só as lojas grátis, e a chance cai na proporção das cópias que o ouro paga
+    // (contínuo: em `left = 0` vale a chance cheia; antes zerava, e toda reroll de 3★ ficava com chance 0).
     const shops = rounds + Math.floor(Math.max(0, left) / SHOP.cost),
       at = { level: lv, shops, denom },
-      chance =
-        left < 0 && want.some((x) => x.need > 0) ? 0 : piecesChance(want, at),
+      afford =
+        left >= 0 || buyGold <= 0 ? 1 : clamp01((budget - xpGold) / buyGold),
+      chance = piecesChance(want, at) * afford,
       share = piecesShare(want, at);
     if (
       !best ||
@@ -334,13 +370,15 @@ export function compReach({
       cost = best.xpGold + buyGold + SHOP.cost * Math.max(0, shops - rounds);
     }
   }
+  // O que falta, na meta firme: a secundária da reroll aparece pelo 2★ (o 3★ dela é opcional).
   const missing = want
-    .filter((x) => x.need > 0)
-    .map((x) => ({
+    .map((x) => ({ x, need: x.soft == null ? x.need : (x.needLow ?? 0) }))
+    .filter(({ need }) => need > 0)
+    .map(({ x, need }) => ({
       id: x.id,
       name: x.name,
       cost: x.cost,
-      need: x.need,
+      need,
       owned: (x.own ?? 0) > 0,
     }));
   const out = {

@@ -66,7 +66,10 @@ test("horizonte: o começo da partida tem mais rodadas que o estágio 4, e o atr
   );
   assert.equal(reachHorizon({ powerLevel: 8 }).rounds, REACH.unknownRounds);
   assert.equal(powerLevelOf({ levelling: "Fast 9", size: 8 }), 9);
-  assert.equal(powerLevelOf({ rerollLevel: 6, levelling: "lvl 6" }), 6);
+  assert.equal(
+    powerLevelOf({ rerollLevel: 6, levelling: "lvl 6" }),
+    6 + REACH.rerollExtraLevel,
+  );
 });
 
 test("(d) pouca vida reduz o horizonte e a chance de montar", () => {
@@ -795,6 +798,145 @@ test("danger-hp27 com vida 25 e 26: a ordem segue exatamente o E exibido; com pl
       out[1].switched,
       null,
       `vida ${from}→${to}: nada de troca instantânea`,
+    );
+  }
+});
+
+/* ---------- Reroll: meta de 3★ realista e ouro curto contínuo ---------- */
+
+test("reroll: só a peça principal exige 3★; as outras da lista são 3★ mistas (REACH.secondaryThree)", () => {
+  const horizon = reachHorizon({
+      stage: { stage: 3, round: 2 },
+      powerLevel: 7,
+    }),
+    run = (pieces) =>
+      compReach({
+        pieces,
+        denom: DENOM,
+        level: 6,
+        maxLevel: 7,
+        horizon,
+        gold: 50,
+      });
+  const strict = run([
+      piece(3, { own: 3, goal: 3 }),
+      piece(2, { goal: 3 }),
+      piece(1, { goal: 3 }),
+    ]),
+    real = run([
+      piece(3, { own: 3, goal: 3 }),
+      piece(2, { goal: 3, soft: REACH.secondaryThree }),
+      piece(1, { goal: 3, soft: REACH.secondaryThree }),
+    ]);
+  assert.ok(real.chance > strict.chance, `${real.chance} vs ${strict.chance}`);
+  assert.ok(real.buyGold < strict.buyGold);
+  // A linha cita a secundária pelo 2★ (o 3★ dela é opcional); a principal, pelo 3★.
+  assert.deepEqual(
+    real.missing.map((m) => m.need),
+    [6, 3, 3],
+  );
+});
+
+test("ouro curto reduz a chance de forma contínua: sem zerar quando a compra passa do orçamento", () => {
+  const horizon = reachHorizon({
+      stage: { stage: 3, round: 2 },
+      powerLevel: 7,
+    }),
+    at = (gold) =>
+      compReach({
+        pieces: [piece(2, { own: 1, goal: 2 }), piece(1, { goal: 2 })],
+        denom: DENOM,
+        level: 5,
+        maxLevel: 5,
+        horizon: { ...horizon, rounds: 3 },
+        gold,
+      });
+  const short = at(5);
+  assert.ok(short.buyGold > short.budget, "a compra passa do orçamento");
+  assert.ok(short.chance > 0, "não zera");
+  let prev = null;
+  for (let g = 0; g <= 60; g++) {
+    const c = at(g).chance;
+    if (prev !== null)
+      assert.ok(
+        c >= prev - 1e-9 && c - prev < 0.06,
+        `ouro ${g}: ${prev} → ${c}`,
+      );
+    prev = c;
+  }
+  assert.ok(at(60).chance > 0.8);
+});
+
+test("reroll: 2★ cedo da peça principal põe a comp de reroll entre as primeiras", () => {
+  const rr = byTitle("Defender · Rengar"),
+    main = rr.stars3.includes(rr.carry) ? rr.carry : rr.stars3[0],
+    extra = rr.units.find((u) => u !== main && byId.get(u).cost <= 2),
+    early = (stars) =>
+      rowOf(
+        run(
+          snapshot([unit(main, stars), ...(extra ? [unit(extra)] : [])], {
+            hp: 80,
+          }),
+          {
+            stage: 2,
+            level: 4,
+            gold: 30,
+          },
+        ),
+        rr,
+      );
+  const two = early(2),
+    one = early(1);
+  assert.ok(two.rank <= 3, `${rr.title} #${two.rank} (E ${two.expected})`);
+  assert.ok(two.rank < one.rank && two.expected < one.expected);
+  assert.ok(
+    two.reach.chance > 0.05,
+    `chance ${two.reach.chance}: a meta de 3★ não zera mais`,
+  );
+});
+
+/* ---------- Fim de jogo: sem prazo, a comp vale o que você já tem dela ---------- */
+
+test("fim de jogo com vida baixa: as comps ficam ordenadas pela parte que você tem e nunca todas com o mesmo score", () => {
+  const onB = B.units.filter((u) => !A.units.includes(u)),
+    hero = [unit(onB[0], 3), unit(onB[1], 2), unit(onB[2], 2), unit(onB[3], 1)],
+    a = run(snapshot(hero, { hp: 15 }), { stage: 5, level: 8, gold: 4 }),
+    ra = rowOf(a, A),
+    rb = rowOf(a, B);
+  const scores = a.compRanking.map((r) => r.score);
+  assert.ok(new Set(scores).size > 1, "nem todas com o mesmo score");
+  // B (4/8 com 3★ e 2★) à frente de A (0/8), com E menor e score maior, mesmo sem prazo para montar nenhuma.
+  assert.ok(rb.rank < ra.rank, `B #${rb.rank} vs A #${ra.rank}`);
+  assert.ok(rb.expected < ra.expected && rb.score > ra.score);
+  assert.ok(rb.expectedParts.lost < ra.expectedParts.lost);
+  assert.match(
+    rb.why,
+    /^você tem 4\/\d+ com 2 peças 2★ e .+ 3★: \d(,\d)?º esperado/,
+  );
+  // A disputa conta só as peças que faltam e na média: com rivais vazios, nenhuma comp aparece "alta".
+  assert.ok(a.compRanking.every((r) => r.dispute < 5));
+});
+
+test("golden de fim de jogo (late-lvl9-critical, danger-hp27): scores distintos e a lista em ordem de E", async () => {
+  const H = await import("./golden/harness.mjs"),
+    { scenarios } = await import("./golden/scenarios.mjs"),
+    ctx = await H.loadContext(),
+    snaps = H.loadSnapshots();
+  for (const id of ["late-lvl9-critical", "danger-hp27"]) {
+    const r = H.runScenario(
+        ctx,
+        scenarios.find((s) => s.id === id),
+        snaps,
+      ).at(-1).response,
+      scores = r.compRanking.map((c) => c.score);
+    assert.ok(
+      new Set(scores).size >= scores.length / 3,
+      `${id}: ${new Set(scores).size}/${scores.length}`,
+    );
+    for (const c of r.compRanking) assert.ok(c.why && c.expected != null);
+    assert.ok(
+      r.compRanking.filter((c) => c.dispute >= 5).length <= scores.length / 4,
+      `${id}: disputa alta demais`,
     );
   }
 });

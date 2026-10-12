@@ -1,6 +1,7 @@
 import { POOL, ODDS } from "./rules.mjs";
 import { isContested } from "./economy.mjs";
 import { shopsAhead } from "./core/economy/gold.mjs";
+import { POLICY } from "./core/economy/policy.mjs";
 import {
   anyUnit,
   exactUnit,
@@ -1405,7 +1406,11 @@ export function analyze(snapshot, catalog, options) {
         r.carry,
         ...coreOf(r).filter((c) => typeof c !== "string"),
       ]),
+      // Reroll: a principal (carry na lista de 3★, senão a primeira) é 3★; as outras, 3★ mistas (REACH.secondaryThree).
       threes = r.meta?.rerollLevel ? (r.meta.stars3 ?? []) : [],
+      mainThree = threes.includes(r.carry?.apiName)
+        ? r.carry.apiName
+        : (threes[0] ?? null),
       goalOf = (c) =>
         pieces && !goals
           ? 1
@@ -1423,11 +1428,20 @@ export function analyze(snapshot, catalog, options) {
         // Peça só na reserva (GEP): já é sua (não se compra de novo) e soma cópias para a estrela.
         onBoard: !!own.get(key(c))?.onBoard,
         goal: goalOf(c),
+        soft:
+          goalOf(c) === 3 && c.apiName !== mainThree
+            ? REACH.secondaryThree
+            : null,
         free: free(key(c)),
         upper: upper(key(c)),
         rivals: rivals.get(key(c))?.size ?? 0,
         seen: shopCards(c),
-        weight: pieces || core.has(c) ? 1 : REACH.flexWeight,
+        weight:
+          pieces || core.has(c)
+            ? 1
+            : isBuyable(power, c.cost)
+              ? REACH.flexWeight
+              : REACH.lateWeight,
       })),
       denom: denomByCost,
       level,
@@ -1469,11 +1483,64 @@ export function analyze(snapshot, catalog, options) {
     !augTraits.size ||
     traits(r.board).some((t) => augTraits.has(t.name) && t.tier > 0);
   const round2 = (x) => Math.round(x * 100) / 100;
+  // Estágio desta leitura (o lido; sem ele, estimado pelo nível, como na troca de plano).
+  const stageNow =
+    options.stage?.stage ??
+    (level >= 8 ? 5 : level >= 7 ? 4 : level >= 6 ? 3 : 2);
+  // Parte do que você tem (campo e reserva; o Avatar fica) que um tabuleiro não usa, na régua de força do lobby
+  // (POLICY.star: custo × fator da estrela; 2 cópias de 1★ valem uma 1★, um 3★ vale 3,2 vezes).
+  function lostShareOf(board) {
+    let all = 0,
+      out = 0;
+    for (const [, u] of own) {
+      if (isAvatar(u.champion)) continue;
+      const v = u.champion.cost * (POLICY.star[Math.min(3, u.stars)] ?? 1);
+      all += v;
+      if (!board.includes(u.champion)) out += v;
+    }
+    return all ? out / all : 0;
+  }
+  // Disputa que importa: a MÉDIA, nas peças que ainda faltam (core/comps/reach.mjs `missing`), da parte da pool com rivais
+  // × 12 (a escala do motor: 5 ou mais é "alta", ~42% das cópias da peça típica que falta com rivais). Antes era a SOMA em
+  // todas as peças da comp, inclusive as que você já tem: no fim de jogo os rivais têm 2★ e 3★ de quase tudo e toda comp
+  // aparecia com "disputa alta". Sem peça faltando, 0.
+  const disputeOf = (r) => {
+    const missing = new Set(
+        (r.component.reach?.missing ?? []).map((m) => m.id),
+      ),
+      need = r.board.filter((c) => missing.has(c.apiName));
+    return need.length
+      ? need.reduce((n, c) => n + (contestOf(key(c)) / POOL[c.cost]) * 12, 0) /
+          need.length
+      : 0;
+  };
+  // A linha do porquê de cada comp: o que você tem dela (estrelas que decidem), a colocação esperada e, se ela não está
+  // garantida, a chance de montar e onde você fica sem ela.
+  const whyOf = (r, e) => {
+    const mine = r.board.filter((c) => own.has(key(c))),
+      twos = mine.filter((c) => own.get(key(c)).stars === 2).length,
+      threes = mine
+        .filter((c) => own.get(key(c)).stars >= 3)
+        .map((c) => `${c.name} 3★`),
+      stars = [
+        twos ? `${twos} ${twos === 1 ? "peça" : "peças"} 2★` : null,
+        threes.length ? threes.join(", ") : null,
+      ].filter(Boolean),
+      pos = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
+    return `você tem ${r.component.reach?.have ?? mine.length}/${r.board.length}${stars.length ? ` com ${stars.join(" e ")}` : ""}: ${pos(e.value)}º esperado${r.current || e.p >= 0.995 ? "" : e.p < 0.05 ? " (sem prazo para montá-la: vale o que você já tem dela)" : ` (${Math.round(e.p * 100)}% de ter a comp; sem ela, ${pos(e.fallback)}º)`}`;
+  };
   function expectedOf(r) {
     const c = r.component,
       ev = c.evidence ?? null;
     if (c.expected) return c.expected;
-    const fallback = currentMeasured ?? NOT_BUILT;
+    // Reserva DESTA comp: o seu tabuleiro (medido) menos o que você desmonta indo para ela sem montá-la — a parte do que
+    // você tem (custo × cópias, campo e reserva) que ela não usa, na régua do custo de trocar do estágio (SWITCH_COST).
+    // No fim de jogo, com prazo curto, p ≈ 0 em quase toda comp: sem este termo todas colapsavam na mesma reserva (mesmo
+    // E, mesmo score); com ele, a comp que usa o que você já tem fica à frente da que joga tudo fora.
+    const lost = r.current ? 0 : lostShareOf(r.board),
+      fallback =
+        (currentMeasured ?? NOT_BUILT) +
+        (SWITCH_COST[Math.min(5, Math.max(1, stageNow))] ?? 0.8) * lost;
     let p, avg, top4, aug;
     if (ev) {
       // A média medida é de tabuleiros que TINHAM a comp; a pergunta mede poucas peças (a presença delas é ev.chance), mas
@@ -1510,6 +1577,7 @@ export function analyze(snapshot, catalog, options) {
       avg,
       built: round2(built),
       fallback: round2(r.current ? avg : fallback),
+      lost: round2(lost),
       items: round2(items),
       augments: round2(aug),
       dropAugment: drop,
@@ -1568,7 +1636,7 @@ export function analyze(snapshot, catalog, options) {
       shopHits: r.board.filter(
         (x) => !own.has(key(x)) && shopIds.has(x.apiName),
       ).length,
-      dispute: c.dispute ?? 0,
+      dispute: (c.disputeNeeded = disputeOf(r)),
     });
   }
   // Ordem: E (menor é melhor). Empate: a mais garantida (p maior: o seu tabuleiro atual ganha de uma comp que vale o
@@ -1577,6 +1645,9 @@ export function analyze(snapshot, catalog, options) {
     byExpected = (a, b) =>
       expectedValue(a) - expectedValue(b) ||
       (b.component.expected?.p ?? 0) - (a.component.expected?.p ?? 0) ||
+      // Mesmo E e mesma chance (fim de jogo, p ≈ 0): a parte esperada da comp no prazo e, depois, a força dela montada.
+      (b.component.reach?.share ?? 0) - (a.component.reach?.share ?? 0) ||
+      (a.component.expected?.built ?? 9) - (b.component.expected?.built ?? 9) ||
       b.component.total - a.component.total;
   // Com evidência, só concorre quem foi medido; sem ela (offline), as comps de meta.
   const measured = (r) => !!r.component.evidence;
@@ -1599,9 +1670,8 @@ export function analyze(snapshot, catalog, options) {
   // segue só como informação). O custo é o que se perde de fato (switchCost). A confirmação (plan-state.mjs) pede que o
   // desafiante lidere de novo depois de um FATO NOVO: `options.holdPlan` é `true` (segura), `false` (sem plano) ou
   // `{ release: id }` (segura, menos para o desafiante que já liderava antes do fato novo).
-  const stage =
-    options.stage?.stage ??
-    (level >= 8 ? 5 : level >= 7 ? 4 : level >= 6 ? 3 : 2);
+  // O mesmo estágio desta leitura (`stageNow`, acima: o lido ou, sem ele, o estimado pelo nível).
+  const stage = stageNow;
   // Custo de trocar, em colocações (política, não medida): a tabela por estágio (SWITCH_COST: abandonar tudo o que você
   // tem do plano) vezes a parte do que você tem nele (custo × cópias) que o desafiante não reaproveita, mais cada item
   // equipado nessas peças, que precisa mover (SWITCH.itemMove), e o ouro a mais que o desafiante pede para montar
@@ -1743,7 +1813,9 @@ export function analyze(snapshot, catalog, options) {
         fit: round(r.component.fit),
         owned: r.board.filter((c) => own.has(key(c))).length,
         size: r.board.length,
-        dispute: round(r.component.dispute),
+        // Disputa só das peças que faltam (disputeOf); `why`: a linha do critério para o cartão da comp.
+        dispute: round(r.component.disputeNeeded ?? r.component.dispute),
+        why: r.component.expected ? whyOf(r, r.component.expected) : null,
         carryItems: r.component.buildFit.carryHits,
         carryWanted: r.component.buildFit.carryWanted,
         // Onde estão os itens da build desta comp (no lugar, banco, mover de quem sai, montar, falta): item-holdings.mjs.
