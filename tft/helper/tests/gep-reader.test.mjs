@@ -522,6 +522,11 @@ test("rivais não são lidos (e aprimoramentos só nos pares feature.key certos)
       ["DA_18_Rakan", 1],
     ],
   );
+  // O tabuleiro lido é o do jogador (`board_pieces`: Rakan 2 estrelas), nunca o "Varus 3 estrelas" do rival.
+  assert.deepEqual(
+    s.fields.board.value.map((u) => [u.id, u.stars, u.cell]),
+    [["DA_18_Rakan", 2, 1]],
+  );
   assert.equal(s.fields.gold, null);
   assert.equal(s.lastEventAgeMs, 1000); // mas contam como sinal de vida
 });

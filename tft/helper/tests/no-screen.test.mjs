@@ -156,6 +156,8 @@ const TIMELINE = [
       xp: "aguardando-gep",
       shop: "aguardando-gep",
       items: "identidade-desconhecida",
+      // O primeiro `board_pieces` chega aos 15 s.
+      board: "aguardando-gep",
       wisps: "aguardando-gep",
       augments: "aguardando-gep",
     },
@@ -177,6 +179,7 @@ const TIMELINE = [
       level: "aguardando-gep",
       xp: "aguardando-gep",
       shop: "aguardando-gep",
+      board: "aguardando-gep",
       wisps: "aguardando-gep",
       augments: "aguardando-gep",
     },
@@ -443,6 +446,7 @@ test("lacunas do GEP sem tela: loja escondida, banco sem identidade local e GEP 
     shop: "banco-ausente",
     items: "banco-ausente",
     bench: "banco-ausente",
+    board: "banco-ausente",
     wisps: "banco-ausente",
     augments: "banco-ausente",
   });

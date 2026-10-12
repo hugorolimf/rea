@@ -524,6 +524,7 @@ test("montador: GEP some -> campos do jogador desconhecidos na hora (com o motiv
     shop: "aguardando-gep",
     items: "identidade-desconhecida",
     bench: "aguardando-gep",
+    board: "aguardando-gep",
     wisps: "aguardando-gep",
     augments: "aguardando-gep",
   });

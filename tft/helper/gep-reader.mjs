@@ -1,5 +1,6 @@
 // Fonte GEP (Overwolf Game Events Provider) lida do banco que o TFTAcademy grava: ouro, nível/XP, loja (campeões e Wisps),
-// reserva (bench), banco de itens e aprimoramentos (oferta e escolhidos) DO PRÓPRIO jogador, sem leitura de tela.
+// reserva (bench), tabuleiro com a casa de cada peça (`board.board_pieces`), banco de itens e aprimoramentos (oferta e
+// escolhidos) DO PRÓPRIO jogador, sem leitura de tela.
 // Esquema, mapeamento, frescor e limites: FONTES-DE-DADOS.md, seção "GEP / TFTAcademy".
 //
 // Regras desta fonte (não negociáveis):
@@ -38,6 +39,8 @@ const KEYS = new Map([
   ["store.shop_pieces", "shop"],
   ["store.shop_visible", "shopVisible"],
   ["bench.bench_pieces", "bench"],
+  // Tabuleiro do PRÓPRIO jogador (casa, estrela e itens de cada peça). O dos rivais (`board.opponent_board_pieces`) nunca.
+  ["board.board_pieces", "board"],
   ["bench.item_bench", "itemBench"],
   // O carrossel é compartilhado pela mesa inteira (as mesmas peças para todos): não é dado de rival.
   ["carousel.carousel_pieces", "carousel"],
@@ -58,6 +61,7 @@ const FALLBACK_KEYS = {
   shop_pieces: "store.shop_pieces",
   shop_visible: "store.shop_visible",
   bench_pieces: "bench.bench_pieces",
+  board_pieces: "board.board_pieces",
   item_bench: "bench.item_bench",
   carousel_pieces: "carousel.carousel_pieces",
   round_type: "match_info.round_type",
@@ -418,6 +422,68 @@ export function parseBench(data, isChampion = () => true, isItem = () => true) {
   return { units: units.sort((a, b) => a.cell - b.cell), unknown };
 }
 
+/** Tabuleiro do jogador: 4 linhas × 7 colunas (28 casas, `cell_1..cell_28` no GEP). */
+export const BOARD_ROWS = 4,
+  BOARD_COLS = 7;
+
+/**
+ * Casa `cell_N` do GEP → `{row, col}` na convenção do helper (a de `tactics.mjs`): `row` 0 = linha da frente (a mais perto
+ * do centro do mapa, onde ficam os tanques) … 3 = linha de trás (a mais perto do jogador e da reserva); `col` 0..6 da
+ * esquerda para a direita, como o jogador vê o próprio tabuleiro. O GEP numera a partir da linha de trás: `cell_1..7` é a
+ * linha de trás, `cell_22..28` a da frente (medido em 14 partidas: 419 de 431 peças de alcance ≥ 3 em `cell_1..7` e só
+ * peças corpo a corpo em `cell_15..28`). A coluna crescer para a direita é inferida da reserva (a peça comprada sempre cai
+ * na `cell_` livre mais baixa, 504 de 504, e a loja põe a peça na casa livre mais à esquerda): só se confirma vendo uma
+ * partida. Casa fora de 1..28 ou ilegível → null (posição desconhecida).
+ */
+export function boardCell(n) {
+  const i = Number(n) - 1;
+  if (!Number.isInteger(i) || i < 0 || i >= BOARD_ROWS * BOARD_COLS)
+    return null;
+  return {
+    row: BOARD_ROWS - 1 - Math.floor(i / BOARD_COLS),
+    col: i % BOARD_COLS,
+  };
+}
+
+/**
+ * `board.board_pieces` (tabuleiro do PRÓPRIO jogador; mesmo formato da reserva: `cell_N: {name, level, item_1..3}`) →
+ * peças `{id, text, stars, items, unknownItems, cell, row, col, source: "gep"}` em ordem de casa. Nome fora do catálogo
+ * fica como desconhecido nomeado (`id: null`, nome cru em `text`: a casa continua ocupada); item fora do catálogo vai para
+ * `unknownItems` (nunca some em silêncio). `{}` é tabuleiro vazio (observado só no começo da partida), não desconhecido;
+ * null se o payload não é um objeto. O GEP só manda este evento quando o tabuleiro muda (mediana 3 s entre eventos) e
+ * nunca durante o combate: o último valor é a formação do planejamento.
+ */
+export function parseBoard(data, isChampion = () => true, isItem = () => true) {
+  const v = parseJson(data);
+  if (!isPlain(v)) return null;
+  const units = [];
+  let unknown = 0;
+  for (const [key, piece] of Object.entries(v)) {
+    const at = /^cell_(\d+)$/.exec(key)?.[1],
+      name = text(piece?.name);
+    if (at === undefined || !isPlain(piece) || !name) continue;
+    const known = isChampion(name),
+      stars = int(piece.level),
+      texts = [piece.item_1, piece.item_2, piece.item_3]
+        .map(text)
+        .filter(Boolean),
+      pos = boardCell(at);
+    if (!known) unknown++;
+    units.push({
+      id: known ? name : null,
+      text: name,
+      stars: stars !== null && stars >= 1 && stars <= 4 ? stars : null,
+      items: texts.filter((n) => isItem(n)),
+      unknownItems: texts.filter((n) => !isItem(n)),
+      cell: Number(at),
+      row: pos?.row ?? null,
+      col: pos?.col ?? null,
+      source: "gep",
+    });
+  }
+  return { units: units.sort((a, b) => a.cell - b.cell), unknown };
+}
+
 /**
  * `carousel.carousel_pieces` (um evento no início de cada carrossel): `slot_N: {name, item_1, item_2}`, o campeão de cada
  * peça do carrossel e o item que ele traz (componente, item completo ou emblema; `item_2` nunca veio preenchido). Devolve
@@ -535,6 +601,7 @@ export function emptyGepState() {
     shop: null,
     shopVisible: null,
     bench: null,
+    board: null, // tabuleiro do jogador (`board_pieces`): peças com a casa (linha/coluna)
     items: null,
     carousel: null, // peças do carrossel (`carousel_pieces`): {value: slots, stage, unknown}; fica até o próximo carrossel
     augmentOffer: null, // oferta atual (cartas do `augments.me`); lista vazia = tela de escolha fechada
@@ -675,6 +742,11 @@ export function applyGepEvent(state, row, env = {}) {
     case "bench": {
       const b = parseBench(row.data, env.isChampion, env.isItem);
       if (b) state.bench = stamp(b.units, ts, { unknown: b.unknown.length });
+      break;
+    }
+    case "board": {
+      const b = parseBoard(row.data, env.isChampion, env.isItem);
+      if (b) state.board = stamp(b.units, ts, { unknown: b.unknown });
       break;
     }
     case "roster": {
@@ -828,6 +900,9 @@ function evaluateCore(snap, ctx, now, staleMs) {
       : null,
     bench: s.bench
       ? { ...field(s.bench, s.bench.value), unknown: s.bench.unknown }
+      : null,
+    board: s.board
+      ? { ...field(s.board, s.board.value), unknown: s.board.unknown }
       : null,
     items:
       s.items && identityOk
@@ -1189,6 +1264,9 @@ export function gepSummary(gep) {
  * do jogador ficam desconhecidos, nunca inventados.
  * `sources.<campo>` = origem ("gep", "game-log", "derived"|null); `sourcesDetail.<campo>` traz
  * `{source, ageMs, confidence}`. `gepBench` (reserva do GEP) só existe com a fonte ativa; o servidor o usa no motor.
+ * `gepBoard` (tabuleiro do jogador, `[{id, text, stars, items, unknownItems, cell, row, col, source: "gep"}]`, ver
+ * `parseBoard`/`boardCell`) vale só com a fonte ativa e um evento de tabuleiro; senão é null (`sources.board` null e o
+ * motivo em `noSource.board`).
  * Também só com a fonte ativa: `wisps` (`[{slot, id, name, known}]`, da loja do GEP; o Wisp nunca entra como campeão em
  * `shop`) e `pickedAugments` (`[{id, stage}]`). Aprimoramentos vêm SÓ do GEP, com ou sem ele: `augments` (ids da oferta
  * aberta, `[]` fechada, null sem fonte), `augmentOffer` (`{open, stage, cards: [{slot, id, text, rerolled}], unresolved,
@@ -1203,13 +1281,16 @@ export function mergeGep(seen, gep, pick = () => true) {
     const without = {
       ...seen,
       ...augmentsWithoutSource(seen, gepStatus),
+      // Tabuleiro com casas: só o GEP o observa; sem ele é desconhecido (null, motivo em `noSource.board`), nunca vazio.
+      gepBoard: null,
       gepStatus,
     };
+    if (without.sources) without.sources = { ...without.sources, board: null };
     return { ...without, noSource: noSourceOf(without, gep, gepStatus) };
   }
   const f = gep.fields,
-    out = { ...seen, gepStatus },
-    sources = { ...seen.sources },
+    out = { ...seen, gepBoard: null, gepStatus },
+    sources = { ...seen.sources, board: null },
     detail = {},
     // `forced`: campos que só o GEP observa (ou em que ele vence sempre) não passam pela precedência com histerese.
     take = (name, field, apply, forced = false) => {
@@ -1283,6 +1364,9 @@ export function mergeGep(seen, gep, pick = () => true) {
       out.gepBench = v;
     });
   else sources.bench = seen.sources?.bench ?? null;
+  // Tabuleiro do jogador com a casa de cada peça: só o GEP observa a posição (o TFTEoGStats.json traz as peças, não as
+  // casas), então não passa pela precedência. `[]` = tabuleiro vazio observado; sem evento ainda fica null ("aguardando-gep").
+  if (f.board) take("board", f.board, (v) => (out.gepBoard = v), true);
   // Aprimoramentos: só o GEP. `augments` = ids da
   // oferta aberta (cartas fora do catálogo ficam de fora e nomeadas em `augmentOffer.unresolved`), `[]` = escolha fechada,
   // null = nenhum evento de aprimoramento nesta partida ainda. Os escolhidos (`pickedAugments: [{id, stage}]`) o servidor
@@ -1333,6 +1417,7 @@ const GEP_FIELDS = {
   shop: "shop",
   items: "items",
   bench: "gepBench",
+  board: "gepBoard",
   wisps: "wisps",
   augments: "augments",
 };

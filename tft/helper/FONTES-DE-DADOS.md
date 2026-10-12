@@ -26,7 +26,8 @@ GEP (TFTAcademy); sem ele ficam **desconhecidos explícitos** (ver "Leitura de t
 | **Estágio-rodada** (`2-4`)                                                   | `__sentry-event`, tag `game.tft.round`                                                                                     | `game-log.mjs` → `parseSentryEvent`                                                                                                                    | **observado**                                                                                        | ≤ 0,5 s (observado: mudanças detectadas na leitura seguinte)           |
 | **Fase da rodada** (Planning, Combat, Draft = carrossel...)                  | `__sentry-event`, tag `game.tft.phase`                                                                                     | idem                                                                                                                                                   | **observado**                                                                                        | idem                                                                   |
 | Fase do cliente (InProgress etc.)                                            | LCU `/lol-gameflow/v1/gameflow-phase`                                                                                      | HTTPS local (`server.mjs`, `readLcu`)                                                                                                                  | observado                                                                                            | até 5 s (cache)                                                        |
-| Comp, itens equipados, tabuleiro de todos os jogadores                       | `Saved/Logs/TFTEoGStats.json` (`statsBlock.players[].boardPieces`)                                                         | leitura do arquivo (`capture.mjs`, a cada 0,5 s)                                                                                                       | observado, **só peças em campo**                                                                     | regravado pelo jogo durante a partida                                  |
+| Comp, itens equipados, tabuleiro de todos os jogadores                       | `Saved/Logs/TFTEoGStats.json` (`statsBlock.players[].boardPieces`)                                                         | leitura do arquivo (`capture.mjs`, a cada 0,5 s)                                                                                                       | observado, **só peças em campo**, **sem a casa** de cada peça                                        | regravado pelo jogo durante a partida                                  |
+| **Casa de cada peça no tabuleiro do jogador** (linha/coluna, estrela, itens) | GEP `board.board_pieces` (só o próprio jogador) quando fresco; senão **sem fonte**                                         | `gep-reader.mjs` → `seen.gepBoard` (`parseBoard`/`boardCell`, ver "Tabuleiro do jogador (casas)"); sem GEP: null (`noSource.board`)                    | GEP: observado (linha medida; sentido da coluna inferido)                                            | GEP: só quando o tabuleiro muda (mediana 3 s); nunca durante o combate |
 | Vida, colocação, aprimoramentos de cada jogador                              | `TFTEoGStats.json` (`health`, `ffaStanding`, `augments`)                                                                   | idem                                                                                                                                                   | observado                                                                                            | idem                                                                   |
 | **Ouro**                                                                     | GEP `me.gold` (banco do TFTAcademy) quando fresco; senão **sem fonte permitida em arquivo**                                | `gep-reader.mjs`; sem GEP: sem fonte permitida, desconhecido explícito (`noSource.gold`)                                                               | GEP: observado (0 é inferido de `{}`)                                                                | GEP ≤ 1 s de resolução                                                 |
 | **Nível**                                                                    | GEP `me.xp.level` quando fresco; senão **sem fonte permitida em arquivo**                                                  | GEP, aceito só se consistente (`levelConsistent`); sem ele, piso derivado do XP passivo (`core/state/level.mjs`, ver "Nível"); sem piso, desconhecido  | GEP: observado; piso: derivado (`≥N`)                                                                | GEP ≤ 1 s                                                              |
@@ -65,6 +66,17 @@ GEP (TFTAcademy); sem ele ficam **desconhecidos explícitos** (ver "Leitura de t
 - **Integração**: `app/state.mjs` parte de `gameFilesState` (`game-log.mjs`: estágio e fase do Sentry) e aplica o GEP por cima.
   `seen.stage` e `seen.phase` vêm do arquivo; `seen.sources.stage` vale `"game-log"` ou, sem o arquivo, `"gep"`. O estágio é
   o único campo com duas fontes (ver "Precedência por campo").
+- **Latência medida (2026-10-12, partida 3292194088, arquivo lido a cada 0,3 s contra o GEP)**: a rodada do arquivo vira para
+  a nova junto com a fase `Planning` (4-6→4-7 às 00:58:04,3; 4-7→5-1 às 00:58:41,6; 5-2→5-3 às 01:01:08,5), no mesmo segundo
+  do `round_type` do GEP, que chega junto com a renda (`gold`) e o XP passivo (`xp`). O arquivo **não** atrasa a rodada: não há
+  motivo para trocar a precedência do estágio pelo `round_type`. Nas ~45 rodadas de duas partidas (3292171991 e 3292194088), o laço automático pediu a
+  análise da rodada nova no primeiro tick (≤ 3 s); o atraso do conselho vinha da duração da análise (ver "Conselho da rodada nova").
+- **Conselho da rodada nova** (`app/round-advice.mjs`): o conselho de nível, rolagem e economia (`strategy.mjs`) é refeito na
+  hora com o ouro, o XP, o nível e o estágio de agora sobre os planos da última análise e vai ao feed do overlay marcado
+  `provisional` (`{ at, stage, gold, level, xp, newRound, reason }`); numa rodada nova as compras da loja velha saem do campo.
+  Uma análise que termina depois de a economia mudar (feita com o estado anterior) vai ao feed com a economia de agora refeita
+  do mesmo jeito; a análise completa da economia de agora substitui o provisório. Motivo: nos estágios 4-5 a análise completa
+  da rodada nova levou 10-46 s (planejamento ≈ 34 s), e o "suba" chegava com o combate.
 
 ### Ouro, nível, XP
 
@@ -247,7 +259,10 @@ O carrossel (rodada em que todos escolhem um campeão com o item que ele traz) �
 
 - `TFTEoGStats.json`: o jogo regrava durante a partida (mtime e tamanho mudaram ao longo da partida observada: 4,3 KB → 6,4 KB → 7,5 KB em ~10 min). Lido por
   `capture.mjs` a cada 0,5 s. Nomes são ids `DA_*` iguais aos `apiName` do catálogo. Contém só peças **em campo**. `itemNames`
-  traz itens equipados; a Luva de Ladrão traz também os 2 itens sorteados (tratado em `server.mjs`).
+  traz itens equipados; a Luva de Ladrão traz também os 2 itens sorteados (tratado em `server.mjs`). **Quando é regravado**
+  (medido em 2026-10-12): quando o planejamento termina e o combate começa (`PlanningDeparture`/`CombatArrival`) e no fim do
+  combate (`CombatDeparture`), não no começo do planejamento: o que muda no planejamento (compras, nível dos rivais) só aparece
+  nele no combate seguinte. Ouro, XP e nível do jogador não dependem dele (GEP).
 
 ### Bancos dos rivais (estimados, não observados)
 
@@ -388,6 +403,7 @@ Events Provider (GEP). Implementação: `gep-reader.mjs`; testes: `tests/gep-rea
 | `store.shop_pieces`        | `{"slot_1":{"name":"DA_18_Sentry"},...,"slot_5":{...}}`; comprado vira `{"name":"Sold"}`                                                                                                                                                 | loja (5 espaços; vendida = vazio)                    |
 | `store.shop_visible`       | `"true"` / `"false"`                                                                                                                                                                                                                     | loja escondida: loja desconhecida (`loja-escondida`) |
 | `bench.bench_pieces`       | `{"cell_1":{"name":"DA_18_Varus","level":"1","item_1":"","item_2":"","item_3":""},...}`; `{}` = vazia                                                                                                                                    | reserva (estrelas e itens por peça)                  |
+| `board.board_pieces`       | **observado**: `{"cell_1":{"name":"DA_18_Kayle","level":"2","item_1":"DA_JeweledGauntlet","item_2":"DA_RedBuff","item_3":""},"cell_25":{...}}`; `{}` = vazio (só no começo da partida)                                                   | tabuleiro do jogador: casa, estrela e itens por peça |
 | `bench.item_bench`         | `[{"summoner","tag_line","bench_items":[{"name":"DA_Consumable_ItemRemover","count":2}]}, ...]`                                                                                                                                          | banco de itens (só a linha do jogador local)         |
 | `roster.player_status`     | `{"<nome>":{"index","health","xp","localplayer":true,"rank","tag_line"}, ...}`                                                                                                                                                           | só para achar quem é o jogador local (`localplayer`) |
 | `carousel.carousel_pieces` | **observado**: `{"slot_1":{"name":"DA_18_MasterYi_AD","item_1":"DA_Component_RecurveBow","item_2":""},...}`, um evento no início de cada carrossel (coluna `round`)                                                                      | peças do carrossel: campeão + item                   |
@@ -395,7 +411,44 @@ Events Provider (GEP). Implementação: `gep-reader.mjs`; testes: `tests/gep-rea
 | `augments.picked_augment`  | **observado**: `{"slot_1":{"name"},...,"slot_4":{"name"}}` CUMULATIVO (todos os escolhidos até agora, na ordem; vazios `""`), reenviado a cada escolha. `match_info`/`me` + `picked_augment` seguem aceitos por tolerância, nunca vistos | aprimoramentos escolhidos, em ordem                  |
 
 Os dois últimos foram observados na partida completa de 2026-10-11 (a feature do escolhido é `augments`, não `me`). Nunca lidos (a consulta nem os seleciona): `board.opponent_board_pieces`, `match_info.battle_stats`, `round_outcome`,
-`board.board_pieces` (o tabuleiro próprio já vem do `TFTEoGStats.json`), `match_stats` e qualquer campo de rival. `carousel.carousel_pieces` É lido (a oferta do carrossel é a mesma para a mesa toda, não é dado de rival; ver "Carrossel").
+`board_spectate`, `match_stats` e qualquer campo de rival. `board.board_pieces` (tabuleiro **do próprio jogador**) É lido desde 2026-10-11, só pela casa
+de cada peça, que o `TFTEoGStats.json` não traz (ver "Tabuleiro do jogador (casas)"). `carousel.carousel_pieces` É lido (a oferta do carrossel é a mesma para a mesa toda, não é dado de rival; ver "Carrossel").
+
+### Tabuleiro do jogador (casas)
+
+Para o overlay mostrar sobre o jogo quem da reserva entra e quem do tabuleiro sai, o helper precisa da casa de cada peça do jogador. O
+`TFTEoGStats.json` traz as peças em campo (com itens e estrelas), mas não a posição; o GEP `board.board_pieces` traz.
+
+- **Formato observado** (cópia do `tft-events.db` de 2026-10-11: 879 eventos em 14 partidas, 5158 peças): objeto `cell_N` → `{name, level,
+  item_1, item_2, item_3}`, igual à reserva. `name` é o `apiName` (`DA_18_*`, `DA_Vi18`, `DA_Scuttlecrab18`...): 5158 de 5158 no
+  `catalog.json`; itens `DA_*`: todos no catálogo; `level` `"1"`/`"2"`/`"3"` (texto); no máximo 9 peças; casas vistas: 1–12, 15–20 e 22–27.
+  `{}` só no primeiro evento de cada partida (tabuleiro ainda vazio). Exemplo higienizado em `tests/fixtures/gep-board.json`.
+- **Titularidade**: é o tabuleiro do jogador local. Nos 14 `board_spectate` (espiar outro tabuleiro) o `board_pieces` não muda; a ida de uma
+  peça do tabuleiro para a reserva aparece nos dois eventos no mesmo segundo (Sejuani sai de `cell_26` e entra na reserva, fixture `move`).
+- **Cadência**: só é emitido quando o tabuleiro muda (intervalo entre eventos: p10 1 s, mediana 3 s, p90 70 s) e **nunca durante o combate**
+  (0 de 879 eventos entre `battle_start` e `battle_end`): o último valor é a formação do planejamento. O frescor é o da fonte inteira
+  (`GEP_STALE_MS`, 60 s sem nenhum evento da partida); a idade do último tabuleiro vai em `sourcesDetail.board.ageMs`.
+- **Casa → linha/coluna** (`boardCell`, 4 linhas × 7 colunas): `i = N − 1`; `row = 3 − floor(i / 7)`; `col = i mod 7`. Na convenção do
+  helper (a de `tactics.mjs`) `row` 0 é a linha da frente (tanques) e 3 a de trás (perto do jogador e da reserva); `col` 0..6 da esquerda
+  para a direita, como o jogador vê. O GEP numera a partir da linha de trás:
+
+  | GEP                | `row` | Linha                                | Medido (peças por alcance, último tabuleiro de cada rodada) |
+  | ------------------ | ----- | ------------------------------------ | ----------------------------------------------------------- |
+  | `cell_22..cell_28` | 0     | frente (perto do centro do mapa)     | 536 corpo a corpo, 0 à distância                            |
+  | `cell_15..cell_21` | 1     | segunda                              | 236 corpo a corpo, 0 à distância                            |
+  | `cell_8..cell_14`  | 2     | terceira                             | 51 corpo a corpo, 12 à distância                            |
+  | `cell_1..cell_7`   | 3     | trás (perto do jogador e da reserva) | 16 corpo a corpo, 419 à distância                           |
+
+  A **linha** é medida. O **sentido da coluna** (`cell_1` = canto esquerdo) é **inferido**: na reserva a peça comprada cai sempre na `cell_`
+  livre mais baixa (504 de 504), e o jogo põe a peça comprada na vaga livre mais à esquerda; supõe-se o mesmo eixo no tabuleiro. Só se
+  confirma vendo uma partida (uma peça num canto conhecido). O TFTAcademy usa `boardIndex = N − 1` sem converter linha.
+
+- **Estado**: `seen.gepBoard = [{id, text, stars, items, unknownItems, cell, row, col, source: "gep"}]` em ordem de casa, com
+  `seen.sources.board = "gep"` e `sourcesDetail.board = {source: "gep", ageMs, confidence: "observed"}`. Nome fora do catálogo fica como
+  desconhecido nomeado (`id: null`, nome cru em `text`; a casa continua ocupada); item fora do catálogo vai para `unknownItems`; casa fora
+  de 1..28 dá `row`/`col` null. Tabuleiro vazio observado = `[]`. Sem GEP fresco (ou sem nenhum evento de tabuleiro ainda) é **desconhecido
+  explícito**: `gepBoard: null`, `sources.board: null` e o motivo em `noSource.board` (`aguardando-gep`, `sem-eventos-recentes`,
+  `banco-ausente`...), nunca `[]`. Não passa pela precedência com histerese (só o GEP observa a casa) e não entra na chave de análise.
 
 ### Cobertura medida (partida de 2026-09-11, 76 eventos em 60 s)
 
@@ -432,6 +485,9 @@ Os dois últimos foram observados na partida completa de 2026-10-11 (a feature d
 - Novo: `gepBench` (reserva) = `[{id, stars, items[], cell, source: "gep"}]` e, no motor, `options.bench = [{playerId, championName, starLevel, itemNames, source: "gep"}]`.
   A reserva só entra no motor com origem GEP fresca (`server.mjs` → `gepBenchUnits`); o `validate` continua ignorando o `bench` enviado
   pela interface. Peça com estrela desconhecida fica de fora.
+- Novo (2026-10-11): `gepBoard` (tabuleiro do jogador com a casa de cada peça) = `[{id, text, stars, items[], unknownItems[], cell, row,
+  col, source: "gep"}]`; ver "Tabuleiro do jogador (casas)". Só vai ao estado (`/api/state` → `seen.gepBoard`); o motor continua lendo o
+  tabuleiro do `TFTEoGStats.json`.
 - Ids `DA_18_*` e `DA_*` são os `apiName` do `catalog.json` (conferidos: Sentry = Pebbles, Akali_AD, `DA_Component_*`, `DA_Consumable_ItemRemover`).
 - **`me.gold` `{}`**: aparece no começo da partida e quando o ouro chega a 0 (observado 2 → 1 → `{}` com duas compras de 1 ouro). Vale **0**
   somente depois de um `round_type` e antes do fim da partida (`sourcesDetail.gold.inferred = true`); no reset do começo/fim é desconhecido.

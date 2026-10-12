@@ -1,0 +1,32 @@
+{
+  "note": "Payloads reais de board.board_pieces e bench.bench_pieces (próprio jogador) copiados de tft-events.db do TFTAcademy (Set 18, 2026-10-11). Só ids de campeões e itens; sem nomes de jogadores, PUUID, ids de conta ou de partida. dt = segundos desde a primeira linha. 'move' é a Sejuani saindo do tabuleiro (cell_26) para a reserva no mesmo segundo; 'late' é um tabuleiro de 5-3 com itens.",
+  "move": [
+    {
+      "dt": 0,
+      "round": "4-1",
+      "feature": "board",
+      "key": "board_pieces",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Caitlyn\",\"level\":\"3\",\"item_1\":\"DA_KrakensFury\",\"item_2\":\"DA_LastWhisper\",\"item_3\":\"DA_Deathblade\"},\"cell_22\":{\"name\":\"DA_Vi18\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_23\":{\"name\":\"DA_Amumu18\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_25\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"DA_SunfireCape\",\"item_2\":\"DA_Crownguard\",\"item_3\":\"\"},\"cell_26\":{\"name\":\"DA_18_Sejuani\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_27\":{\"name\":\"DA_Scuttlecrab18\",\"level\":\"2\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "dt": 3,
+      "round": "4-1",
+      "feature": "bench",
+      "key": "bench_pieces",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Caitlyn\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_2\":{\"name\":\"DA_Vi18\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_3\":{\"name\":\"DA_18_Yorick\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_4\":{\"name\":\"DA_18_Sivir\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_5\":{\"name\":\"DA_18_Sejuani\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_6\":{\"name\":\"DA_18_Sejuani\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_7\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    },
+    {
+      "dt": 3,
+      "round": "4-1",
+      "feature": "board",
+      "key": "board_pieces",
+      "data": "{\"cell_1\":{\"name\":\"DA_18_Caitlyn\",\"level\":\"3\",\"item_1\":\"DA_KrakensFury\",\"item_2\":\"DA_LastWhisper\",\"item_3\":\"DA_Deathblade\"},\"cell_22\":{\"name\":\"DA_Vi18\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_23\":{\"name\":\"DA_Amumu18\",\"level\":\"1\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_25\":{\"name\":\"DA_18_Rakan\",\"level\":\"1\",\"item_1\":\"DA_SunfireCape\",\"item_2\":\"DA_Crownguard\",\"item_3\":\"\"},\"cell_27\":{\"name\":\"DA_Scuttlecrab18\",\"level\":\"2\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"}}"
+    }
+  ],
+  "late": {
+    "round": "5-3",
+    "feature": "board",
+    "key": "board_pieces",
+    "data": "{\"cell_1\":{\"name\":\"DA_18_Kayle\",\"level\":\"2\",\"item_1\":\"DA_JeweledGauntlet\",\"item_2\":\"DA_RedBuff\",\"item_3\":\"\"},\"cell_2\":{\"name\":\"DA_KogMaw18_AD\",\"level\":\"2\",\"item_1\":\"DA_InfinityEdge\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_3\":{\"name\":\"DA_CrimsonRaptor18\",\"level\":\"2\",\"item_1\":\"DA_InfinityEdge\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_4\":{\"name\":\"DA_18_Azir\",\"level\":\"2\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_17\":{\"name\":\"DA_18_Diana\",\"level\":\"2\",\"item_1\":\"DA_IonicSpark\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_18\":{\"name\":\"DA_18_Warwick\",\"level\":\"2\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_19\":{\"name\":\"DA_18_MasterYi_AD\",\"level\":\"2\",\"item_1\":\"\",\"item_2\":\"\",\"item_3\":\"\"},\"cell_25\":{\"name\":\"DA_18_Hecarim\",\"level\":\"2\",\"item_1\":\"DA_WarmogsArmor\",\"item_2\":\"DA_SteadfastHeart\",\"item_3\":\"DA_Evenshroud\"}}"
+  }
+}
