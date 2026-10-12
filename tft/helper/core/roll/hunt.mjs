@@ -217,10 +217,12 @@ const WHY = {
   },
 };
 
-/** Rótulo curto da meta do alvo: "2★", "3★ 4/9", "nova". */
+/** Rótulo curto da meta do alvo: "2★", "3★ 4/9", "nova" ("falta" para a peça-chave que se busca rolando). */
 const goalTag = (x) =>
   x.own <= 0
-    ? "nova"
+    ? x.seek
+      ? "falta"
+      : "nova"
     : x.goal >= THREE
       ? `3★ ${x.own}/${THREE}`
       : `${starsForCopies(x.goal)}★`;
@@ -243,6 +245,7 @@ export function huntTarget(x, { level, budget, danger = false }) {
       kind: x.kind ?? (x.own > 0 ? "estrela" : "nova"),
       carry: !!x.carry,
       inPlan: x.inPlan !== false,
+      seek: !!x.seek,
       own: x.own,
       goal: x.goal,
       need,
@@ -477,8 +480,9 @@ export function huntPlan({
         t.text = t.three.text;
       }
     }
-    // Peça nova não dispara a rolagem: vem junto ("compre se aparecer") quando outra peça manda rolar.
-    if (t.own <= 0 && t.verdict === "role") {
+    // Peça nova não dispara a rolagem: vem junto ("compre se aparecer") quando outra peça manda rolar. A exceção é a
+    // peça-chave que falta no nível de rolagem (`seek`: carry ou core): buscá-la é motivo de rolar.
+    if (t.own <= 0 && t.verdict === "role" && !t.seek) {
       t.verdict = "junto";
       t.text = `${t.name} nova · compre se aparecer (${pctText(t.chance.spend)} de achar com ${t.spend}g)`;
     }
@@ -499,7 +503,8 @@ export function huntPlan({
       Number(b.carry) - Number(a.carry) ||
       (a.name < b.name ? -1 : 1),
   );
-  // Só quem evolui (cópia de peça sua, 2★/3★) dispara a rolagem; a peça nova vem junto, se aparecer.
+  // Só quem evolui (cópia de peça sua, 2★/3★) ou a peça-chave que falta dispara a rolagem; a peça nova comum vem
+  // junto, se aparecer.
   const rolling = targets.filter((t) => t.verdict === "role"),
     along = targets.filter((t) => t.verdict === "junto"),
     climb = targets.find((t) => t.verdict === "suba"),
@@ -584,7 +589,11 @@ export function huntPlan({
 /** Motivo curto de buscar o alvo (o porquê longo fica em `text`). */
 const whyShort = (t) =>
   t.own <= 0
-    ? "peça do plano que falta"
+    ? t.seek
+      ? t.carry
+        ? "buscar o carry"
+        : "buscar peça-chave"
+      : "peça do plano que falta"
     : t.goal >= THREE
       ? t.carry
         ? "3★ do carry"
@@ -617,7 +626,7 @@ export function rollFor(hunt, { go = false, limit = 3, shop = null } = {}) {
       )
       .sort(
         (a, b) =>
-          Number(a.own <= 0) - Number(b.own <= 0) ||
+          Number(a.own <= 0 && !a.seek) - Number(b.own <= 0 && !b.seek) ||
           Number(b.verdict === "role") - Number(a.verdict === "role") ||
           chanceOf(b) * b.value - chanceOf(a) * a.value ||
           Number(b.carry) - Number(a.carry),

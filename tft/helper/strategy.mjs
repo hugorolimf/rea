@@ -581,7 +581,13 @@ const publicCall = (v, changed = null) => ({
   any: v.any ?? null,
   gain: v.gain ?? null,
   main: v.main
-    ? { id: v.main.id, name: v.main.name, stars: v.main.goalStars }
+    ? {
+        id: v.main.id,
+        name: v.main.name,
+        // Peça que falta (buscar): sem estrela-alvo, o selo mostra só o nome.
+        stars: v.main.own ? v.main.goalStars : null,
+        missing: !v.main.own,
+      }
     : null,
   mainChance: v.mainChance ?? null,
   need: v.need ?? null,
@@ -805,6 +811,8 @@ function huntOf(plan, team, d, analysis, options) {
     value: p.value,
     carry: p.carry,
     inPlan: p.inPlan,
+    // Peça-chave que falta no nível de rolagem (roll.mjs `seek`): dispara a rolagem por si.
+    seek: !!p.seek,
     // Estrela-alvo 3★ da comp de reroll: as `stars3` da meta e o carry (plano, R4: passa a ler a regra do alcance).
     star3: d.rerollLevel != null && (stars3.has(p.id) || p.carry),
   }));

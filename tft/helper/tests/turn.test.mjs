@@ -190,6 +190,6 @@ test("próximo nível: limitado pelo ouro diz quanto falta; a peça nova aparece
         targets: [{ name: "Elder Dragon", goal: "falta" }],
       },
     ]),
-    "Role 3 vezes por Elder Dragon (nova)",
+    "Role 3 vezes por Elder Dragon (falta)",
   );
 });

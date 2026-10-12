@@ -11,8 +11,11 @@ import {
   POLICY,
   closeCurve,
   curveSummary,
+  finalLevelOf,
   goldFor,
   isContested,
+  rerollLevelOf,
+  rollLevelOf,
 } from "./economy.mjs";
 import { simulate } from "./roll-sim.mjs";
 import {
@@ -34,6 +37,9 @@ const round1 = (v) => Math.round(v * 10) / 10;
 const round2 = (v) => Math.round(v * 100) / 100;
 const pct = (p) => `${Math.round(p * 100)}%`;
 const starOf = starsForCopies;
+/** "Kayle 2★" para a estrela a fechar; "Azir (falta)" para a peça que ainda não é sua. */
+const goalText = (p) =>
+  p.own ? `${p.name} ${p.goalStars}★` : `${p.name} (falta)`;
 const listNames = (xs) =>
   xs.length <= 1
     ? (xs[0] ?? "")
@@ -75,7 +81,19 @@ export function teamOf(plan, analysis, options) {
         .filter((b) => (b.traits ?? []).some((t) => augTraits.has(t)))
         .map((b) => b.id),
       ...buildHolders(plan.meta),
-    ]);
+    ]),
+    // Nível em que a comp rola pelo carry (a mesma conta de strategy.mjs). A partir dele, a peça-chave da comp que ainda
+    // falta (o carry ou um core) também é motivo de rolar ("buscar"), não só carona de outra rolagem; antes dele, buscar
+    // a peça cara do final gastaria o ouro da subida.
+    carryUnit = plan.board.find((u) => u.name === plan.carry) ?? plan.board[0],
+    rerollLevel = rerollLevelOf(plan.meta, carryUnit?.cost),
+    rollAt = rollLevelOf({
+      carryCost: carryUnit?.cost,
+      finalLevel: finalLevelOf(plan.meta, plan.board.length, rerollLevel),
+      rerollLevel,
+    }),
+    seeking = level >= rollAt,
+    isKey = (u) => u.name === plan.carry || cores.has(u.id);
   // Loja lida (as cartas que stage.mjs classificou): em que slots cada campeão aparece e quantas cópias o plano
   // manda comprar agora; as compradas saem da pool antes da rolagem.
   const shop = new Map();
@@ -121,7 +139,9 @@ export function teamOf(plan, analysis, options) {
   for (const u of plan.board)
     if (
       !mine.has(u.name) &&
-      ((pool.get(u.name)?.own ?? 0) > 0 || buyNow.has(u.name))
+      ((pool.get(u.name)?.own ?? 0) > 0 ||
+        buyNow.has(u.name) ||
+        (seeking && isKey(u) && oddsAt(level, u.cost) > 0))
     )
       touch(u.name, u.id, u.cost);
 
@@ -144,11 +164,19 @@ export function teamOf(plan, analysis, options) {
         (1 + POLICY.itemWeight * t.items) *
         (inPlan ? 1 : R.offPlanWeight),
       star = (to) => w * cost * (STAR[to] - STAR[to - 1]);
-    // Degraus: cópias a comprar até render o valor. Peça nova só vale uma cópia (e, no carry, o 2★ depois).
+    // Peça-chave que falta no nível de rolagem: rolar para buscá-la vale por si (ela destrava a comp), com o valor cheio.
+    const seek = !own && inPlan && core && seeking;
+    // Degraus: cópias a comprar até render o valor. Peça nova só vale uma cópia (e, no carry, o 2★ depois); a peça
+    // comum que falta vale metade (vem junto de outra rolagem).
     let steps = [],
       far = false;
     if (!own) {
-      steps = [{ copies: 1, value: w * cost * STAR[1] * POLICY.newUnitWeight }];
+      steps = [
+        {
+          copies: 1,
+          value: w * cost * STAR[1] * (seek ? 1 : POLICY.newUnitWeight),
+        },
+      ];
       if (carry && upper >= TWO_STAR)
         steps.push({ copies: TWO_STAR, value: star(2) });
     } else if (own < TWO_STAR) {
@@ -173,6 +201,7 @@ export function teamOf(plan, analysis, options) {
       items: t.items,
       carry,
       core,
+      seek,
       inPlan,
       onBoard: t.onBoard,
       inBench: t.inBench,
@@ -228,7 +257,8 @@ export function teamOf(plan, analysis, options) {
       piece.sim = {
         cost,
         free,
-        evolve: own > 0 && piece.value >= R.minValue,
+        // Dispara a rolagem: cópia de peça sua (2★/3★) ou a peça-chave que falta no nível de rolagem.
+        evolve: (own > 0 || seek) && piece.value >= R.minValue,
         steps: steps
           .filter((s) => s.copies <= upper)
           .map((s) => ({ copies: s.copies, value: round2(s.value) })),
@@ -280,7 +310,7 @@ export function teamOf(plan, analysis, options) {
               b.prior - a.prior,
           )
           .slice(0, 3)
-          .map((p) => `${p.name} ${p.goalStars}★`),
+          .map(goalText),
       ),
   };
 }
@@ -367,7 +397,7 @@ export function rollRule(
     };
   };
   const goText = (v) =>
-    `${pct(v.any)} de evoluir alguma peça com ${v.spend}g; ${v.main.name} ${v.main.goalStars}★ ${pct(v.mainChance)}.`;
+    `${pct(v.any)} de evoluir alguma peça com ${v.spend}g; ${goalText(v.main)} ${pct(v.mainChance)}.`;
   // Vida em perigo: chance de fechar um upgrade do PLANO (a rolagem de estabilizar busca as peças do plano). Se todas
   // as peças que evoluem são do plano, é a chance do time; se há peças fora dele, a da melhor peça do plano sozinha
   // (limite inferior: focar nela fecha pelo menos isso). Sem peça do plano evoluindo, vale a chance de 2★ do time.
@@ -458,7 +488,7 @@ export function rollRule(
     if (later != null && later >= (v.mainChance ?? 0) + R.waitMargin) {
       v.kind = "wait";
       v.at = { level: rollAt, chance: later };
-      v.reason = `${main.name} ${main.goalStars}★ sobe de ${pct(v.mainChance ?? 0)} para ${pct(later)} no nível ${rollAt} (com ${v.budget}g).`;
+      v.reason = `${goalText(main)} sobe de ${pct(v.mainChance ?? 0)} para ${pct(later)} no nível ${rollAt} (com ${v.budget}g).`;
     } else
       v.reason = `Só ${pct(v.any ?? 0)} de evoluir alguma peça com ${v.budget}g${
         need != null

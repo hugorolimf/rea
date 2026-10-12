@@ -121,7 +121,7 @@ export function focusView(model) {
 
 const target = (t) =>
   t.goal === "falta"
-    ? `${t.name} (nova)`
+    ? `${t.name} (falta)`
     : `${t.name}${t.goal ? ` ${t.goal}` : ""}`;
 
 /** Itens do "Foco agora" a partir da decisão da rodada (`turn.steps`, em ordem). `kind`: veredito de rolagem (perigo). */

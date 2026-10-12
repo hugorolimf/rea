@@ -198,10 +198,10 @@ function keepWhy(d, keep) {
     : `juros de +${Math.floor(keep / 10)} e o próximo nível`;
 }
 
-/** "Kayle 3★", ou "Elder Dragon (nova)" para a peça que ainda falta. */
+/** "Kayle 3★", ou "Elder Dragon (falta)" para a peça que ainda falta. */
 const targetText = (t) =>
   t.goal === "falta"
-    ? `${t.name} (nova)`
+    ? `${t.name} (falta)`
     : `${t.name}${t.goal ? ` ${t.goal}` : ""}`;
 
 /** "Compre Aphelios → suba para 8 → role 6 vezes por Kayle 3★ → guarde 30g". */

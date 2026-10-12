@@ -118,6 +118,41 @@ test("inviável: sem cópias, bancos dos rivais, 3★ disputado e nível sem a l
   assert.equal(piece(team, "Rakan").status, "inviavel");
 });
 
+test("buscar: no nível de rolagem, o carry que falta dispara a rolagem; antes dele e peça comum, não", () => {
+  // Fast 8 Aphelios no 4-1, nível 8, sem nenhuma cópia do carry: rolar é para achá-lo.
+  const missing = [
+    ["Amumu", 4, 1, 2],
+    ["Diana", 3, 1, 0],
+    ["Rakan", 3, 1, 0],
+    ["Vi", 2, 1, 1],
+    ["Sentinel", 2, 1, 0],
+    ["Varus", 1, 1, 0],
+  ];
+  const { team, s } = teamFor({ units: missing, stage: "4-1", gold: 80 });
+  const aph = piece(team, "Aphelios");
+  assert.ok(aph, "o carry que falta vira alvo");
+  assert.equal(aph.seek, true);
+  assert.equal(aph.goal, 1);
+  assert.equal(aph.sim.evolve, true);
+  // Peça comum da comp que falta (Xayah) continua de carona: não entra sozinha.
+  assert.ok(!piece(team, "Xayah"));
+  const r = strategy(s.plan, s.analysis, s.options);
+  assert.equal(r.action, "ROLAR", r.headline);
+  const t = r.panels.rolling.rollFor.targets.find((x) => x.name === "Aphelios");
+  assert.ok(t, "Aphelios está entre os alvos da rolagem");
+  assert.equal(t.goal, "falta");
+  assert.equal(t.why, "buscar o carry");
+  assert.ok(r.turn.steps.some((x) => x.kind === "roll"));
+  // Abaixo do nível de rolagem (7 numa comp de nível 8), a peça cara do final não é buscada.
+  const below = teamFor({
+    units: missing,
+    stage: "3-5",
+    level: 7,
+    xp: "10/56",
+  });
+  assert.ok(!piece(below.team, "Aphelios"));
+});
+
 test("peça nova da comp à venda entra, vale menos e não conta como evolução", () => {
   const { team, s } = teamFor({
     buyNow: [{ id: "TFT_Xayah", name: "Xayah", cost: 4 }],
