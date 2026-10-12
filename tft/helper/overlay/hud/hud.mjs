@@ -329,8 +329,11 @@ const dockNotices = () =>
 
 /* ---------- Painel da comp (comp.mjs) ---------- */
 
-/** Painel da comp: aberto ou não e qual comp (pela chave, para seguir a mesma entre análises). Só apresentação. */
-let compState = { open: false, index: 0, key: null };
+/**
+ * Painel da comp: aberto ou não e qual comp (pela chave, para seguir a mesma entre análises). Só apresentação. Aberto por
+ * padrão (pedido do usuário, 2026-10-12): a comp fica na tela desde o início; o atalho fecha e abre.
+ */
+let compState = { open: true, index: 0, key: null };
 const compUi = { ...ui, stars, traitIcon };
 
 /** Tecla final de um atalho da lista registrada (a legenda escreve os modificadores uma vez; aqui só a tecla). */
