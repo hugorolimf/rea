@@ -1,6 +1,6 @@
 # Substitutos temporários e substituições plausíveis da comp
 
-Estado: **a fazer** (fase 1 concluída em 2026-10-11: plano e medição, sem código). Executor: `tft-substitutos`.
+Estado: **em andamento** (fase 1: medição; fase 2 implementada em 2026-10-11, seção 13; faltam a suíte completa e a regravação revisada dos golden, adiadas por partida em andamento). Executor: `tft-substitutos`.
 Ao começar a fase 2, mova este arquivo para `planos/em-andamento/` e atualize `planos/README.md`.
 
 ## 1. Pedido
@@ -223,13 +223,14 @@ Para cada T da comp que você **tem** (campo ou reserva) e não está em campo, 
 
 ```
 Δ = força(T em 1★ ou na estrela que tiver, com os itens de S, em B − S + T) − força(S, B)
-quem fica = o ocupante atual, a menos que o outro o supere por mais de margem
+S joga no lugar de T só se −Δ > margem (S supera T por mais que a margem); senão joga T (empate fica com o titular)
 margem = POLICY.interim.margin = 1 ponto (≈ 0,4 de vida por rodada; 15 % dos pares ficam com |Δ| < 1)
 ```
 
-- Histerese sem estado guardado: o ocupante é quem está em campo agora (campo do GEP/captura). T na reserva só entra se
-  `Δ > margem`. S só volta a ocupar a vaga de T se `Δ < −margem`. Isso evita oscilação de uma rodada para a outra.
-- Escolha conjunta: pareamento guloso pelos maiores |Δ| (cada S serve a uma vaga), o mesmo padrão de `flexOf`. Com mais
+- **Mudou na fase 2 (pedido do orquestrador):** a fase 1 propunha histerese pelo ocupante. A regra implementada é a do
+  pedido original: o substituto só joga se superar o titular por mais que a margem, e o empate fica com o titular. Não
+  oscila: a decisão é uma função da força de agora, igual nos dois sentidos, e a margem a protege de ruído.
+- Escolha conjunta: pareamento guloso pelos maiores Δ (cada S serve a uma vaga), o mesmo padrão de `flexOf`. Com mais
   vagas que peças, preencha com a maior força disponível (campo, reserva, loja), preferindo a ponte que mantém um patamar
   da comp.
 - Carry: o carry da comp entra assim que tiver 2 ou mais itens completos da build dele prontos (no banco ou em S), mesmo em
@@ -475,3 +476,74 @@ outra forma.
 - `tft-itens-central`: portador temporário em `core/items/`.
 - `tft-comp-viabilidade`: recebe "pode ficar de vez" como sugestão para `flexOf`; o plano não muda por este módulo.
 - `tft-formacao` / `tft-web-ui` / `tft-overlay` / `tft-comps-ui`: telas.
+
+## 13. Fase 2: o que foi implementado (2026-10-11)
+
+### 13.1 Regra única
+
+- `core/board/interim.mjs` (puro, sem I/O): `slotStrength` (força na vaga), `swapDelta`, `interimBuyWorth` (temporário da
+  loja paga os juros?), `interimSlots` (decisão por vaga, loja, compra dos dois, reserva cheia, volta), `transitionOf` e
+  `slotTransitions` (o formato antigo de `plan.transitions`), `interimContext` e `analysisInput` (as MESMAS entradas para
+  quem chamar). Constantes em `POLICY.interim` (`core/economy/policy.mjs`).
+- Decisão: S joga só se superar T por mais que a margem; empate fica com o titular (5.2); margem 0 com a vida em perigo;
+  o carry entra em 1★ quando S segura 2 itens completos. Vaga livre: titular da reserva, depois o da loja que o orçamento
+  paga, depois a peça fora da comp mais forte da reserva, depois a da loja que paga os juros (`interimBuyWorth`).
+- Volta (`until`): `compra` ("T entra assim que você o comprar"), `estrela` (k★, cópias que faltam e a chance nas próximas
+  `returnShops` lojas), `nivel` (nível 6, sinergias), `itens` (carry) ou `nenhum`.
+
+### 13.2 Unificação stage × tactics
+
+- `tactics.mjs` não tem mais régua própria (`STAR`, `power`, `requiredStars` saíram; a exceção `might-formula` do
+  `architecture.test.mjs` baixou de 2 para 1). As trocas saem de `interimSlots` (sem nível, loja, ouro nem vida: a tática não
+  os lê, regra do grafo).
+- `stage.mjs` chama `interimSlots` duas vezes: com todas as cartas (que vaga cada uma ocuparia; motivo da carta) e depois do
+  orçamento da loja (só as compradas). Daí saem `board`, `hold`, `buyNow` (`replaces` só quando o titular supera o
+  temporário em 1★; senão `banco`, com `holder` e `until`) e os novos `slots`/`interim`.
+- `app/recommend-facts.mjs` `composeAnalysis`: `plan.transitions` e o "Passar itens agora" passam a ler `stage.slots`. As
+  duas telas leem a mesma decisão (no `danger-hp27`, antes a Formação punha Kayle no lugar de Diana 2★ e as trocas
+  seguravam Diana para Gnar; agora Diana segura só a vaga de Murkwolf, nas duas).
+
+### 13.3 Modelo por vaga (interface e overlay)
+
+`plan.stage.slots[i]` (rec.recommendations[k].stage e rec.preview.stage):
+`{ slot, unit: {id,name}, cell: {row,col}|null, original: {id,name,cost,stars,have: "campo"|"reserva"|"falta",copies,shop:
+{slot,cost,buy}|null} | null, playing: {id,name,cost,stars,source: "campo"|"reserva"|"loja",items,buy: {cost,slot}|null} |
+null, kind: "titular"|"temporario"|"troca-da-comp", why, until, replaces, delta, ifBought }`. `have` e `copies` são da peça
+do plano dona da vaga (na troca da comp, `original` é a peça da meta que saiu). Vaga extra (substituto sem vaga do plano):
+`unit: null, original: null`. `plan.stage.interim = { margin, shopKnown, bench, buys, note }`.
+
+Na v2 (`v2/js/model.js`): `cells[i].sub = slotView(slot)` (null quando o original joga) com `label` pronto
+("Varus 2★ no lugar de Aphelios (temporário: volta quando Aphelios chegar a 2★ …)", "troca da comp: S no lugar de T",
+"Na sua loja (slot 3): compre X para a vaga de T" / "… como temporário no lugar de T") e `plan.formation = { shown, label,
+note, alt }` (Fixada/Recomendada e a outra vista). O overlay monta o mesmo `buildModel` (`overlay/hud/view.mjs`), então
+recebe `cells[i].sub` e `plan.formation` sem mudança no servidor.
+
+### 13.4 Telas (v2)
+
+- Formação (`v2/js/ui/board.js` + `v2/js/board-look.js` `cellLook`): quando quem joga não é o original, a casa mostra o
+  retrato de quem joga em destaque, o original pequeno no canto (esmaecido, contorno da cor do custo) e o selo ⇄
+  (`data-sub`); peça da loja ganha o selo de compra (moeda + custo, `data-buy`) e contorno próprio. Dica e rótulo
+  acessível: `sub.label`. O original jogando não muda nada.
+- Seletor (`v2/js/formation-view.js` `formationShown`, `main.js`, `index.html`): chip "Fixada"/"Recomendada", botão "ver
+  recomendada" (com fixada) ou "ver 1ª sugerida" (plano mantido, com a nota do plano mantido), sem chamar API nem
+  fixar/desfixar; "Copiar código" da comp à vista; sem `positions`/`stage.slots`, diz o que falta.
+- Contagem "5/8 em campo · +1 na reserva · +1 na loja" (`v2/js/roster.js` `compOwnership`, a loja do GEP; sem loja lida,
+  nada): HUD, cartões da aba Comps e modal.
+- Loja (`stage.shop[i].reason`): "entra na vaga de X", "entra no lugar de S", "guarde na reserva … (compre os dois)",
+  "temporário para a vaga vazia: +N de vida contra Mg de juros"; papel novo "temporário mais forte agora".
+
+### 13.5 Testes
+
+`tests/core-board-interim.test.mjs` (regra, loja, compra dos dois, reserva cheia, temporário da loja e ouro pelo
+`stagePlan`), `tests/interim-unify.test.mjs` (golden reais `danger-hp27` e `mid-lvl7-streak`: Formação, trocas e compras
+iguais em cada vaga), `v2/js/model-interim.test.mjs` (recomendada e fixada com substituto, rótulos, "ver 1ª sugerida",
+"+N na loja"), `v2/js/board-look.test.mjs` e `v2/js/formation-view.test.mjs` (casa e seletor, sem alterar o plano).
+Golden: mudam as partes de `stage` (`board`, `buyNow`, `shop[].reason`, `slots`, `interim`), `transitions` e
+`itemMoves[].now`; a regravação revisada ficou para depois da partida em andamento.
+
+### 13.6 Ficou de fora (pendências)
+
+- Seção 6 (substituições publicadas da MetaTFT, `c.subs`) e "pode ficar de vez": dependem de `tft-meta-offline`.
+- 5.5 (portador temporário dos itens em `core/items/`): com `tft-itens-central`.
+- Sinergia dos aprimoramentos (emblemas de `book.grants`) ainda não entra na força na vaga.
+- Recalibrar a régua com mais partidas e confirmar em partida a margem, o carry com 2 itens e a compra de temporário.

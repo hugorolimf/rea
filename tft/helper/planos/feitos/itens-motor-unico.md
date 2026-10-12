@@ -193,3 +193,33 @@ ganham `meta.buildStats`; precisam ser regravados com `UPDATE_GOLDEN=1` depois q
   a ordem antiga (que puxava o item montável primeiro).
 - A marca "reserva" e a frase de origem no overlay e na janela da Formação (tamanho, contraste sobre o jogo).
 - Emblema da build: que o jogo de fato bloqueia equipar emblema de sinergia que o campeão já tem.
+
+## 8. Regra nova: item só para a comp do plano
+
+Pedido do usuário: "A recomendação de item vai servir somente para campeões da minha comp, e não mais para campeões que eu
+tenho no meu tabuleiro ou reserva. Se a minha comp fixada recomenda um item, vamos buildar o item para aquela comp."
+
+- **Alvo** (`core/items/scenarios.mjs:planTargetIds`): as peças do tabuleiro do plano, a comp fixada (`rec.preview`) ou, sem
+  ela, a recomendada (`rec.recommendations[0]`), com as trocas aceitas já aplicadas.
+- **Próximo item, itens por campeão, Equipar/Montar** (`tactics.mjs` → `ownedItemAdvice`): só peças do alvo em campo (e as
+  que ainda vão entrar, para guardar o item). Antes, toda peça em campo recebia uma build, a da reserva para quem não era da
+  comp. As dicas de sinergia/emblema também vêm da comp do plano (antes vinham do tabuleiro atual).
+- **Item pronto do banco** (`stage.mjs` → `bankItemTargets`), em ordem: (1) a peça da comp em campo cuja build pede o item; (2) o
+  temporário da vaga SEGURA o item da build do titular ("segure Gume Infinito em Kog'Maw para Aphelios", campo `for` = o
+  titular, levado até `model.js`); (3) a peça da comp de papel compatível; (4) guarde (dizendo para qual titular ainda fora de
+  campo). Peça fora da comp nunca recebe.
+- **Montar** (`item-plan.mjs`): com build publicada, o campeão só recebe itens dela; componente que não monta item da build de
+  ninguém da comp fica guardado e não vira item de outra peça. Sem build publicada, a reserva medida (como antes).
+- **Passar itens, carrossel e plano**: já tinham só peças da comp como alvo (a peça de fora só cede itens).
+- **Testes:** `tests/items-plan-targets.test.mjs`: o item recomendado vai só para campeões da comp; a peça de fora com componente
+  não ganha build; o temporário segura o item do titular; a fixada contra a recomendada; o componente sem uso fica guardado.
+  Os 4 que tocam código antigo falham na cópia de antes e passam agora. Os testes de itens existentes continuam verdes.
+
+**Impacto no ranking (medido nos 17 cenários do golden, cópia antes × depois):** a parte de itens de E é o `itemPlan.total` × 0,3,
+pesado por p. Com a regra, um item seu só soma em E se serve à build publicada de um campeão da comp. Mudaram 683 dos 1239
+`itemPlan.total` (670 caíram, 13 subiram, porque a escolha de receitas mudou), 335 scores e a ordem em 14 dos 21 passos. A comp no
+topo mudou em 1 passo (`late-lvl9-critical`: 426043 → 426055). Os goldens mudam também em `ownedItemAdvice`, campo/loja (`nextItem`
+de peça fora da comp some) e item do banco.
+
+**Só com o jogo aberto:** se "guarde" para o item sem uso na comp é o esperado (antes ele ia por papel para qualquer peça em
+campo) e se a frase "segure X em S para T" fica clara no overlay.
