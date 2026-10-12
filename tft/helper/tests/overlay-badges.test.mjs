@@ -881,6 +881,67 @@ test("montar agora: item = componentes → campeão, pronto → campeão, segure
   assert.match(html, /\+\d+ na dica/);
 });
 
+test("montar agora: igual à interface (ownedItemAdvice com este banco): comp inteira, falta um e emblema; banco diferente cai na reserva", () => {
+  const bank = [
+    "DA_Component_NeedlesslyLargeRod",
+    "DA_Component_NegatronCloak",
+    "DA_Component_BFSword",
+  ];
+  const input = liveInput(({ state, rec }) => {
+    state.seen.items = [...bank];
+    rec.recommendations[0].stage.bankItems = [];
+    rec.recommendations[0].emblems = [
+      {
+        id: "DA_Test_Emblem",
+        name: "Test Emblem",
+        trait: "Teste",
+        holder: { id: "DA_18_Diana", name: "Diana" },
+        ready: false,
+        other: "DA_Component_Spatula",
+      },
+    ];
+    rec.ownedItemAdvice = {
+      inventory: bank.map((id) => ({ id })),
+      // Peça da comp que ainda não está em campo (Xayah): a interface já sugere montar o item dela.
+      ready: [
+        {
+          championId: "DA_18_Xayah",
+          champion: "Xayah",
+          item: { id: "DA_IonicSpark", name: "Ionic Spark" },
+          required: [
+            "DA_Component_NeedlesslyLargeRod",
+            "DA_Component_NegatronCloak",
+          ],
+          missing: [],
+        },
+      ],
+      near: [
+        {
+          championId: "DA_18_Diana",
+          champion: "Diana",
+          item: { id: "DA_Deathblade", name: "Deathblade" },
+          required: ["DA_Component_BFSword", "DA_Component_BFSword"],
+          missing: ["DA_Component_BFSword"],
+        },
+      ],
+    };
+  });
+  const rows = (v) => [
+    ...v.items.build.map((b) => [b.kind, b.item.id, b.unit.id]),
+    ...v.items.buildRest,
+  ];
+  // Montar primeiro; depois o emblema da comp e o item a um componente (falta), na ordem do conselho.
+  assert.deepEqual(rows(viewOf(input)), [
+    ["craft", "DA_IonicSpark", "DA_18_Xayah"],
+    ["missing", "DA_Test_Emblem", "DA_18_Diana"],
+    ["missing", "DA_Deathblade", "DA_18_Diana"],
+  ]);
+  // Análise feita com outro banco: não usa o conselho velho (volta aos itens dos campeões em campo).
+  input.state.seen.items = ["DA_Component_BFSword"];
+  const stale = rows(viewOf(input));
+  assert.ok(!stale.some((r) => Array.isArray(r) && r[2] === "DA_18_Xayah"));
+});
+
 test("selo de XP lê a decisão da rodada (turn): sem curva própria, sem contradizer a decisão", () => {
   const base = {
     level: 8,

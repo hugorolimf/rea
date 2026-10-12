@@ -380,12 +380,112 @@ export const BUILD_NOW_SHOWN = 3;
  * `deps.nextItemRecipe` com o banco lido. Devolve `[{ kind: "craft"|"ready"|"hold"|"missing", item, parts, unit, for,
  * carry, text }]` na ordem: carry primeiro, depois montar, pronto, segurar e falta.
  */
-function buildNowOf(model, plan, bank, deps) {
+function buildNowOf(model, plan, bank, deps, advice = null) {
   const recipe = (item) =>
     typeof deps?.nextItemRecipe === "function"
       ? deps.nextItemRecipe(item, deps.catalogItems ?? new Map(), { bank })
       : null;
   const carryId = model.plan?.carryId ?? null;
+  const out = [];
+  // Com o conselho do servidor feito com ESTE banco, a regra é a mesma da interface (Inventário): o que montar para a comp
+  // inteira (peças em campo e as que vão entrar, carry e cores primeiro, cada componente do banco gasto uma vez), o que
+  // está a um componente e os emblemas da comp. Sem ele (análise de outro banco ou antiga), os itens dos campeões em campo.
+  const fresh = adviceFor(advice, bank);
+  if (fresh) out.push(...adviceRows(fresh, plan, carryId, deps));
+  else out.push(...fieldRows(model, recipe));
+  return finishBuild(out, plan, carryId);
+}
+
+/** O conselho do servidor só vale se foi calculado com o banco lido agora (a mesma checagem da interface). */
+function adviceFor(advice, bank) {
+  if (!advice || !Array.isArray(bank)) return null;
+  const a = (advice.inventory ?? []).map((i) => i?.id ?? i).sort(),
+    b = bank.map((i) => i?.id ?? i).sort();
+  return a.length === b.length && a.every((id, n) => id === b[n])
+    ? advice
+    : null;
+}
+
+/** Linhas de `ownedItemAdvice` (tactics.mjs) e dos emblemas da comp, no formato do bloco. */
+function adviceRows(advice, plan, carryId, deps) {
+  const name = (id) => deps?.catalogItems?.get?.(id)?.name ?? String(id);
+  const part = (id, state) => ({ id, name: name(id), state });
+  const rows = [];
+  for (const e of plan?.emblems ?? []) {
+    if (!e?.id) continue;
+    const unit = e.holder
+      ? brief(e.holder)
+      : { id: null, name: "uma peça da comp" };
+    rows.push(
+      e.ready
+        ? {
+            kind: "craft",
+            item: brief(e),
+            parts: (deps?.catalogItems?.get?.(e.id)?.composition ?? []).map(
+              (id) => part(id, "bank"),
+            ),
+            unit,
+            for: null,
+            carry: unit.id === carryId,
+            text: `monte o emblema ${e.name ?? ""} (${e.trait ?? ""}) em ${unit.name}`,
+          }
+        : {
+            kind: "missing",
+            item: brief(e),
+            parts: e.other ? [part(e.other, "missing")] : [],
+            unit,
+            for: null,
+            carry: unit.id === carryId,
+            text: `falta ${e.other ? name(e.other) : "componente"} para o emblema ${e.name ?? ""} (${e.trait ?? ""}) de ${unit.name}`,
+          },
+    );
+  }
+  // Item completo já no banco: `stage.bankItems` diz para quem (e se um temporário o segura); não repete aqui.
+  const handled = new Set((plan?.stage?.bankItems ?? []).map((b) => b?.id));
+  for (const c of advice.ready ?? []) {
+    const unit = { id: c.championId ?? null, name: c.champion ?? "" },
+      whole = (c.required ?? []).length === 1 && c.required[0] === c.item?.id;
+    if (whole && handled.has(c.item.id)) continue;
+    rows.push(
+      whole
+        ? {
+            kind: "ready",
+            item: brief(c.item),
+            parts: [],
+            unit,
+            for: null,
+            carry: unit.id === carryId,
+            text: `pronto: ${c.item?.name ?? ""} → ${unit.name}`,
+          }
+        : {
+            kind: "craft",
+            item: brief(c.item),
+            parts: (c.required ?? []).map((id) => part(id, "bank")),
+            unit,
+            for: null,
+            carry: unit.id === carryId,
+            text: `monte ${c.item?.name ?? ""} (${(c.required ?? []).map(name).join(" + ")}) em ${unit.name}`,
+          },
+    );
+  }
+  for (const c of advice.near ?? []) {
+    const unit = { id: c.championId ?? null, name: c.champion ?? "" },
+      miss = (c.missing ?? []).map((id) => part(id, "missing"));
+    rows.push({
+      kind: "missing",
+      item: brief(c.item),
+      parts: miss,
+      unit,
+      for: null,
+      carry: unit.id === carryId,
+      text: `falta ${miss.map((p) => p.name).join(" + ") || "componente"} para ${c.item?.name ?? ""} de ${unit.name}`,
+    });
+  }
+  return rows;
+}
+
+/** Reserva sem conselho do servidor: itens da build dos campeões da comp em campo (passo "Itens dos campeões"). */
+function fieldRows(model, recipe) {
   const out = [];
   for (const r of stepRows(model, "builds")) {
     const unit = brief(r.unit);
@@ -422,6 +522,12 @@ function buildNowOf(model, plan, bank, deps) {
       }
     }
   }
+  return out;
+}
+
+/** Junta o item completo do banco (`stage.bankItems`: pronto ou segure) e ordena: carry, montar, pronto, segurar, falta. */
+function finishBuild(rows, plan, carryId) {
+  const out = [...rows];
   for (const b of plan?.stage?.bankItems ?? []) {
     if (!b?.id || !b.to?.id) continue;
     const hold = !!b.for?.id;
@@ -979,6 +1085,7 @@ export function overlayView(
       rec?.preview ?? rec?.recommendations?.[0] ?? null,
       Array.isArray(stateBody?.seen?.items) ? stateBody.seen.items : null,
       deps,
+      rec?.ownedItemAdvice ?? null,
     ),
     items = {
       // "Montar agora" para a comp do plano: até BUILD_NOW_SHOWN visíveis; o resto (`buildRest`) vai na dica do mouse.
