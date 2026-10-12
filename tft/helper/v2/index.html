@@ -128,7 +128,9 @@
         <aside class="panel" id="panel" aria-label="Decisão da rodada: nível, roll e loja"></aside>
         <div class="col">
           <section class="field" aria-labelledby="field-title">
-            <div class="section-head"><h2 id="field-title">Formação</h2><span class="chips" id="counts"></span><button type="button" class="btn btn-sm copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
+            <div class="section-head"><h2 id="field-title">Formação</h2><span class="field-view" id="field-view" hidden><span class="chip" id="field-shown" data-tone="violet"></span><span class="field-comp" id="field-comp"></span><button type="button" class="btn btn-sm btn-quiet" id="field-toggle" aria-pressed="false" hidden><svg class="i" aria-hidden="true"><use href="#i-swap"/></svg><span></span></button></span><span class="chips" id="counts"></span><button type="button" class="btn btn-sm copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
+            <p class="field-note" id="field-note" hidden></p>
+            <p class="field-missing" id="field-missing" hidden></p>
             <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
             <div class="champ-items" id="champ-items" hidden></div>
             <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>

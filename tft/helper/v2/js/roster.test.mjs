@@ -184,6 +184,8 @@ test("Ao vivo: anel N/M em campo + reserva à parte, Formação 'na reserva' e C
   assert.deepEqual(m.plan.reserve, {
     count: 1,
     known: true,
+    // Loja não lida neste estado: nenhuma peça "na loja" é inventada.
+    shop: 0,
     text: "4/9 em campo · +1 na reserva",
   });
   const cell = (id) => m.plan.cells.find((c) => c.id === id);

@@ -275,8 +275,10 @@ test("roll: veredito do servidor vira selo, orçamento e curva do time", () => {
     "a curva acende a chance do veredito",
   );
   assert.equal(go.interest, null);
+  // Guardar: no teto de juros (52g). Com 75g no nível final (Fast 8) os 25g acima dos juros são ouro parado e a decisão
+  // da rodada os rola (planos/em-andamento/decisao-da-rodada.md), então o caso de "não rolar" usa o ouro no piso.
   const hold = withStrategy({
-    gold: 75,
+    gold: 52,
     hp: 80,
     level: 8,
     stage: "4-2",
@@ -285,12 +287,14 @@ test("roll: veredito do servidor vira selo, orçamento e curva do time", () => {
   assert.equal(hold.go, false);
   assert.deepEqual(hold.pill, { text: "não rolar", tone: "wait" });
   assert.equal(hold.curve.planned, null);
+  // Rivais fortes: com os fracos o tabuleiro do Hero já está na força típica do lobby e o perigo fica "estabilizado"
+  // (tft-pressao-vida): o servidor não manda rolar e o selo não é "estabilizar".
   const danger = withStrategy({
     gold: 24,
     hp: 25,
     level: 8,
     stage: "4-2",
-    rivals,
+    rivals: { count: 7, cost: 4, stars: 2, size: 8 },
   });
   assert.deepEqual(danger.pill, { text: "estabilizar", tone: "danger" });
 });

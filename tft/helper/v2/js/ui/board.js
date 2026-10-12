@@ -1,6 +1,7 @@
 import { el, svg, setVars, reconcile } from "../dom.js";
 import { boardSize, hexCenter, hexPoints } from "../math.js";
 import { champIcon, traitIcon } from "./glyphs.js";
+import { cellLook } from "../board-look.js";
 
 const SIZE = 36,
   COLS = 7,
@@ -11,16 +12,12 @@ const SIZE = 36,
   PAD = 12;
 const { width: W, height: H } = boardSize(COLS, ROWS, SIZE);
 const COST_VAR = (c) => `var(--cost-${Math.min(5, Math.max(1, c))})`;
-const KIND_LABEL = {
-  ready: "trocar agora",
-  hold: "segure",
-  blocked: "não troque",
-  slot: "vaga livre",
-};
 
 /**
  * Formação alvo em hexágonos. Só mostra estado: peça em campo (sólida), a comprar (tracejada) e,
- * no canto da casa que recebe a peça, um selo com quem sai. Detalhes ficam em tooltip e na trilha "Agora".
+ * no canto da casa que recebe a peça, um selo com quem sai. Na vaga com substituto (`cell.sub`, board-look.js) o
+ * retrato é de quem joga, com o original pequeno no canto e o selo ⇄; a peça da loja ganha o selo de compra.
+ * Detalhes ficam em tooltip e na trilha "Agora".
  */
 export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
   let selected = null;
@@ -120,6 +117,50 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       svg("text", { "text-anchor": "middle", y: 3.4 }),
     );
     cost.setAttribute("transform", `translate(${-R * 0.5} ${-R * 0.58})`);
+    // Original da vaga, pequeno e esmaecido no canto de baixo (no lugar do selo de quem sai), com o selo ⇄.
+    const orig = svg(
+      "g",
+      { class: "cell-orig" },
+      svg("circle", { class: "orig-bg", r: BADGE + 1.5 }),
+      svg("image", {
+        class: "orig-img",
+        x: -BADGE,
+        y: -BADGE,
+        width: BADGE * 2,
+        height: BADGE * 2,
+        "clip-path": "url(#clip-badge)",
+        preserveAspectRatio: "xMidYMid slice",
+      }),
+      svg("circle", { class: "orig-ring", r: BADGE + 1.5 }),
+    );
+    orig.setAttribute("transform", `translate(${-R * 0.58} ${R * 0.58})`);
+    const subMark = svg(
+      "g",
+      { class: "cell-sub" },
+      svg("circle", { r: 6.5 }),
+      svg(
+        "svg",
+        { viewBox: "0 0 24 24", width: 10, height: 10, x: -5, y: -5 },
+        svg("use", { href: "#i-swap" }),
+      ),
+    );
+    subMark.setAttribute(
+      "transform",
+      `translate(${-R * 0.58 + BADGE} ${R * 0.58 - BADGE})`,
+    );
+    // Selo de compra: moeda e preço, no canto de baixo à direita.
+    const buy = svg(
+      "g",
+      { class: "cell-buy" },
+      svg("rect", { x: -12, y: -7, width: 24, height: 14, rx: 7 }),
+      svg(
+        "svg",
+        { viewBox: "0 0 24 24", width: 10, height: 10, x: -10, y: -5 },
+        svg("use", { href: "#i-coin" }),
+      ),
+      svg("text", { "text-anchor": "middle", x: 4.5, y: 3.4 }),
+    );
+    buy.setAttribute("transform", `translate(${R * 0.58} ${R * 0.58})`);
     return svg(
       "g",
       { class: "cell", tabindex: 0, role: "button" },
@@ -143,6 +184,9 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       crown,
       cost,
       swap,
+      orig,
+      subMark,
+      buy,
       svg("text", {
         class: "swap-frac",
         x: -R * 0.58 + BADGE + 4,
@@ -157,13 +201,30 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     g.dataset.status = c.status;
     mark(g, c.id === selected);
     g.dataset.carry = c.carry ? "1" : "0";
-    const src = champIcon(c.id);
+    const look = cellLook(c);
+    const src = champIcon(look.image);
     if (src) g.querySelector(".cell-img").setAttribute("href", src);
-    g.querySelector(".cell-stars").textContent =
-      c.status === "incoming" ? "" : "★".repeat(Math.min(4, c.stars));
+    g.querySelector(".cell-stars").textContent = "★".repeat(look.stars);
     const cost = g.querySelector(".cell-cost");
-    cost.querySelector("circle").style.fill = COST_VAR(c.cost);
-    cost.querySelector("text").textContent = c.cost;
+    cost.querySelector("circle").style.fill = COST_VAR(look.cost);
+    cost.querySelector("text").textContent = look.cost;
+    // Vaga com outra peça jogando: o original pequeno no canto, com o anel na cor do custo dele.
+    if (look.sub) g.dataset.sub = look.sub;
+    else delete g.dataset.sub;
+    if (look.original) {
+      const img = g.querySelector(".orig-img"),
+        osrc = champIcon(look.original.id);
+      if (osrc) img.setAttribute("href", osrc);
+      else img.removeAttribute("href");
+      // Variável, não estilo inline: o CSS de `forced-colors` ainda troca a cor.
+      setVars(g.querySelector(".cell-orig"), {
+        "--orig-c": COST_VAR(look.original.cost),
+      });
+    }
+    if (look.buy) {
+      g.dataset.buy = "1";
+      g.querySelector(".cell-buy text").textContent = look.buy.cost;
+    } else delete g.dataset.buy;
     const s = c.swap;
     if (s) g.dataset.swap = s.kind;
     else delete g.dataset.swap;
@@ -176,19 +237,9 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       g.querySelector(".swap-frac").textContent =
         s.kind === "hold" && s.need ? `${s.have}/${s.need}` : "";
     }
-    // Leitura de agora (roster.js): "na reserva", "2 cópias: 1 em campo, 1 na reserva"; sem ela, o estado da casa.
-    const status =
-      c.own ||
-      (c.status === "owned"
-        ? "em campo"
-        : c.status === "reserve"
-          ? "na reserva"
-          : "a comprar");
-    const swapText = s
-      ? ` · ${KIND_LABEL[s.kind]}${s.exit ? `: ${s.exit.name} sai` : ""}${s.kind === "hold" ? ` (${s.have}/${s.need})` : ""}${s.held ? ` · preserve ${s.held} item(ns)` : ""}`
-      : "";
-    // A casa é a imagem do campeão; o texto vai na dica do SVG e no rótulo do botão (leitor de tela e teclado).
-    const label = `${c.name}${c.stars ? ` ${c.stars}★` : ""} · ${status}${swapText}${c.reason ? ` · ${c.reason}` : ""}`;
+    // A casa é a imagem do campeão; o texto (board-look.js: vaga, posse de agora, troca, motivo) vai na dica do SVG e
+    // no rótulo do botão (leitor de tela e teclado).
+    const label = look.label;
     const tip = g.querySelector("title");
     if (tip.textContent !== label) {
       tip.textContent = label;

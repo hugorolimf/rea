@@ -63,16 +63,6 @@ const EXCEPTIONS = [
   },
   {
     file: "ui/board.js",
-    snippet: "s.exit.name} sai",
-    why: "texto do <title> SVG da casa (dica de mouse e leitor de tela; a casa já é a imagem)",
-  },
-  {
-    file: "ui/board.js",
-    snippet: "`${c.name}${c.stars",
-    why: "texto do <title> SVG da casa",
-  },
-  {
-    file: "ui/board.js",
     snippet: "? `${t.name}: ${t.count} de",
     why: "dica da sinergia",
   },

@@ -13,6 +13,36 @@
       order: 3;
     }
   }
+  /* Seletor da Formação (formation-view.js): chip da vista, título da comp e o botão que mostra a outra. */
+  .field-view {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) 6px;
+    min-inline-size: 0;
+    & .i {
+      inline-size: 14px;
+      block-size: 14px;
+    }
+  }
+  .field-comp {
+    color: var(--text);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    min-inline-size: 0;
+  }
+  .field-note,
+  .field-missing {
+    margin: calc(var(--sp-1) * -1) 0 var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-xs);
+  }
+  .field-missing {
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px dashed var(--line);
+    border-radius: var(--r-sm);
+    margin-block-end: var(--sp-3);
+  }
   .copy-code {
     & .i {
       inline-size: 14px;
@@ -174,6 +204,118 @@
     }
     &[data-swap="blocked"] .swap-ring {
       stroke: var(--faint);
+    }
+    /*
+     * Vaga com substituto (board-look.js): o retrato é de quem joga; o original fica pequeno e esmaecido no canto
+     * (anel na cor do custo dele, posto pelo JS) com o selo ⇄, no lugar do selo de quem sai. Contorno violeta, cheio.
+     */
+    & .cell-orig,
+    & .cell-sub,
+    & .cell-buy {
+      display: none;
+      pointer-events: none;
+    }
+    & .orig-bg {
+      fill: var(--bg);
+    }
+    & .orig-img {
+      opacity: 0.55;
+      filter: grayscale(0.6);
+    }
+    & .orig-ring {
+      fill: none;
+      stroke: var(--orig-c, var(--line));
+      stroke-width: 2;
+    }
+    & .cell-sub {
+      & circle {
+        fill: var(--violet-fill);
+        stroke: var(--bg);
+        stroke-width: 1.5;
+      }
+      & svg {
+        fill: none;
+        stroke: var(--on-fill);
+        stroke-width: 2.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    }
+    &[data-sub] {
+      & .cell-orig,
+      & .cell-sub {
+        display: block;
+      }
+      &[data-swap] .cell-swap,
+      & .swap-frac {
+        display: none;
+      }
+      & .cell-img {
+        opacity: 1;
+        filter: none;
+      }
+      & .cell-ring {
+        stroke: var(--violet);
+        stroke-dasharray: none;
+      }
+    }
+    /* Peça da loja de agora: selo da moeda com o preço e contorno dourado pontilhado (nem "em campo" nem "na reserva"). */
+    & .cell-buy {
+      & rect {
+        fill: var(--gold-fill);
+        stroke: var(--bg);
+        stroke-width: 1.5;
+      }
+      & svg {
+        fill: none;
+        stroke: var(--on-fill);
+        stroke-width: 2.6;
+        stroke-linecap: round;
+      }
+      & text {
+        fill: var(--on-fill);
+        font-size: 9.5px;
+        font-weight: 800;
+      }
+    }
+    &[data-buy] {
+      & .cell-buy {
+        display: block;
+      }
+      & .cell-img {
+        opacity: 0.8;
+        filter: none;
+      }
+      & .cell-ring {
+        stroke: var(--gold);
+        stroke-width: 2.5;
+        stroke-dasharray: 1.5 3.5;
+        stroke-linecap: round;
+        @media (prefers-reduced-motion: no-preference) {
+          animation: ring-pulse 1.8s ease-in-out infinite;
+        }
+      }
+    }
+    @media (forced-colors: active) {
+      & .orig-ring,
+      &[data-sub] .cell-ring {
+        stroke: CanvasText;
+      }
+      & .cell-sub circle,
+      & .cell-buy rect {
+        fill: Canvas;
+        stroke: CanvasText;
+      }
+      & .cell-sub svg,
+      & .cell-buy svg {
+        stroke: CanvasText;
+      }
+      & .cell-buy text {
+        fill: CanvasText;
+      }
+      &[data-buy] .cell-ring {
+        stroke: Highlight;
+      }
     }
     /* Selecionada (itens dela abertos) e foco por teclado: o contorno vira o texto, mais grosso. */
     &:focus-visible .cell-ring,

@@ -312,11 +312,14 @@ function card(
         )
         .join(" · ")}</small></p>`
     : "";
+  // O critério: a colocação esperada (E, a medida que ordena as comps) e, quando o motor manda, a linha do porquê.
   const fit = f
     ? [
-        sc?.chance != null
-          ? `<span class="chance" title="Chance de achar as peças principais que faltam com o seu nível${sc.level ? " " + sc.level : ""} e as lojas ao alcance${sc.chancePlan != null ? "; no nível alvo: " + sc.chancePlan + "%" : ""}">chance de montar <b>${sc.chance}%</b></span>`
-          : "",
+        Number.isFinite(f.expected)
+          ? `<span class="chance" title="Colocação esperada para você com esta comp: a força dela, a chance de montá-la no prazo e o que você já tem dela (campo, reserva e estrelas). Menor é melhor; é ela que ordena as comps."><b>${String(Math.round(f.expected * 10) / 10).replace(".", ",")}º</b> esperado</span>`
+          : sc?.chance != null
+            ? `<span class="chance" title="Chance de achar as peças principais que faltam com o seu nível${sc.level ? " " + sc.level : ""} e as lojas ao alcance">chance de montar <b>${sc.chance}%</b></span>`
+            : "",
         c.roster
           ? ownCount(compOwnership(c.roster, c.units))
           : `<span><b>${f.owned}/${f.size}</b> já em campo</span>`,
@@ -328,12 +331,13 @@ function card(
           : "",
       ]
         .filter(Boolean)
-        .join("")
+        .join("") +
+      (f.why ? `<span class="comp-why">${richText(f.why)}</span>` : "")
     : '<span class="muted">Encaixe indisponível nesta leitura</span>';
   // O cartão fixado ganha o tom âmbar do `.card`, mas só na lista (no modal a moldura some e o rodapé já diz "Escolhida").
   return `<li class="comp card" data-id="${esc(c.id)}"${pinned ? ` data-pinned=""${actions ? ' data-tone="amber"' : ""}` : ""}>
     <header class="comp-head">
-      ${sc ? `<span class="score" data-band="${sc.band}" title="Score 0-100 para a sua partida: itens que você tem, o que já tem em campo (com a chance de subir de estrela), força da comp, chance de montar no seu nível${sc.level ? " " + sc.level : ""}, loja e disputa. Disputa alta reduz o score.">${sc.score}</span>` : '<span class="score" data-band="none" title="O score aparece com uma leitura do tabuleiro">—</span>'}
+      ${sc ? `<span class="score" data-band="${sc.band}" title="Score 0-100: a colocação esperada (E) numa régua (2º = 100, 6º = 0). E já leva a força da comp, os seus itens, o que você já tem dela, a chance de montá-la no prazo e a disputa.">${sc.score}</span>` : '<span class="score" data-band="none" title="O score aparece com uma leitura do tabuleiro">—</span>'}
       <h3>${richText(c.title, { size: 22 })}</h3>
       <div class="comp-tags">
         <span class="chip">${esc(c.style.label)}</span>

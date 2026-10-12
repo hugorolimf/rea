@@ -8,6 +8,7 @@ import { starCopies } from "../../core/pool/copies.mjs";
 import { SHOP } from "../../core/pool/tables.mjs";
 import { crossShop, refineShopHits, shopView } from "./shop-match.js";
 import { compOwnership, ownership, rosterOf } from "./roster.js";
+import { challengerNote } from "./plan.js";
 
 /**
  * Modelo de visão: função pura que converte o estado lido (/api/state) e a análise
@@ -225,6 +226,227 @@ export function gepNote(g, noSource = null) {
  * (`state` e `rec` são os corpos guardados no último momento em que ela estava em andamento). Revisão é só leitura do que
  * foi guardado: nada vale como "agora" (sem loja, compra, rolagem nem ação urgente) e `status.review` diz o que se revê.
  */
+/**
+ * A casa de uma vaga quando quem joga agora não é o original da comp, ou quando a peça vem da loja (core/board/interim.mjs,
+ * `plan.stage.slots`). O original jogando (em campo ou da reserva) devolve null: a casa não muda. `label` é o texto da
+ * dica e do rótulo acessível ("Varus 2★ no lugar de Aphelios (temporário: volta quando Aphelios chegar a 2★)").
+ */
+export function slotView(slot) {
+  const p = slot?.playing;
+  if (!p) return null;
+  const o = slot.original ?? null,
+    swapped = !!o && p.id !== o.id,
+    shop = p.source === "loja";
+  if (!swapped && !shop) return null;
+  const buy = shop
+    ? { cost: p.buy?.cost ?? p.cost ?? 0, slot: p.buy?.slot ?? null }
+    : null;
+  const where = buy?.slot ? `Na sua loja (slot ${buy.slot})` : "Na sua loja";
+  const label = shop
+    ? slot.kind === "temporario"
+      ? `${where}: compre ${p.name} como temporário no lugar de ${o?.name ?? "uma peça da comp"}`
+      : slot.kind === "troca-da-comp"
+        ? `${where}: compre ${p.name} (troca da comp) no lugar de ${o.name}`
+        : `${where}: compre ${p.name} para a vaga de ${o?.name ?? p.name}${slot.replaces ? ` (${slot.replaces.name} sai)` : ""}`
+    : slot.kind === "troca-da-comp"
+      ? `troca da comp: ${p.name} no lugar de ${o.name}`
+      : `${p.name}${p.stars ? ` ${p.stars}★` : ""} no lugar de ${o.name} (temporário: ${slot.until?.text ?? slot.why})${o && slot.original.have === "reserva" ? ` · ${o.name} fica guardado na reserva` : ""}`;
+  return {
+    kind: slot.kind,
+    swapped,
+    playing: {
+      id: p.id,
+      name: p.name,
+      stars: p.stars ?? 0,
+      cost: p.cost ?? 1,
+      source: p.source,
+    },
+    original: swapped ? { id: o.id, name: o.name, cost: o.cost ?? 1 } : null,
+    buy,
+    until: slot.until?.text ?? null,
+    label,
+  };
+}
+
+const traitRows = (plan) =>
+  (plan.traits ?? []).map((t) => ({
+    name: t.name,
+    count: t.count,
+    emblem: t.emblem ?? 0,
+    next: t.next ?? null,
+    active: !!t.active,
+  }));
+
+/**
+ * Casas da Formação e painel de trocas de um plano (a comp fixada ou a recomendada): a posição de cada peça (`positions`), a
+ * posse de agora (roster.js), a troca proposta, a build e a vaga (`sub`: substituto, troca da comp ou compra da loja).
+ */
+export function formationCells(plan, rec, roster) {
+  const goalIds = new Set(plan.board.map((u) => u.id)),
+    byId = new Map(plan.board.map((u) => [u.id, u])),
+    carryUnit = plan.board.find((u) => u.name === plan.carry) ?? null,
+    slots = new Map(
+      (plan.stage?.slots ?? [])
+        .filter((s) => s.unit)
+        .map((s) => [s.unit.id, s]),
+    );
+  const cells = (plan.positions ?? []).map((p) => {
+    const u = byId.get(p.championId),
+      own = ownership(roster, p.championId);
+    return {
+      id: p.championId,
+      name: p.name,
+      row: p.row,
+      col: p.col,
+      cost: u?.cost ?? 1,
+      stars: u?.currentStars ?? 0,
+      targetStars: p.targetStars ?? 0,
+      items: u?.items?.length ?? 0,
+      carry: p.championId === carryUnit?.id,
+      role: p.role,
+      reason: p.reason,
+      // A leitura de agora (roster) decide; sem ela (fora de campo e reserva não lida), vale a análise. O `owned` do
+      // servidor inclui a reserva, então `inReserve` é olhado antes dele.
+      status:
+        own.state === "field" || own.state === "both"
+          ? "owned"
+          : own.state === "reserve"
+            ? "reserve"
+            : own.state === "absent"
+              ? "incoming"
+              : u?.inReserve
+                ? "reserve"
+                : u?.owned
+                  ? "owned"
+                  : "incoming",
+      // Onde está a peça e quantas cópias (dica e rótulo da Formação: "2 cópias: 1 em campo, 1 na reserva").
+      own: own.mine ? own.label : "",
+      // Quem joga agora na vaga, se não for o original (ou se vem da loja): core/board/interim.mjs.
+      sub: slotView(slots.get(p.championId)),
+    };
+  });
+  // Trocas (as mesmas vagas: composeAnalysis as lê de `stage.slots`). A peça que entra comprando a carta da loja é uma
+  // compra (lista Comprar e selo na casa), não uma troca do painel.
+  const dock = (plan.transitions ?? [])
+    .filter((t) => !t.fromShop)
+    .map((t) => {
+      const need = t.requiredStars ? starCopies(t.requiredStars) : 0;
+      return {
+        key: `${t.exit?.id ?? "vaga"}>${t.enter.id}`,
+        exit: t.exit ?? null,
+        exitStars: t.exitStars ?? 0,
+        enter: t.enter,
+        enterStars: t.enterStars ?? 0,
+        kind: !t.exit ? "slot" : t.ready ? "ready" : need ? "hold" : "blocked",
+        held: t.exit?.items?.length ?? 0,
+        have: Math.min(t.enterCopies ?? 0, need),
+        need,
+        fromReserve: t.source === "reserve",
+        reason: t.reason ?? "",
+        until: t.until?.text ?? null,
+      };
+    });
+  for (const c of cells) c.swap = dock.find((d) => d.enter.id === c.id) ?? null;
+  // Build recomendada de cada peça (clique na Formação): o motor único de itens (core/items/scenarios.mjs) dá a build
+  // (a da aba Comps quando a comp a publica; senão a reserva, marcada), os equipados, onde está cada item seu (campo e
+  // reserva: "falta" só o que não existe em lugar nenhum) e de quem sai o item que "Passar itens" traz.
+  const builds = formationBuilds({
+    itemPlans: plan.itemPlans,
+    units: rec.self?.units,
+    reserve: rec.self?.reserve,
+    goalIds,
+    itemMoves: plan.itemMoves,
+  });
+  for (const c of cells) c.build = builds.get(c.id) ?? null;
+  return { goalIds, byId, carryUnit, cells, dock };
+}
+
+/** O que falta num plano para a Formação desenhá-lo com substitutos (análise sem `positions` ou sem `stage.slots`). */
+const formationGaps = (plan) =>
+  [
+    plan.positions?.length ? null : "posições (positions)",
+    plan.stage?.slots ? null : "vagas (stage.slots)",
+  ].filter(Boolean);
+
+/** A comp da Formação pronta para desenhar: casas, sinergias, código e contagem de posse (roster.js). */
+function formationOf(plan, rec, roster, which, label) {
+  const { cells } = formationCells(plan, rec, roster),
+    own = compOwnership(
+      roster,
+      plan.board.map((u) => u.id),
+    );
+  return {
+    which,
+    label,
+    title: plan.title ?? plan.carry ?? "",
+    compId: plan.meta?.id ?? plan.freeId ?? null,
+    cells,
+    traits: traitRows(plan),
+    teamCode: plan.teamCode?.code ?? null,
+    teamCodeError: plan.teamCode?.error ?? null,
+    own: own.text,
+    missing: formationGaps(plan),
+  };
+}
+
+/**
+ * Qual comp a Formação mostra e qual fica no seletor, sem fixar nem desfixar nada:
+ * - com comp fixada (`rec.preview`), mostra a Fixada e oferece "ver recomendada" (`rec.recommendations[0]`);
+ * - sem fixada, mostra a Recomendada (o plano do Ao vivo); quando ela é o plano mantido à frente da 1ª pela colocação
+ *   esperada (`switch.kept`), oferece "ver 1ª sugerida" com a nota de plano mantido (plan.js `challengerNote`).
+ * `alt.missing` diz o que a análise não trouxe para desenhar a outra (ela não está entre os planos analisados, ou veio
+ * sem posições/vagas). Devolve `{ shown, label, note, alt }`.
+ */
+export function formationChoice(rec, roster) {
+  const recs = rec?.recommendations ?? [],
+    pinned = rec?.preview ?? null,
+    top = recs[0] ?? null,
+    shown = pinned ? "fixada" : "recomendada",
+    label = pinned ? "Fixada" : "Recomendada";
+  if (pinned && top)
+    return {
+      shown,
+      label,
+      note: null,
+      alt: formationOf(top, rec, roster, "recomendada", "ver recomendada"),
+    };
+  const sw = top?.switch;
+  if (!pinned && sw?.kept === true) {
+    const first =
+      recs.find((r) => r !== top && (r.meta?.id ?? r.freeId) === sw.toId) ??
+      null;
+    const note = challengerNote({
+      title: sw.to,
+      expectedTo: sw.expectedTo,
+      expectedFrom: sw.expectedFrom,
+      gain: sw.gain,
+      cost: sw.cost,
+      hysteresis: sw.hysteresis,
+      unit: sw.unit,
+      pending: sw.held === true,
+    });
+    return {
+      shown,
+      label,
+      note,
+      alt: first
+        ? formationOf(first, rec, roster, "sugerida", "ver 1ª sugerida")
+        : {
+            which: "sugerida",
+            label: "ver 1ª sugerida",
+            title: sw.to ?? "",
+            cells: [],
+            traits: [],
+            teamCode: null,
+            teamCodeError: null,
+            own: "",
+            missing: ["a 1ª sugerida não veio entre os planos desta análise"],
+          },
+    };
+  }
+  return { shown, label, note: null, alt: null };
+}
+
 export function buildModel({ state, rec }, { review = null } = {}) {
   // Comp fixada na tela de seleção (preview) tem prioridade sobre a primeira sugestão.
   const plan = rec?.preview ?? rec?.recommendations?.[0] ?? null,
@@ -300,79 +522,18 @@ export function buildModel({ state, rec }, { review = null } = {}) {
   };
   if (!plan) return { hero, status, plan: null };
 
-  const goalIds = new Set(plan.board.map((u) => u.id)),
-    byId = new Map(plan.board.map((u) => [u.id, u])),
-    carryUnit = plan.board.find((u) => u.name === plan.carry) ?? null,
-    current = rec.currentPlan?.board ?? [],
+  const current = rec.currentPlan?.board ?? [],
     owned = new Set(current.map((u) => u.id)),
-    transitions = plan.transitions ?? [],
     // Suas peças em campo (rec.self.units) e na reserva (GEP, state.seen.gepBench): regra única de roster.js, a mesma
-    // dos cartões da aba Comps e do modal. Sem GEP a reserva é desconhecida (não vazia).
+    // dos cartões da aba Comps e do modal. Sem GEP a reserva é desconhecida (não vazia). A loja do GEP entra só como
+    // possibilidade de compra ("+N na loja").
     roster = rosterOf({ units: rec.self?.units, seen });
-
-  const cells = (plan.positions ?? []).map((p) => {
-    const u = byId.get(p.championId),
-      own = ownership(roster, p.championId);
-    return {
-      id: p.championId,
-      name: p.name,
-      row: p.row,
-      col: p.col,
-      cost: u?.cost ?? 1,
-      stars: u?.currentStars ?? 0,
-      targetStars: p.targetStars ?? 0,
-      items: u?.items?.length ?? 0,
-      carry: p.championId === carryUnit?.id,
-      role: p.role,
-      reason: p.reason,
-      // A leitura de agora (roster) decide; sem ela (fora de campo e reserva não lida), vale a análise. O `owned` do
-      // servidor inclui a reserva, então `inReserve` é olhado antes dele.
-      status:
-        own.state === "field" || own.state === "both"
-          ? "owned"
-          : own.state === "reserve"
-            ? "reserve"
-            : own.state === "absent"
-              ? "incoming"
-              : u?.inReserve
-                ? "reserve"
-                : u?.owned
-                  ? "owned"
-                  : "incoming",
-      // Onde está a peça e quantas cópias (dica e rótulo da Formação: "2 cópias: 1 em campo, 1 na reserva").
-      own: own.mine ? own.label : "",
-    };
-  });
-
-  const dock = transitions.map((t) => {
-    const need = t.requiredStars ? starCopies(t.requiredStars) : 0;
-    return {
-      key: `${t.exit?.id ?? "vaga"}>${t.enter.id}`,
-      exit: t.exit ?? null,
-      exitStars: t.exitStars ?? 0,
-      enter: t.enter,
-      enterStars: t.enterStars ?? 0,
-      kind: !t.exit ? "slot" : t.ready ? "ready" : need ? "hold" : "blocked",
-      held: t.exit?.items?.length ?? 0,
-      have: Math.min(t.enterCopies ?? 0, need),
-      need,
-      fromReserve: t.source === "reserve",
-      reason: t.reason ?? "",
-    };
-  });
-
-  for (const c of cells) c.swap = dock.find((d) => d.enter.id === c.id) ?? null;
-  // Build recomendada de cada peça (clique na Formação): o motor único de itens (core/items/scenarios.mjs) dá a build
-  // (a da aba Comps quando a comp a publica; senão a reserva, marcada), os equipados, onde está cada item seu (campo e
-  // reserva: "falta" só o que não existe em lugar nenhum) e de quem sai o item que "Passar itens" traz.
-  const builds = formationBuilds({
-    itemPlans: plan.itemPlans,
-    units: rec.self?.units,
-    reserve: rec.self?.reserve,
-    goalIds,
-    itemMoves: plan.itemMoves,
-  });
-  for (const c of cells) c.build = builds.get(c.id) ?? null;
+  // A Formação desenha a comp à vista (fixada ou recomendada) com o modelo por vaga; a outra fica no seletor.
+  const { goalIds, byId, carryUnit, cells, dock } = formationCells(
+    plan,
+    rec,
+    roster,
+  );
 
   const stage = plan.stage ?? null,
     stageBoard = stage?.board ?? [];
@@ -426,6 +587,8 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       kind: "bank",
       item: i,
       to: i.to,
+      // Titular para quem o temporário `to` só segura o item (core/items/scenarios.mjs: bankItemTargets); null = é dele.
+      for: i.for ?? null,
       reason: i.reason,
       inField: i.to ? owned.has(i.to.id) : false,
     })),
@@ -654,6 +817,8 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       // Só o título da aba usa a ação; o painel não a desenha mais.
       action: live ? sx.action : null,
       steps: sx.steps ?? [],
+      // Decisão da rodada (core/turn): comprar, subir, rolar e guardar numa conta só; o "Foco agora" a mostra em ordem.
+      turn: live ? (sx.turn ?? null) : null,
       reasons: sx.reasons ?? [],
       level: lv && {
         ...lv,
@@ -731,18 +896,17 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       level: stage?.level ?? hero.level,
       cells,
       dock,
-      traits: (plan.traits ?? []).map((t) => ({
-        name: t.name,
-        count: t.count,
-        emblem: t.emblem ?? 0,
-        next: t.next ?? null,
-        active: !!t.active,
-      })),
+      traits: traitRows(plan),
+      // Qual comp a Formação mostra ("Fixada" ou "Recomendada") e a outra no seletor, sem mexer na fixação; `note` é a
+      // nota de plano mantido quando a recomendada não é a 1ª sugerida.
+      formation: formationChoice(rec, roster),
       // "N/M" em campo (o overlay também lê este par). A reserva fica em `reserve`: "+K na reserva" e o texto da dica.
       progress: { have: progress.field, total: progress.size },
       reserve: {
         count: progress.reserve,
         known: progress.benchKnown,
+        // Peças da comp que você não tem e estão na loja de agora (GEP): "+N na loja".
+        shop: progress.shop,
         text: progress.text,
       },
       // Peças da comp que valem trocar (ou que estão sob pressão sem substituto bom), com a sugestão escolhida.

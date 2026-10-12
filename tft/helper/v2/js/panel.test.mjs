@@ -156,7 +156,9 @@ test("painel Roll: veredito, orçamento e uma linha por peça do time, com a evo
 });
 
 test("painel Roll: guardar mostra o motivo, esconde o orçamento e mantém a lista", () => {
-  const { roll } = panelFor({});
+  // 54g com vida 58 (piso de 30g): a árvore manda guardar e a regra dos 50% confirma. Com 75g no nível final (Fast 8)
+  // os 25g acima dos juros seriam ouro parado e a decisão da rodada os rolaria (decisao-da-rodada.md).
+  const { roll } = panelFor({ gold: 54, hp: 58 });
   assert.equal(
     roll.kids[0].kids.find((k) => k.tag === "b").textContent,
     "não rolar",
@@ -172,6 +174,9 @@ test("painel Roll: inviável marcada com o substituto, peça na loja acesa e not
       gold: 53,
       hp: 25,
       enemy: { Rakan: 16 },
+      // Rivais fortes: com os fracos o tabuleiro já está na força típica do lobby e o perigo fica "estabilizado"
+      // (tft-pressao-vida), sem o selo de perigo nem a rolagem que derruba os juros.
+      rivals: { count: 7, cost: 4, stars: 2, size: 8 },
       shop: [
         {
           slot: 2,

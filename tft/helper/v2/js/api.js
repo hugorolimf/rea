@@ -24,7 +24,17 @@ const getJSON = async (url, init = {}, ms = 20000) => {
   let body = null;
   try {
     body = await response.json();
-  } catch {
+  } catch (cause) {
+    // Prazo esgotado no meio do corpo (resposta grande perto do limite): é demora, não resposta inválida.
+    if (cause?.name === "TimeoutError" || cause?.name === "AbortError")
+      throw Object.assign(
+        new Error("O servidor demorou demais para responder."),
+        {
+          network: true,
+          timeout: true,
+          cause,
+        },
+      );
     // Corpo que não é JSON (proxy, página de erro): vale o status.
   }
   if (!response.ok)

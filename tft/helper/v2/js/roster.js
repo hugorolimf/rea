@@ -1,4 +1,5 @@
 import { starCopies } from "../../core/pool/copies.mjs";
+import { shopView } from "./shop-match.js";
 
 /**
  * Onde estão as suas peças: em campo, na reserva ou em lugar nenhum. Regra única de "peça sua" para toda tela que marca
@@ -18,8 +19,9 @@ const starOf = (s) => {
 };
 
 /**
- * `units`: `rec.self.units` (campo); `seen`: `state.seen` (reserva do GEP). Devolve
- * `{ benchKnown, field: {id: [estrelas...]}, reserve: {id: [estrelas...]} }`.
+ * `units`: `rec.self.units` (campo); `seen`: `state.seen` (reserva e loja do GEP). Devolve
+ * `{ benchKnown, field: {id: [estrelas...]}, reserve: {id: [estrelas...]}, shopKnown, shop: {id: [slots...]} }`. A loja
+ * (shop-match.js, só a do GEP) é possibilidade de compra, não posse: entra só na contagem "+N na loja".
  */
 export function rosterOf({ units = [], seen = null } = {}) {
   const field = {},
@@ -37,7 +39,10 @@ export function rosterOf({ units = [], seen = null } = {}) {
       if (typeof id === "string" && id)
         (reserve[id] ??= []).push(starOf(u.stars));
     }
-  return { benchKnown, field, reserve };
+  const view = shopView(seen),
+    shop = {};
+  for (const s of view.slots) (shop[s.id] ??= []).push(s.slot);
+  return { benchKnown, field, reserve, shopKnown: view.known, shop };
 }
 
 const copiesOf = (stars) => stars.reduce((n, s) => n + starCopies(s), 0);
@@ -113,23 +118,27 @@ export function ownership(roster, id) {
 
 /**
  * Peças de uma comp (`ids`) que você tem: `field` = em campo (com ou sem cópia na reserva), `reserve` = só na reserva,
- * `size` = peças distintas da comp. `text`: "4/9 em campo · +1 na reserva" ("· reserva não lida" sem GEP).
+ * `size` = peças distintas da comp; `shop` = peças que você não tem e estão na loja de agora (GEP; sem loja lida, 0).
+ * `text`: "4/9 em campo · +1 na reserva · +1 na loja" ("· reserva não lida" sem GEP).
  */
 export function compOwnership(roster, ids = []) {
   const list = [...new Set((ids ?? []).filter(Boolean))];
   let field = 0,
-    reserve = 0;
+    reserve = 0,
+    shop = 0;
   for (const id of list) {
     const s = ownership(roster, id).state;
     if (s === "field" || s === "both") field++;
     else if (s === "reserve") reserve++;
+    else if (roster?.shopKnown && roster.shop?.[id]?.length) shop++;
   }
   const benchKnown = roster?.benchKnown === true;
   return {
     field,
     reserve,
+    shop,
     size: list.length,
     benchKnown,
-    text: `${field}/${list.length} em campo${reserve ? ` · +${reserve} na reserva` : ""}${roster && !benchKnown ? " · reserva não lida" : ""}`,
+    text: `${field}/${list.length} em campo${reserve ? ` · +${reserve} na reserva` : ""}${shop ? ` · +${shop} na loja` : ""}${roster && !benchKnown ? " · reserva não lida" : ""}`,
   };
 }

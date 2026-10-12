@@ -16,6 +16,7 @@ import { flip, publishMotion, reducedMotion } from "./dom.js";
 import { focusView } from "./focus.js";
 import { goalStore, matchKeyOf, swapStore } from "./comps.js";
 import { buildModel } from "./model.js";
+import { formationShown } from "./formation-view.js";
 import { rosterOf } from "./roster.js";
 import { createPrefs, safeStorage } from "./prefs.js";
 import { canRegister, registerServiceWorker } from "./pwa.js";
@@ -43,6 +44,7 @@ import { mountSubs } from "./ui/subs.js";
 import { mountAugs } from "./ui/augs.js";
 import { mountPlan } from "./ui/plan.js";
 import { mountTooltips } from "./ui/tooltip.js";
+import { richText } from "./ui/rich-text.js";
 import { planView } from "./plan.js";
 import { augLabel, augStore } from "./augs.js";
 
@@ -287,7 +289,7 @@ function render(model) {
   announceFocus(focus);
   flip($("stage"), () => {
     hud.update(model);
-    board.update(model.plan);
+    drawFormation(model);
     const all = model.plan?.steps ?? [];
     steps.update(all.filter((s) => s.group === "now"));
     itemSteps.update(all.filter((s) => s.group === "items"));
@@ -337,19 +339,6 @@ function render(model) {
       live: replay ? false : status.live,
       readonly: replay,
     });
-    const code = model.plan?.teamCode ?? null,
-      copy = $("copy-code");
-    copy.hidden = !code && !model.plan?.teamCodeError;
-    copy.disabled = !code;
-    copy.dataset.code = code ?? "";
-    copy.title =
-      !code && model.plan?.teamCodeError
-        ? model.plan.teamCodeError
-        : "Copiar o código da equipe para importar no planejador do jogo";
-    const c = model.plan?.counts;
-    $("counts").innerHTML = c
-      ? `${c.ready ? `<span class="chip chip-go" title="trocas para fazer agora">⇄ ${c.ready}</span>` : ""}${c.hold ? `<span class="chip chip-amber" title="trocas para segurar (inclui 'não troque')">⏸ ${c.hold}</span>` : ""}`
-      : "";
   });
   contest.update(
     status.waiting || (status.ended && !status.replay)
@@ -394,6 +383,81 @@ function render(model) {
   setTitle();
 }
 
+/*
+ * Formação: a comp mostrada ("Fixada"/"Recomendada") e o botão que mostra a outra (formation-view.js). Estado só de
+ * interface: não fixa nem desfixa nada, não chama a API e não persiste; volta à padrão quando a outra some ou muda de tipo.
+ */
+const FORMATION_TONE = {
+  fixada: "violet",
+  recomendada: "go",
+  sugerida: "blue",
+};
+let formationAlt = false,
+  formationAltKind = "",
+  shownCells = [];
+function drawFormation(model) {
+  const plan = model?.plan ?? null,
+    kind = plan?.formation?.alt?.which ?? "";
+  if (kind !== formationAltKind) {
+    formationAltKind = kind;
+    formationAlt = false;
+  }
+  const view = formationShown(plan, formationAlt),
+    missing = view?.missing?.length ? view.missing : null;
+  shownCells = view?.cells ?? [];
+  board.update(view ? { cells: shownCells, traits: view.traits } : null);
+  // A outra comp sem posições/vagas na análise: uma linha no lugar do tabuleiro (as sinergias continuam).
+  $("board").toggleAttribute("hidden", !!missing);
+  const miss = $("field-missing");
+  miss.hidden = !missing;
+  miss.innerHTML = missing
+    ? richText(
+        `Sem formação de ${view.title || "a outra comp"}: falta ${missing.join(", ")}`,
+      )
+    : "";
+  const note = $("field-note");
+  note.hidden = !view?.note;
+  note.innerHTML = view?.note ? richText(view.note) : "";
+  $("field-view").hidden = !view;
+  if (view) {
+    const chip = $("field-shown");
+    chip.textContent = view.label;
+    chip.dataset.tone = FORMATION_TONE[view.which] ?? "";
+    $("field-comp").innerHTML = view.title ? richText(view.title) : "";
+    const toggle = $("field-toggle");
+    toggle.hidden = !view.toggle;
+    if (view.toggle) {
+      toggle.querySelector("span").textContent = view.toggle.label;
+      toggle.setAttribute("aria-pressed", String(view.toggle.pressed));
+      toggle.title = view.toggle.pressed
+        ? "Voltar o tabuleiro, as sinergias e o código para a comp padrão (não muda a fixação)"
+        : "Mostrar a outra comp no tabuleiro, nas sinergias e no código (não fixa nem desfixa nada)";
+    }
+  }
+  const code = view?.teamCode ?? null,
+    copy = $("copy-code");
+  copy.hidden = !code && !view?.teamCodeError;
+  copy.disabled = !code;
+  copy.dataset.code = code ?? "";
+  copy.title =
+    !code && view?.teamCodeError
+      ? view.teamCodeError
+      : "Copiar o código da equipe para importar no planejador do jogo";
+  // As trocas contadas são as da comp padrão: com a outra à vista, as contagens somem.
+  const c = view?.toggle?.pressed ? null : plan?.counts;
+  $("counts").innerHTML = c
+    ? `${c.ready ? `<span class="chip chip-go" title="trocas para fazer agora">⇄ ${c.ready}</span>` : ""}${c.hold ? `<span class="chip chip-amber" title="trocas para segurar (inclui 'não troque')">⏸ ${c.hold}</span>` : ""}`
+    : "";
+}
+$("field-toggle").addEventListener("click", () => {
+  formationAlt = !formationAlt;
+  if (!lastModel) return;
+  flip($("stage"), () => {
+    drawFormation(lastModel);
+    drawChampItems();
+  });
+});
+
 // Copiar o código da equipe: confirma no próprio botão por 1,5 s.
 $("copy-code").addEventListener("click", async (e) => {
   const b = e.currentTarget,
@@ -416,8 +480,8 @@ $("copy-code").addEventListener("click", async (e) => {
 let selectedCell = null,
   lastModel = null;
 function drawChampItems() {
-  const cell =
-    lastModel?.plan?.cells?.find((c) => c.id === selectedCell) ?? null;
+  // As casas da comp à vista na Formação (a padrão ou a outra do seletor).
+  const cell = shownCells.find((c) => c.id === selectedCell) ?? null;
   // Partida revista: o banco de agora não vale para ela.
   champItems.update(cell, replayOf() ? [] : (latestState?.seen?.items ?? []));
 }

@@ -37,6 +37,14 @@ export function focusView(model) {
   const buyRows = steps.get("buy")?.rows ?? [],
     inShop = buyRows.filter((r) => r.shop && !r.broke),
     broke = buyRows.filter((r) => r.shop && r.broke);
+  // Decisão da rodada (core/turn): comprar → vender → subir → rolar → guardar, numa conta de ouro só. Quando ela existe,
+  // estes itens vêm dela (e não de três painéis separados), então nunca se contradizem nem gastam o mesmo ouro duas vezes.
+  const turn = panel?.turn;
+  if (turn && Array.isArray(turn.steps)) {
+    turnItems(turn, panel?.roll?.call?.kind).forEach((it) => items.push(it));
+    pushRest(items, steps, buyRows, inShop, broke);
+    return { items, idle: items.length === 0, headline: turn.headline ?? "" };
+  }
   if (inShop.length)
     items.push({
       id: "shop",
@@ -107,6 +115,81 @@ export function focusView(model) {
       detail: `no nível ${ro.call?.at?.level ?? ro.at ?? "?"}`,
     });
 
+  pushRest(items, steps, buyRows, inShop, broke);
+  return { items, idle: items.length === 0 };
+}
+
+const target = (t) =>
+  t.goal === "falta"
+    ? `${t.name} (nova)`
+    : `${t.name}${t.goal ? ` ${t.goal}` : ""}`;
+
+/** Itens do "Foco agora" a partir da decisão da rodada (`turn.steps`, em ordem). `kind`: veredito de rolagem (perigo). */
+function turnItems(turn, kind) {
+  const out = [],
+    buys = turn.steps.filter((s) => s.kind === "buy");
+  if (buys.length)
+    out.push({
+      id: "shop",
+      tone: "go",
+      icon: "coin",
+      label: "Comprar na loja",
+      detail: `${buys
+        .slice(0, 3)
+        .map((b) => b.name)
+        .join(
+          ", ",
+        )}${buys.length > 3 ? ` +${buys.length - 3}` : ""} · ${buys.reduce((n, b) => n + (b.cost ?? 0), 0)}g`,
+    });
+  for (const s of turn.steps) {
+    if (s.kind === "sell")
+      out.push({
+        id: "sell",
+        tone: "danger",
+        icon: "coin",
+        label: "Vender do banco",
+        detail: `+${s.gold}g`,
+      });
+    else if (s.kind === "level")
+      out.push({
+        id: "level",
+        tone: "go",
+        icon: "up",
+        label: "Subir de nível",
+        detail: `para ${s.to} · ${s.cost}g`,
+      });
+    else if (s.kind === "roll")
+      out.push({
+        id: "roll",
+        tone: kind === "danger" ? "danger" : "go",
+        icon: kind === "danger" ? "warn" : "roll",
+        label: kind === "danger" ? "Estabilizar" : "Rolar",
+        detail: `${plural(s.times, "vez", "vezes")}${s.targets?.length ? ` por ${s.targets.slice(0, 2).map(target).join(", ")}` : ""}`,
+      });
+    else if (s.kind === "keep")
+      out.push({
+        id: "keep",
+        tone: "wait",
+        icon: "pause",
+        label: `Guardar ${s.gold}g`,
+        detail: s.why ?? "",
+      });
+  }
+  // Não sobe agora: quando sobe (curva, XP passivo ou ouro que falta), pela mesma decisão.
+  const next = turn.level?.next;
+  if (!turn.level?.up && next?.when)
+    out.push({
+      id: "level",
+      tone: "wait",
+      icon: "clock",
+      label: "Subir depois",
+      detail: next.when,
+    });
+  return out;
+}
+
+/** Itens que não gastam ouro agora: buscar peças fora da loja, trocar e equipar. */
+function pushRest(items, steps, buyRows, inShop, broke) {
   if (!inShop.length && !broke.length && buyRows.length)
     items.push({
       id: "buy",
@@ -134,6 +217,4 @@ export function focusView(model) {
       label: "Equipar",
       detail: plural(equips, "item", "itens"),
     });
-
-  return { items, idle: items.length === 0 };
 }
