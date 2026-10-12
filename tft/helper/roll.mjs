@@ -303,7 +303,7 @@ export function teamOf(plan, analysis, options) {
 export function rollRule(
   team,
   sim,
-  { level, cash, floor, planned = 0, danger = false, rollAt = null },
+  { level, cash, floor, planned = 0, danger = false, rollAt = null, idle = 0 },
 ) {
   const evolving = team.live.filter((p) => p.sim.evolve),
     spare = Math.max(0, cash - floor);
@@ -407,6 +407,15 @@ export function rollRule(
     if (worth(B)) {
       const v = verdict("go", true, planned, B);
       v.reason = goText(v);
+      return v;
+    }
+    // Ouro parado (`idle`: acima do teto de juros, já no nível final): não rende juros nem compra nível, então o
+    // excedente vai para a rolagem com a mesma régua mínima do perigo (chance de upgrade e ganho que pague o ouro),
+    // sem exigir os 50% de uma rodada só. O resto continua guardado.
+    const I = Math.min(planned, idle, CURVE_MAX);
+    if (I >= GAME.shopCost && dangerWorth(I)) {
+      const v = verdict("go", true, I, I);
+      v.reason = `Ouro parado acima dos juros no nível final: ${pct(planChance(I))} de fechar ${what} com ${I}g (+${v.gain} de força esperada).`;
       return v;
     }
     return lowChance(verdict("hold", false, 0, B));

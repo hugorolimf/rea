@@ -34,6 +34,8 @@ import { createAnalysisPipeline } from "./analysis-pipeline.mjs";
 import { createAnalysisRunner } from "./analysis-runner.mjs";
 import { targetLevelTracker } from "../target-level.mjs";
 import { yieldToLoop } from "./live-load.mjs";
+import { traitBook } from "../core/catalog/traits.mjs";
+import { createRoundAdvice } from "./round-advice.mjs";
 
 /** Marcas de tempo por etapa de uma análise: `lap("x")` guarda o que passou desde a marca anterior. */
 export function stageTimer() {
@@ -95,6 +97,12 @@ export function createRecommender(deps) {
   } = deps;
   // Ouro e vida da rodada que decidem o nível-alvo (target-level.mjs): o laço e o POST dividem a mesma memória.
   const targetInputs = deps.targetInputs ?? targetLevelTracker();
+  // Conselho de nível/economia da rodada de agora sobre o último plano, no feed do overlay, sem esperar a análise pesada
+  // (app/round-advice.mjs: na rodada nova a análise completa chegava junto com o combate).
+  const roundAdvice = createRoundAdvice({ overlay, now });
+  let book = null;
+  const augmentTraitsOf = (chosen) =>
+    (book ??= traitBook(catalog)).grants(chosen).traits;
   // Onde a análise pesada roda. O pipeline do processo principal só é criado se for preciso (sem thread, ou se ela cair).
   const analyzer =
     deps.analyzer ??
@@ -418,6 +426,26 @@ export function createRecommender(deps) {
       });
     options.streak = options.replayGameId ? null : streaks.current();
     options.trend = options.replayGameId ? null : streaks.trend();
+    // Economia de agora (ouro, nível, XP, estágio): se mudou desde o corpo que o overlay mostra, o conselho de nível e de
+    // rolagem é refeito já, sobre o último plano (a análise completa segue abaixo). Calculada antes de a análise mexer em
+    // `options`; `publish` a usa para não deixar uma análise atrasada trazer de volta a economia da rodada anterior.
+    const economy = options.replayGameId
+      ? null
+      : roundAdvice.observe(
+          metadata.gameId,
+          options,
+          (() => {
+            try {
+              return augmentTraitsOf(chosen);
+            } catch {
+              return [];
+            }
+          })(),
+        );
+    const economyStage = options.stage
+      ? `${options.stage.stage}-${options.stage.round}`
+      : null;
+    stages.lap("rapido");
     // Nível-alvo: ouro e vida DA RODADA (o maior ouro e a menor vida do estágio-rodada; sem estágio, histerese), para o
     // ouro cruzando 50 g na loja não alternar o alvo. Partida revista: o ouro e a vida dela, sem memória.
     if (!options.replayGameId) {
@@ -455,9 +483,13 @@ export function createRecommender(deps) {
         .filter(([, n]) => n > 0),
     );
     stages.lap("entrada");
-    // Partida revista não alimenta o overlay: ele mostra só a análise ao vivo.
-    const live = (body) =>
-      options.replayGameId ? body : overlay.recordRecommendation(body);
+    // Partida revista não alimenta o overlay: ele mostra só a análise ao vivo. Ao vivo, o feed recebe o corpo pela regra do
+    // conselho da rodada (app/round-advice.mjs): análise atrasada vai com a economia de agora; a resposta do pedido não muda.
+    const live = (body) => {
+      if (!options.replayGameId)
+        roundAdvice.publish(metadata.gameId, economy, economyStage, { body });
+      return body;
+    };
     // A chave de análise do cliente (core/state/analysis-key.mjs), calculada com o estado que esta chamada acabou de ler:
     // o laço do servidor e o POST da interface repetem a mesma chave quando o jogo não mudou, e o segundo responde do
     // primeiro. Partida revista (e pedido que não é "simples") não tem chave.
@@ -562,7 +594,10 @@ export function createRecommender(deps) {
     if (shared.bytes) {
       // A thread entrega o JSON pronto: o servidor só põe `metadata` na frente (nada de reparsear nem de serializar ~1 MB).
       const body = prependField(shared.bytes, "metadata", metadata);
-      if (!options.replayGameId) overlay.recordRecommendationJson(body);
+      if (!options.replayGameId)
+        roundAdvice.publish(metadata.gameId, economy, economyStage, {
+          bytes: body,
+        });
       return { status: 200, bytes: body, stages };
     }
     return {

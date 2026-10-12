@@ -2,12 +2,12 @@
 // um upgrade e ganho esperado por ouro). Funções puras, sem I/O, usadas por strategy.mjs, stage.mjs,
 // tactics.mjs e pelo mock da interface no navegador.
 // Regras do jogo vêm de rules.mjs; POLICY reúne as regras de bolso desta ferramenta.
-import { GAME, POOL } from "./rules.mjs";
+import { GAME } from "./rules.mjs";
 import { POLICY } from "./core/economy/policy.mjs";
 import { interestOf } from "./core/economy/gold.mjs";
 import { starCopies } from "./core/pool/copies.mjs";
 import { levelOdds } from "./core/pool/shop.mjs";
-import { closeCurve as closeCurveAt } from "./core/pool/curve.mjs";
+import { closeCurve as closeCurveAt, goldFor } from "./core/pool/curve.mjs";
 // A política (POLICY: todos os limiares de ouro e vida), os juros, a renda, a projeção, o calendário de rodadas e a faixa de
 // vida moram em core/economy (M5b); a chance por slot, as cópias livres e a curva de fechar estrela, em core/pool (M4).
 // economy.mjs reexporta o que o mock, os motores e os testes consomem por este caminho (o MESMO objeto POLICY).
@@ -27,7 +27,8 @@ export { isPvp, nextRound, roundLabel } from "./core/economy/rounds.mjs";
 export { pressureOf, stageForPressure } from "./core/economy/pressure.mjs";
 export { freeByCost, freeOf } from "./core/pool/copies.mjs";
 export { slotChance } from "./core/pool/shop.mjs";
-export { binomialPmf } from "./core/pool/curve.mjs";
+export { binomialPmf, goldFor } from "./core/pool/curve.mjs";
+export { isContested } from "./core/roll/hunt.mjs";
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
@@ -142,14 +143,7 @@ export function lobbyStrength(analysis) {
   };
 }
 
-/** 3★ disputado demais: muitas cópias com rivais (em campo ou estimadas no banco) ou fração alta da pool. */
-export const isContested = (p) => {
-  const held = (p?.enemy ?? 0) + (p?.hidden ?? 0);
-  return (
-    held >= POLICY.contested.copies ||
-    held / (p?.total ?? POOL[p?.cost] ?? 1) > POLICY.contested.share
-  );
-};
+// 3★ disputado demais (isContested): core/roll/hunt.mjs (reexportado acima).
 
 /* ---------- Probabilidade de loja ---------- */
 
@@ -160,11 +154,7 @@ export const isContested = (p) => {
 export const closeCurve = (args) =>
   closeCurveAt({ ...args, maxGold: args.maxGold ?? POLICY.simulation.maxGold });
 
-/** Menor ouro com chance ≥ q na curva (null se não chegar). */
-export function goldFor(curve, q) {
-  for (let g = 0; g < curve.length; g++) if (curve[g] >= q - 1e-12) return g;
-  return null;
-}
+// Menor ouro com chance ≥ q na curva: core/pool/curve.mjs (reexportado acima).
 
 /**
  * Resumo da curva exata para a interface: chance a cada loja (2g) até um pouco depois de 95%

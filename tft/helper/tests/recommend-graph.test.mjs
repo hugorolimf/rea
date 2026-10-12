@@ -231,12 +231,17 @@ test("T6 XP: só a estratégia dos planos recalcula (a base, a tática e o campo
   assert.deepEqual(sorted(set), sorted(strategies(count)));
 });
 
-test("T6 sequência de derrotas: só a estratégia dos planos recalcula", () => {
+// A sequência entra na loja dos planos também (tft-pressao-vida): vitória na última luta estabiliza o perigo, e a loja usa
+// a mesma faixa da estratégia (cartas secundárias abaixo dos juros só rolando para estabilizar).
+test("T6 sequência de derrotas: só a loja e a estratégia dos planos recalculam", () => {
   const { count } = baseline();
   const set = recomputedBy(() => ({
     streak: { kind: "loss", length: 3, inferred: true },
   }));
-  assert.deepEqual(sorted(set), sorted(strategies(count)));
+  assert.deepEqual(
+    sorted(set),
+    sorted([...stagePlans(count), ...strategies(count)]),
+  );
 });
 
 test("T6 removedores e jogador consultado: a tática e o que depende dela recalculam, a base não", () => {

@@ -23,7 +23,11 @@ export function stageForPressure(stage, foeLevel = null) {
  * Faixa de vida usada por todas as decisões de gasto: crítica, perigo, ferido ou saudável,
  * com o piso de ouro, a urgência e o horizonte de juros de cada faixa, e o gatilho que a disparou (`why`).
  * - `trend`: `{ avgLoss, recentLosses, samples }` de streak.mjs (`samples` ausente conta como suficiente);
- * - `gold`: ouro lido (null = não lido), usado só para reconhecer a sequência de derrotas proposital.
+ * - `gold`: ouro lido (null = não lido), usado só para reconhecer a sequência de derrotas proposital;
+ * - `board`: `{ mine, typical }` na régua de força do lobby (seu tabuleiro de agora e a mediana dos rivais vivos);
+ * - `won`: a última luta contra jogador foi vitória (streak.mjs). Com um dos dois, o perigo pode estar ESTABILIZADO.
+ * Estabilizado (`stabilized`): a faixa continua de perigo (o aviso continua), mas `spend` é falso e o piso, a urgência e o
+ * horizonte são os da economia normal (`POLICY.stable.band`): não manda gastar tudo com o tabuleiro já competitivo.
  */
 export function pressureOf({
   hp,
@@ -31,6 +35,8 @@ export function pressureOf({
   weak = false,
   trend = null,
   gold = null,
+  board = null,
+  won = false,
 }) {
   const H = POLICY.hp,
     T = POLICY.trend,
@@ -76,15 +82,36 @@ export function pressureOf({
       : hp <= H.hurt
         ? "hurt"
         : "healthy";
+  // Estabilizado: a vida diz quanto vale vencer a próxima luta, não obriga a gastar tudo com o tabuleiro já competitivo.
+  const S = POLICY.stable,
+    share = S.share[band] ?? null,
+    level =
+      share !== null &&
+      Number.isFinite(board?.mine) &&
+      Number.isFinite(board?.typical) &&
+      board.typical > 0
+        ? board.mine / board.typical
+        : null,
+    stabilized = danger && (won === true || (level !== null && level >= share)),
+    economy = stabilized ? S.band : band;
   return {
     band,
     danger,
     critical,
     why,
+    stabilized,
+    // Por que estabilizou (vitória ou força), para o aviso; null fora disso.
+    stableWhy: !stabilized
+      ? null
+      : won === true
+        ? "venceu a última luta"
+        : `tabuleiro ${Math.round(board.mine)} contra ${Math.round(board.typical)} da mediana dos rivais`,
+    // Rolar para estabilizar (gastar até o piso de perigo): só no perigo ainda não estabilizado.
+    spend: danger && !stabilized,
     // Sequência de derrotas reconhecida como proposital (a tendência foi ignorada de propósito).
     lossStreak: planned,
-    floor: POLICY.floor[band],
-    urgency: POLICY.urgency[band],
-    horizon: POLICY.horizon[band],
+    floor: POLICY.floor[economy],
+    urgency: POLICY.urgency[economy],
+    horizon: POLICY.horizon[economy],
   };
 }

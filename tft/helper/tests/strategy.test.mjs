@@ -366,17 +366,21 @@ test("rolar pelo time: campo, banco e comp entram na lista e o banco estimado do
 });
 
 test("regra única: sem 50% de chance de evoluir alguma peça rolar vira guardar; com chance, guardar vira rolar", () => {
-  // Nível 8, 25g acima do piso: o time todo junto não chega a 50% → guardar, dizendo quanto ouro passa na regra.
-  const hold = run({ gold: 75, hp: 80, level: 8, stage: "4-2", rivals }).r,
-    hc = hold.panels.rolling.call;
+  // Nível 8 (o nível final da comp Fast 8), 25g acima do piso: o time todo junto não chega a 50%. Antes isso virava
+  // guardar; desde a decisão da rodada (planos/em-andamento/decisao-da-rodada.md), no nível final o ouro acima do teto
+  // de juros não tem outro uso, então esse excedente é rolado pela régua mínima (chance de upgrade do plano e ganho que
+  // pague o ouro). Com o piso em 50g, só os 25g acima dele.
+  const idle = run({ gold: 75, hp: 80, level: 8, stage: "4-2", rivals }).r,
+    ic = idle.panels.rolling.call;
+  assert.equal(idle.action, "ROLAR");
+  assert.equal(idle.spend, 25);
+  assert.equal(idle.keep, 50);
+  assert.ok(ic.go && ic.any < 0.5, `${ic.any}`);
+  assert.match(ic.reason, /^Ouro parado acima dos juros no nível final/);
+  // Sem ouro parado (no piso), não há rolagem: guardar.
+  const hold = run({ gold: 52, hp: 80, level: 8, stage: "4-2", rivals }).r;
   assert.equal(hold.action, "ECONOMIZAR");
-  assert.equal(hc.changed, "hold");
-  assert.equal(hc.kind, "hold");
-  assert.ok(
-    hc.any < 0.5 && hc.need > hc.budget,
-    `${hc.any} ${hc.need} ${hc.budget}`,
-  );
-  assert.match(hold.steps[0], /^Não role: Só \d+% de evoluir alguma peça/);
+  assert.equal(hold.panels.rolling.call.go, false);
   // Com Aphelios 2/3 (falta uma cópia) a mesma situação passa na regra: rola.
   const roll = run({
     gold: 75,
@@ -573,8 +577,23 @@ test("nada perto de evoluir: 3★ distante não segura o veredito de inviável",
 });
 
 test("perigo: com a vida baixa rola para estabilizar mesmo abaixo de 50%; com vida cheia o mesmo ouro acima do piso é guardado", () => {
-  const danger = run({ gold: 24, hp: 25, level: 8, stage: "4-2", rivals }).r,
-    healthy = run({ gold: 64, hp: 80, level: 8, stage: "4-2", rivals }).r;
+  // Rivais fortes (8 peças de custo 4 em 2★): o tabuleiro do Hero fica abaixo da força típica do lobby. Com os rivais
+  // fracos de antes ele já estaria "estabilizado" (tft-pressao-vida: tabuleiro na mediana dos rivais = parar de rolar).
+  const strong = { count: 7, cost: 4, stars: 2, size: 8 },
+    danger = run({
+      gold: 24,
+      hp: 25,
+      level: 8,
+      stage: "4-2",
+      rivals: strong,
+    }).r,
+    healthy = run({
+      gold: 64,
+      hp: 80,
+      level: 8,
+      stage: "4-2",
+      rivals: strong,
+    }).r;
   // Mesmo ouro acima do piso (14g): a regra normal exige 50%; a de perigo, POLICY.roll.dangerChance (10%) de
   // upgrade do plano (aqui ~12%) e ganho que pague o ouro (+0,6 com 14g, acima de 14/30).
   assert.equal(danger.action, "ROLAR");
@@ -584,8 +603,20 @@ test("perigo: com a vida baixa rola para estabilizar mesmo abaixo de 50%; com vi
     `${danger.panels.rolling.call.any}`,
   );
   assert.ok(danger.panels.rolling.go);
-  assert.equal(healthy.action, "ECONOMIZAR");
-  assert.equal(healthy.panels.rolling.call.kind, "hold");
+  // Vida cheia no nível final (Fast 8): os 14g acima do teto de juros são ouro parado e entram pela mesma régua
+  // mínima (decisão da rodada); antes eram guardados. A diferença para o perigo é o motivo e o teto: só o excedente.
+  assert.equal(healthy.action, "ROLAR");
+  assert.equal(healthy.spend, 14);
+  assert.match(healthy.panels.rolling.call.reason, /^Ouro parado/);
+  // Abaixo do teto de juros, com vida cheia, guarda.
+  const saver = run({
+    gold: 50,
+    hp: 80,
+    level: 8,
+    stage: "4-2",
+    rivals: strong,
+  }).r;
+  assert.equal(saver.action, "ECONOMIZAR");
 });
 
 test("loja lida: peça do time na loja entra como suas cópias e aparece na lista com o que comprar", () => {
@@ -680,4 +711,50 @@ test("nível só estimado pelo tabuleiro não vira leitura: sem rolagem, odds ne
   assert.equal(r.panels.rolling.call.kind, "unknown");
   assert.match(r.panels.rolling.call.reason, /Nível sem fonte/);
   assert.ok(r.reasons.some((t) => /Nível sem fonte/.test(t)));
+});
+
+test("rolar diz por quem: panels.rolling.rollFor leva os alvos em ordem com o ouro; guardar não leva alvo", () => {
+  const roll = run({
+      gold: 75,
+      hp: 80,
+      level: 8,
+      stage: "4-2",
+      extra: { Aphelios: 1 },
+      rivals,
+    }).r,
+    rf = roll.panels.rolling.rollFor;
+  assert.equal(roll.action, "ROLAR");
+  assert.equal(rf.go, true);
+  assert.equal(rf.spend, roll.spend);
+  assert.equal(rf.keep, roll.keep);
+  assert.match(rf.text, /^Role \d+g \(até \d+ lojas\), pare em \d+g$/);
+  assert.ok(rf.targets.length >= 1 && rf.targets.length <= 3);
+  assert.deepEqual(
+    [rf.targets[0].name, rf.targets[0].goal, rf.targets[0].have],
+    ["Aphelios", "2★", "2/3"],
+  );
+  assert.match(
+    rf.targets[0].text,
+    new RegExp(`^Aphelios 2★ · \\d+% com ${roll.spend}g$`),
+  );
+  assert.ok(rf.targets.every((t) => t.chance > 0 && t.chance <= 1));
+  assert.match(
+    roll.panels.rolling.hunt.headline,
+    /^Role por: Aphelios \(2★ · \d+% com \d+g\)/,
+  );
+  // Guardar (no teto de juros, sem ouro parado no nível final) não leva alvo.
+  const hold = run({ gold: 52, hp: 80, level: 8, stage: "4-2", rivals }).r;
+  assert.equal(hold.action, "ECONOMIZAR");
+  assert.deepEqual(hold.panels.rolling.rollFor, {
+    go: false,
+    spend: 0,
+    keep: 52,
+    text: "",
+    targets: [],
+  });
+  // Sem ouro lido não há caça (nem alvo inventado).
+  assert.equal(
+    run({ gold: null, hp: 80, level: 8 }).r.panels.rolling.rollFor,
+    null,
+  );
 });

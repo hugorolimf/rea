@@ -51,6 +51,11 @@ export const POLICY = {
   // perder rodadas é a economia funcionando (ouro de sequência e juros), não perigo. Aí a tendência e o tabuleiro fraco
   // não disparam a faixa; só a vida absoluta (`hp.danger`/`hp.critical`) vale. Ouro ou estágio não lidos: sem isenção.
   lossStreak: { lastStage: 3, hp: 50, gold: 30 },
+  // Estabilizado: com a vida em perigo, o tabuleiro de agora (régua de força do lobby: custo × estrela + itens, já com as
+  // compras e as estrelas fechadas) chegou a `share` da força típica dos rivais vivos (a mediana), por faixa (no crítico
+  // uma derrota pode eliminar: pede o tabuleiro na mediana), ou a última luta contra jogador foi vitória. Aí a ordem de
+  // rolar para estabilizar para: o perigo fica só como aviso e o ouro volta à economia da faixa `band` (juros e nível).
+  stable: { share: { danger: 0.9, critical: 1 }, band: "hurt" },
   // Ouro que fica guardado depois de gastar, por faixa; no reroll lento o piso é 50 e no rápido, fastReroll. A árvore de
   // estratégia também lê estes pisos como colchão depois de comprar XP: perigo `danger`, reroll antes do nível `healthy`,
   // 3★ inviável e comp de nível `hurt` (nunca exige mais que `hurt` para subir).
@@ -69,6 +74,28 @@ export const POLICY = {
   // Força de uma unidade = custo × fator da estrela (+ itens); a mesma régua do lobby.
   star: [0, 1, 1.8, 3.2],
   itemMight: 0.6,
+  // Substituto temporário (core/board/interim.mjs): quem joga AGORA em cada vaga da comp (titular × peça fora dela).
+  // Força na vaga = custo × star[estrela] + item × itens completos + sinergia × (patamares com a peça − sem ela) − papel.
+  // Medido (planos/em-andamento/substitutos-temporarios.md, seção 4: 44 partidas, 5.191 observações, 2026-10-11): `star`,
+  // `item`, `synergy` e `hpPerPoint` (vida por rodada por ponto de força acima do lobby, nível ≤5 / 6-7 / 8+).
+  // Política (a confirmar em partida): `margin` (o substituto só joga se superar o titular por mais que isto; empate fica
+  // com o titular; 0 com a vida em perigo), `role` (peça de frente numa vaga de trás ou o contrário), `carryItems` (o carry entra em 1★ com tantos
+  // itens completos prontos), `returnChance`/`returnShops` (a volta "provável" nas próximas lojas), `rounds` (rodadas além
+  // de `horizon` que um temporário comprado joga), `goldPerHp` (ouro que vale 1 de vida) e `bench` (vagas da reserva).
+  interim: {
+    star: [0, 1, 2, 5],
+    item: 2,
+    synergy: { early: 1, late: 2, lateLevel: 6 },
+    hpPerPoint: { early: 0.44, mid: 0.38, late: 0.35 },
+    margin: 1,
+    role: 1,
+    carryItems: 2,
+    returnChance: 0.5,
+    returnShops: 3,
+    rounds: 2,
+    goldPerHp: 1,
+    bench: 9,
+  },
   // Valor de um upgrade no ganho esperado: carry pesa mais, cada item equipado soma 25%; unidade nova vale metade.
   carryWeight: 2,
   itemWeight: 0.25,

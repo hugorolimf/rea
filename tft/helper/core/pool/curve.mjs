@@ -47,3 +47,9 @@ export function closeCurve({ level, cost, own, goal, free, denom, maxGold }) {
   }
   return f[0];
 }
+
+/** Menor ouro com chance ≥ q na curva (null se não chegar). */
+export function goldFor(curve, q) {
+  for (let g = 0; g < curve.length; g++) if (curve[g] >= q - 1e-12) return g;
+  return null;
+}

@@ -28,6 +28,8 @@ import {
   streakGold,
 } from "./economy.mjs";
 import { rollCurve, rollRows, rollRule, teamOf } from "./roll.mjs";
+import { huntBudget, huntPlan, rollFor } from "./core/roll/hunt.mjs";
+import { buildTurn } from "./core/turn/turn.mjs";
 
 const round1 = (v) => Math.round(v * 10) / 10;
 const shopsIn = (gold) => Math.floor(gold / GAME.shopCost);
@@ -105,6 +107,9 @@ function decide(plan, analysis, options, team, sim) {
       pressure: pressure?.band ?? null,
       // O gatilho da faixa de perigo (vida, estágio ou tendência), para o aviso dizer por quê.
       pressureWhy: pressure?.why ?? null,
+      // Perigo estabilizado (tabuleiro na força típica do lobby ou vitória na última luta): o perigo vira só aviso.
+      stabilized: pressure?.stabilized ?? false,
+      stableWhy: pressure?.stableWhy ?? null,
       floor: pressure?.floor ?? null,
       style: meta?.levelling || null,
       rerollLevel,
@@ -203,7 +208,15 @@ function decide(plan, analysis, options, team, sim) {
     weak: lob.weak,
     trend: options.trend ?? null,
     gold,
+    // Tabuleiro de agora (com as compras e as estrelas fechadas nesta rodada) contra a mediana dos rivais vivos, e a
+    // última luta: com um deles, o perigo está estabilizado e a ordem de rolar para.
+    board: lob.size > 1 ? { mine: lob.mine, typical: lob.median } : null,
+    won: streak?.kind === "win",
   });
+  if (pressure.stabilized)
+    reasons.push(
+      `Vida ${hp} em perigo (${pressure.why}), mas estabilizado (${pressure.stableWhy}): pare de rolar para estabilizar; o ouro volta para juros e nível.`,
+    );
   if (pressure.lossStreak && streak?.kind === "loss" && streak.length >= 2)
     reasons.push(
       `Sequência de derrotas com vida ${hp} e ${gold}g guardados no estágio ${stageSeen.stage}: é economia, não perigo.`,
@@ -273,8 +286,8 @@ function decide(plan, analysis, options, team, sim) {
     return out("ECONOMIZAR", `Suba de graça na próxima rodada`, { keep: cash });
   };
   const canLevel = levelCost !== null && levelCost > 0;
-  // 1) Vida em risco: gastar para estabilizar agora vale mais que juros.
-  if (pressure.danger) {
+  // 1) Vida em risco e tabuleiro ainda não estabilizado: gastar para estabilizar agora vale mais que juros.
+  if (pressure.spend) {
     const lvlUp = canLevel && behind && cash - levelCost >= POLICY.floor.danger;
     if (lvlUp)
       steps.push(
@@ -297,7 +310,14 @@ function decide(plan, analysis, options, team, sim) {
             spend: levelCost,
             keep: before,
           })
-        : out("ECONOMIZAR", "Estabilize com itens e posição", { keep: before });
+        : out(
+            "ECONOMIZAR",
+            // Com ouro para rolar mas sem upgrade que pague (retorno decrescente): pare e guarde, não "role" de novo.
+            before - floor >= GAME.shopCost
+              ? `Pare de rolar: guarde ${before}g`
+              : "Estabilize com itens e posição",
+            { keep: before },
+          );
     }
     // All-in: vende do banco só o necessário para cobrir o que passa do ouro em mãos.
     const fromSale = Math.max(0, spend - Math.max(0, before - floor));
@@ -584,7 +604,8 @@ function settle(d, analysis, options, team, sim) {
     return d;
   const cash = d.cash ?? gold,
     floor = d.floor ?? 0,
-    danger = d.pressure === "danger" || d.pressure === "critical",
+    danger =
+      (d.pressure === "danger" || d.pressure === "critical") && !d.stabilized,
     v = rollRule(team, sim, {
       level: options.level,
       cash,
@@ -592,6 +613,11 @@ function settle(d, analysis, options, team, sim) {
       planned: d.action === "ROLAR" ? (d.spend ?? 0) : 0,
       danger,
       rollAt: d.rollAt,
+      // Ouro sem outro uso: no nível final (ou no máximo), o que passa do teto de juros não rende nem compra nível.
+      idle:
+        options.level >= (d.finalLevel ?? 10)
+          ? Math.max(0, cash - Math.max(floor, maxInterestGold()))
+          : 0,
     }),
     kinds = d[KIND] ?? new Map(),
     // Tira os passos/razões do tipo que a regra contradiz.
@@ -603,9 +629,11 @@ function settle(d, analysis, options, team, sim) {
     return {
       ...d,
       action: up ? "SUBIR NÍVEL" : "ECONOMIZAR",
+      // Retorno decrescente: recalculado com o tabuleiro de agora (depois de rolar), sem alvo do plano que pague a
+      // rolagem o veredito é parar e guardar (ou subir), não "role" de novo.
       headline: up
-        ? `Estabilize: suba para o nível ${options.level + 1}`
-        : "Estabilize com itens e posição",
+        ? `Pare de rolar: suba para o nível ${options.level + 1}`
+        : `Pare de rolar: guarde ${cash}g`,
       steps: [
         `Não role: ${v.reason}`,
         ...drop(d.steps, "roll"),
@@ -650,6 +678,21 @@ function settle(d, analysis, options, team, sim) {
       call: publicCall(v, "roll"),
     };
   }
+  // A regra aprovou menos que a árvore pedia (o ouro parado acima dos juros): rola só esse excedente e guarda o resto.
+  if (d.action === "ROLAR" && v.go && v.spend < (d.spend ?? 0)) {
+    const spend = v.spend;
+    return {
+      ...d,
+      headline: `Role ${spend}g (o ouro parado acima dos juros); guarde ${cash - spend}g`,
+      steps: [
+        `Role ${spend}g (até ${shopsIn(spend)} lojas) buscando ${team.lookFor() || "upgrades do time"}: ${v.reason} Pare em ${cash - spend}g.`,
+        ...drop(d.steps, "roll"),
+      ],
+      spend,
+      keep: cash - spend,
+      call: publicCall(v, "roll"),
+    };
+  }
   return { ...d, call: publicCall(v) };
 }
 
@@ -659,6 +702,41 @@ function settle(d, analysis, options, team, sim) {
  */
 function hpAlert(d, hp, team, level) {
   if (d.pressure !== "danger" && d.pressure !== "critical") return null;
+  const keep = d.keep ?? d.cash ?? null,
+    guard = keep != null ? `guarde ${keep}g` : "guarde o ouro",
+    leveled =
+      (d.levelUp ?? 0) > 0 ||
+      (d.action === "SUBIR NÍVEL" && (d.spend ?? 0) > 0);
+  // Estabilizado: o aviso continua, mas diz para parar de rolar (o ouro volta para juros e nível).
+  if (d.stabilized) {
+    const what =
+      d.action === "ROLAR" && (d.spend ?? 0) >= GAME.shopCost
+        ? `role só ${d.spend}g pelo upgrade provável e ${guard}`
+        : leveled
+          ? `suba para o nível ${level + 1} e ${guard}`
+          : `pare de rolar, ${guard}`;
+    return {
+      band: d.pressure,
+      hp,
+      why: [d.pressureWhy, d.stableWhy].filter(Boolean).join("; ") || null,
+      text: `Vida ${hp} · tabuleiro estabilizado: ${what}`,
+      stabilized: true,
+      targets: null,
+    };
+  }
+  // Perigo, mas a rolagem não paga mais (recalculada com o tabuleiro de agora, com ouro acima do piso): pare e guarde
+  // (ou suba), sem repetir "role".
+  const rollingNow = d.action === "ROLAR" && (d.spend ?? 0) >= GAME.shopCost,
+    room = (keep ?? 0) - (d.floor ?? 0) >= GAME.shopCost;
+  if (!rollingNow && (room || d.call?.changed === "hold"))
+    return {
+      band: d.pressure,
+      hp,
+      why: d.pressureWhy ?? null,
+      text: `Vida ${hp} · sem upgrade do plano que pague: ${leveled || d.action === "SUBIR NÍVEL" ? `suba para o nível ${level + 1}` : `pare de rolar, ${guard}`}`,
+      stabilized: false,
+      targets: null,
+    };
   const head = `Vida ${hp}`,
     rolling = d.action === "ROLAR" && (d.spend ?? 0) >= GAME.shopCost,
     levelUp =
@@ -678,7 +756,139 @@ function hpAlert(d, hp, team, level) {
     hp,
     why: d.pressureWhy ?? null,
     text,
+    stabilized: false,
     targets: rolling ? targets || null : null,
+  };
+}
+
+/**
+ * Caça por ouro (core/roll/hunt.mjs) com as peças do time e o orçamento DA DECISÃO: rolando, o gasto recomendado (B =
+ * gasto, parando no ouro que sobra); guardando, o ouro acima do piso (o que aconteceria se rolasse). Devolve
+ * `{ hunt, rollFor }` ou null sem ouro/nível lido ou fora da partida. Os rivais de cada peça vêm só pelo nome (as cópias
+ * por rival ainda não chegam da análise: plano, R5).
+ */
+function huntOf(plan, team, d, analysis, options) {
+  if (
+    options.gold == null ||
+    options.levelEstimated === true ||
+    !(analysis.self.health > 0)
+  )
+    return null;
+  const level = options.level,
+    rolling = d.action === "ROLAR" && (d.spend ?? 0) >= GAME.shopCost,
+    danger =
+      (d.pressure === "danger" || d.pressure === "critical") && !d.stabilized,
+    rivals = new Map(analysis.pool.map((p) => [p.name, p.rivals ?? []])),
+    stars3 = new Set(plan.meta?.stars3 ?? []);
+  const budget = rolling
+    ? huntBudget({ gold: (d.keep ?? 0) + d.spend, floor: d.keep ?? 0, level })
+    : huntBudget({
+        gold: d.cash ?? options.gold,
+        floor: d.floor ?? 0,
+        level,
+        levelCost: d.levelCost,
+        critical: d.pressure === "critical",
+        sellable: d.sellable?.gold ?? 0,
+      });
+  const pieces = team.pieces.map((p) => ({
+    id: p.id,
+    name: p.name,
+    cost: p.cost,
+    own: p.own,
+    goal: p.goal,
+    free: p.free,
+    upper: p.upper,
+    denom: team.denom[p.cost] ?? 0,
+    enemy: p.enemy,
+    hidden: p.hidden,
+    holders: (rivals.get(p.name) ?? []).map((name) => ({ name, copies: null })),
+    value: p.value,
+    carry: p.carry,
+    inPlan: p.inPlan,
+    // Estrela-alvo 3★ da comp de reroll: as `stars3` da meta e o carry (plano, R4: passa a ler a regra do alcance).
+    star3: d.rerollLevel != null && (stars3.has(p.id) || p.carry),
+  }));
+  const hunt = huntPlan({
+    pieces,
+    level,
+    budget,
+    danger,
+    three: {
+      rollLevel: d.rerollLevel ?? d.rollAt ?? null,
+      stage: options.stage ?? null,
+      reroll: d.rerollLevel != null,
+    },
+  });
+  const shop = new Map(
+    team.pieces
+      .filter((p) => p.shop)
+      .map((p) => [p.id, { slots: p.shop.slots, buy: p.shop.buy }]),
+  );
+  return { hunt, rollFor: rollFor(hunt, { go: rolling, shop }) };
+}
+
+/** A caça sem os objetos internos (vai para o JSON da API): veredito, linha "Role por", alvos e os de fora. */
+const huntView = (h) => ({
+  verdict: h.verdict,
+  headline: h.headline,
+  budget: {
+    spend: h.budget.spend,
+    total: h.budget.total,
+    floor: h.budget.floor,
+    levelUp: h.budget.levelUp,
+  },
+  targets: h.targets.map((t) => ({
+    id: t.id,
+    name: t.name,
+    cost: t.cost,
+    tag: t.tag,
+    verdict: t.verdict,
+    chance: t.chance,
+    spend: t.spend,
+    saveTo: t.saveTo,
+    carry: t.carry,
+    text: t.text,
+    three: t.three
+      ? {
+          verdict: t.three.verdict,
+          own: t.three.own,
+          of: t.three.of,
+          now: t.three.now,
+          slow: t.three.slow,
+          rounds: t.three.rounds,
+          level: t.three.level,
+          text: t.three.text,
+        }
+      : null,
+  })),
+  dropped: h.dropped,
+});
+
+/**
+ * Rolar sem alvo não é recomendação: se a decisão manda rolar e nenhuma peça do time tem chance de fechar com o gasto,
+ * vira guardar (os passos de rolar saem e o veredito diz por quê).
+ */
+function withoutTarget(d, cash) {
+  const kinds = d[KIND] ?? new Map(),
+    drop = (list) => list.filter((t) => kinds.get(t) !== "roll"),
+    reason = `nenhuma peça do time tem chance de fechar com ${d.spend}g.`;
+  return {
+    ...d,
+    action: "ECONOMIZAR",
+    headline: "Sem alvo para rolar: guarde",
+    steps: [`Não role: ${reason}`, ...drop(d.steps)],
+    reasons: drop(d.reasons),
+    spend: 0,
+    sold: 0,
+    keep: cash - (d.levelUp ?? 0),
+    call: {
+      ...d.call,
+      kind: "hold",
+      title: TITLE.hold,
+      go: false,
+      reason: `Sem alvo: ${reason}`,
+      changed: "hold",
+    },
   };
 }
 
@@ -687,14 +897,19 @@ export function strategy(plan, analysis, options) {
   // O time e a simulação de rolagem não dependem do ouro: uma vez por chamada, e reaproveitada entre chamadas.
   const team = teamOf(plan, analysis, options),
     sim = analysis.self.health > 0 ? team.simulate() : null;
-  const d = settle(
-      decide(plan, analysis, options, team, sim),
-      analysis,
-      options,
-      team,
-      sim,
-    ),
-    gold = options.gold,
+  let d = settle(
+    decide(plan, analysis, options, team, sim),
+    analysis,
+    options,
+    team,
+    sim,
+  );
+  let hunted = huntOf(plan, team, d, analysis, options);
+  if (hunted && d.action === "ROLAR" && !hunted.rollFor.go) {
+    d = withoutTarget(d, d.cash ?? options.gold);
+    hunted = huntOf(plan, team, d, analysis, options);
+  }
+  const gold = options.gold,
     level = options.level,
     stage = options.stage ?? null,
     streak = options.streak ?? null;
@@ -840,10 +1055,30 @@ export function strategy(plan, analysis, options) {
     curve: sim ? rollCurve(team, sim, rolling ? d.spend : null) : null,
     total: rows.length,
     targets: rows.slice(0, POLICY.roll.rows),
+    // Por quem rolar (core/roll/hunt.mjs): com a decisão de rolar, os alvos em ordem com a chance no gasto recomendado;
+    // sem rolar, `go` false e nenhum alvo. A interface e o overlay leem este campo, não recalculam.
+    rollFor: hunted?.rollFor ?? null,
+    // A caça inteira (alvos, veredito por ouro, 3★ em várias rodadas e o que ficou de fora), para o painel.
+    hunt: hunted ? huntView(hunted.hunt) : null,
   };
+  // Decisão da rodada (core/turn): comprar, subir, rolar e guardar numa conta só, em ordem; as telas leem só isto.
+  const turn = buildTurn({
+    gold,
+    level,
+    stage,
+    d,
+    buys: (plan.stage?.shop ?? []).filter((s) => s.action === "comprar"),
+    rollFor: hunted?.rollFor ?? null,
+    target: options.targetLevel ?? null,
+    comp: {
+      id: plan.meta?.id ?? plan.freeId ?? null,
+      title: plan.title ?? null,
+    },
+  });
   const { call: _call, ...strategyCore } = d;
   return {
     ...strategyCore,
+    turn,
     panels: { economy, leveling, rolling: rollingPanel },
   };
 }

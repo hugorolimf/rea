@@ -143,36 +143,55 @@ const catalog = {
   items: [],
 };
 
-test("vida 28 no 4-x: perigo real, rola por upgrades do plano e a cópia fora do plano fica", () => {
-  const run = (hp) => {
-    const s = makeState({
-      hp,
-      stage: "4-2",
-      gold: 40,
-      level: 8,
-      rivals: { count: 7, cost: 2, stars: 1, size: 6 },
-      units: [
-        ["Aphelios", 4, 1, 3],
-        ["Amumu", 4, 2, 2],
-        ["Diana", 3, 2, 0],
-        ["Rakan", 3, 1, 0],
-        ["Vi", 2, 2, 1],
-        ["Sentinel", 2, 1, 0],
-        ["Varus", 1, 2, 0],
-        // Fora do plano, com itens: a cópia na loja não fecha estrela.
-        ["Poppy", 1, 1, 2],
-      ],
-    });
-    s.options.shop = ["TFT_Poppy", "TFT_Rakan"];
-    // Mesma ordem do servidor: a loja (stagePlan) e depois a estratégia com o campo de agora.
-    const field = stagePlan(s.plan, s.analysis, catalog, s.options);
-    return {
-      s,
-      field,
-      r: strategy({ ...s.plan, stage: field }, s.analysis, s.options),
-    };
+// Tabuleiro do Hero no 4-2 (régua do lobby: custo × estrela + 0,6 por item ≈ 32,8). Rivais "fortes": 8 peças de custo 4
+// em 2★ (57,6: o Hero fica em 57% da mediana); "médios": 7 de custo 3 em 2★ (37,8; estabilizado a partir de 90%, 34).
+// Com os rivais fracos de antes (6 peças de custo 2 em 1★) o Hero já estaria estabilizado e não rolaria.
+const STRONG = { count: 7, cost: 4, stars: 2, size: 8 },
+  MID = { count: 7, cost: 3, stars: 2, size: 7 };
+const BOARD = [
+  ["Aphelios", 4, 1, 3],
+  ["Amumu", 4, 2, 2],
+  ["Diana", 3, 2, 0],
+  ["Rakan", 3, 1, 0],
+  ["Vi", 2, 2, 1],
+  ["Sentinel", 2, 1, 0],
+  ["Varus", 1, 2, 0],
+  // Fora do plano, com itens: a cópia na loja não fecha estrela.
+  ["Poppy", 1, 1, 2],
+];
+/** Loja e estratégia na ordem do servidor (stagePlan e depois strategy com o campo de agora). */
+const decideFor = ({
+  hp = 28,
+  gold = 40,
+  rivals = STRONG,
+  units = BOARD,
+  shop = ["TFT_Poppy", "TFT_Rakan"],
+  streak = null,
+  enemy = {},
+} = {}) => {
+  const s = makeState({
+    hp,
+    stage: "4-2",
+    gold,
+    level: 8,
+    rivals,
+    units,
+    enemy,
+  });
+  s.options.shop = shop;
+  s.options.streak = streak;
+  const field = stagePlan(s.plan, s.analysis, catalog, s.options);
+  return {
+    s,
+    field,
+    r: strategy({ ...s.plan, stage: field }, s.analysis, s.options),
   };
+};
+
+test("vida 28 no 4-x, ainda fraco e com alvo: rola por upgrades do plano e a cópia fora do plano fica", () => {
+  const run = (hp) => decideFor({ hp });
   const { s, field, r } = run(28);
+  assert.equal(r.stabilized, false);
   assert.equal(r.pressure, "danger");
   assert.equal(r.pressureWhy, "vida 28 ≤ 30");
   assert.equal(r.action, "ROLAR");
@@ -194,7 +213,7 @@ test("vida 28 no 4-x: perigo real, rola por upgrades do plano e a cópia fora do
   assert.ok(named(alert.targets).length > 0);
   for (const n of named(alert.targets)) assert.ok(plan.has(n), n);
   // O passo de rolagem cita as peças do plano primeiro.
-  const step = r.steps.find((x) => x.startsWith('Role cerca'));
+  const step = r.steps.find((x) => x.startsWith("Role cerca"));
   assert.ok(plan.has(named(step)[0]), step);
   // Vida cheia, mesmo estado: sem aviso.
   assert.equal(run(80).r.panels.economy.alert, null);
@@ -253,39 +272,44 @@ test("golden danger-hp27 explicado: perigo real pela vida no estágio 4; estabil
     st.pressureWhy,
     `vida 44 ≤ ${POLICY.hp.dangerLate} a partir do estágio ${POLICY.lateStage}`,
   );
-  // A cópia solta de Cassiopeia (fora do plano, 1 cópia: não fecha estrela) não é comprada no perigo.
-  const cass = (top.stage?.shop ?? []).find((c) => c.name === "Cassiopeia");
-  if (cass) assert.equal(cass.action, "segurar");
+  // A cópia solta de Cassiopeia (1 cópia: não fecha estrela) só fica no perigo se estiver FORA do plano.
+  const planNames = new Set(top.board.map((u) => u.name)),
+    cass = (top.stage?.shop ?? []).find((c) => c.name === "Cassiopeia");
+  if (cass && !planNames.has("Cassiopeia"))
+    assert.equal(cass.action, "segurar");
+  // O tabuleiro do Hero já está na força típica do lobby (39 contra a mediana 38 dos rivais: 4º de 7): o perigo está
+  // ESTABILIZADO. A ordem de rolar para; o ouro volta para a economia normal (piso de juros da faixa "hurt") e o aviso
+  // diz isso, sem repetir "role".
   const alert = st.panels.economy.alert;
-  assert.match(alert.text, /^Vida 44: /);
-  const planNames = new Set(top.board.map((u) => u.name));
-  for (const m of (alert.targets ?? "").matchAll(/([A-Z][a-z]+) \d★/g))
-    assert.ok(planNames.has(m[1]), m[1]);
-  // 18 g e ~0% de fechar upgrade do plano com os 8 g acima do piso: a vida em perigo não manda rolar sem chance
-  // (POLICY.roll.dangerChance). Não rola, diz por quê e o aviso manda estabilizar com itens e posição.
+  assert.equal(st.stabilized, true);
+  assert.match(
+    st.stableWhy,
+    /^tabuleiro \d+ contra \d+ da mediana dos rivais$/,
+  );
   assert.notEqual(st.action, "ROLAR");
   assert.equal(st.panels.rolling.go, false);
-  assert.equal(st.panels.rolling.call.go, false);
-  assert.ok(st.panels.rolling.call.any < POLICY.roll.dangerChance);
-  assert.match(
-    st.panels.rolling.call.reason,
-    /^Vida em risco, mas só \d+% de fechar upgrade do plano com \d+g \(mínimo 10%\)/,
-  );
-  assert.ok(
-    st.steps.some((x) => x.startsWith('Não role: Vida em risco, mas só')),
-    st.steps.join(" | "),
-  );
+  assert.notEqual(st.panels.rolling.call.kind, "danger");
   assert.equal(st.panels.economy.sold, 0);
-  assert.equal(alert.text, "Vida 44: estabilize com itens e posição");
-  assert.equal(alert.targets, null);
-  // Sem a tendência e com vida 46 (faixa "hurt"), o plano é o mesmo: a faixa não escolhe comp.
-  const [calm] = runScenario(
-    ctx,
-    { ...base, snapshot: "hp46", trend: null, streak: null },
-    withHp(46),
+  assert.equal(st.panels.economy.floor, POLICY.floor.hurt);
+  assert.match(
+    alert.text,
+    /^Vida 44 · tabuleiro estabilizado: pare de rolar, guarde \d+g$/,
   );
-  assert.equal(calm.response.recommendations[0].strategy.pressure, "hurt");
-  assert.equal(calm.response.recommendations[0].title, top.title);
+  assert.equal(alert.stabilized, true);
+  assert.equal(alert.targets, null);
+  // A faixa não escolhe comp: sem a tendência, vida 46 ("hurt") e 44 ("danger") dão o mesmo plano. (A tendência medida
+  // entra no prazo de montagem, core/comps/reach.mjs, de forma contínua: com ela o plano pode ser outro, por fato.)
+  const calm = (hp) =>
+    runScenario(
+      ctx,
+      { ...base, snapshot: `hp${hp}`, trend: null, streak: null },
+      withHp(hp),
+    )[0].response.recommendations[0];
+  const hurt = calm(46),
+    danger = calm(44);
+  assert.equal(hurt.strategy.pressure, "hurt");
+  assert.equal(danger.strategy.pressure, "danger");
+  assert.equal(danger.title, hurt.title);
 });
 
 test("o plano não oscila quando a vida cruza o limiar para lá e para cá", () => {
@@ -329,4 +353,80 @@ test("aviso do overlay: a linha do servidor, só na faixa de perigo", () => {
   // Fora da faixa de perigo não há aviso de vida.
   const calm = buildHints(view("hurt"), { verbosity: "normal" }).hints;
   assert.ok(!calm.some((h) => h.id === "alert:hp"));
+});
+
+test("estabilizado: mesma vida baixa, depois de fechar 2★ que igualam o lobby, para de mandar rolar", () => {
+  // Antes: 32,8 de força contra a mediana 37,8 (87%, abaixo dos 90%): rola para estabilizar.
+  const before = decideFor({ rivals: MID }).r;
+  assert.equal(before.stabilized, false);
+  assert.equal(before.action, "ROLAR");
+  assert.equal(before.panels.rolling.call.kind, "danger");
+  // Depois de rolar: Aphelios, Rakan e Sentinel fecharam o 2★ (40 de força, 106% da mediana).
+  const units = BOARD.map((u) =>
+    ["Aphelios", "Rakan", "Sentinel"].includes(u[0])
+      ? [u[0], u[1], 2, u[3]]
+      : u,
+  );
+  const after = decideFor({ rivals: MID, units }).r;
+  assert.equal(after.pressure, "danger");
+  assert.equal(after.stabilized, true);
+  assert.notEqual(after.panels.rolling.call.kind, "danger");
+  assert.ok(!/Estabilize agora/.test(after.headline), after.headline);
+  assert.equal((after.levelUp ?? 0) + (after.sold ?? 0), 0);
+  // O ouro volta para a economia normal: guarda acima do piso da faixa "hurt" (30 g), sem o all-in até 10 g.
+  assert.ok(
+    after.keep >= POLICY.floor.hurt || after.action !== "ROLAR",
+    `${after.action} ${after.keep}`,
+  );
+  assert.match(
+    after.panels.economy.alert.text,
+    /^Vida 28 · tabuleiro estabilizado: (pare de rolar, guarde \d+g|suba para o nível 9 e guarde \d+g|role só \d+g pelo upgrade provável e guarde \d+g)$/,
+  );
+});
+
+test("sem alvo do plano viável depois de rolar: não manda rolar de novo", () => {
+  // Fraco contra o lobby, mas as cópias livres acabaram (rivais seguram tudo): nada do plano fecha rolando.
+  const enemy = Object.fromEntries(
+    [
+      "Aphelios",
+      "Amumu",
+      "Xayah",
+      "Diana",
+      "Rakan",
+      "Vi",
+      "Sentinel",
+      "Varus",
+      "Poppy",
+    ].map((n) => [n, 40]),
+  );
+  const { r } = decideFor({ enemy, shop: [] });
+  assert.equal(r.pressure, "danger");
+  assert.equal(r.stabilized, false);
+  assert.notEqual(r.action, "ROLAR");
+  assert.equal(r.panels.rolling.go, false);
+  assert.match(
+    r.headline,
+    /^Pare de rolar: (guarde \d+g|suba para o nível 9)$/,
+  );
+  assert.match(
+    r.panels.economy.alert.text,
+    /^Vida 28 · sem upgrade do plano que pague: (pare de rolar, guarde \d+g|suba para o nível 9)$/,
+  );
+});
+
+test("vitória na última luta com vida baixa: não força rolar", () => {
+  const lost = decideFor({
+      streak: { kind: "loss", length: 2, inferred: true },
+    }).r,
+    won = decideFor({ streak: { kind: "win", length: 1, inferred: true } }).r;
+  assert.equal(lost.panels.rolling.call.kind, "danger");
+  assert.equal(won.pressure, "danger");
+  assert.equal(won.stabilized, true);
+  assert.equal(won.stableWhy, "venceu a última luta");
+  assert.notEqual(won.panels.rolling.call.kind, "danger");
+  assert.ok(!/Estabilize agora/.test(won.headline), won.headline);
+  assert.match(
+    won.panels.economy.alert.text,
+    /^Vida 28 · tabuleiro estabilizado: /,
+  );
 });

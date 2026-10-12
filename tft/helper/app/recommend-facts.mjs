@@ -30,6 +30,7 @@ import { snapshotIdentity } from "../core/state/snapshot-identity.mjs";
 import { analyze } from "../engine.mjs";
 import { tactics } from "../tactics.mjs";
 import { stagePlan } from "../stage.mjs";
+import { slotTransitions } from "../core/board/interim.mjs";
 import { strategy } from "../strategy.mjs";
 import { suggestTargetLevel } from "../target-level.mjs";
 
@@ -441,7 +442,7 @@ export const tacticsAnalysisFact = defineFact({
   compute: tacticalOf,
   cutoff: "key",
   keep: 4,
-  doc: "A base com a tática por cima (cópia da base + tactics + comp fixada). Só o que a tática lê: loja, ouro e XP não entram.",
+  doc: "A base com a tática por cima (cópia da base + tactics + comp fixada). Só o que a tática lê: loja, ouro e XP não entram. As trocas (substituto temporário) saem das vagas da Formação em composeAnalysis.",
 });
 
 function stageAt(slot, i) {
@@ -456,6 +457,10 @@ function stageAt(slot, i) {
     inventory: i.inventory,
     // A faixa de vida da loja é a mesma da estratégia: entra a tendência da vida.
     trend: i.trend,
+    // Última luta (vitória estabiliza o perigo): a mesma entrada da estratégia.
+    streak: i.streak,
+    // Reserva lida (GEP): sem ela, a compra para a reserva não sugere venda (vagas desconhecidas).
+    benchKnown: i.benchKnown,
   });
 }
 
@@ -472,6 +477,7 @@ function strategyAt(slot, i) {
     xp: i.xp,
     levelEstimated: i.levelEstimated,
     augmentTraits: i.grants.traits,
+    targetLevel: i.targetLevel,
   });
 }
 
@@ -512,6 +518,8 @@ const STAGE_INPUTS = Object.freeze({
   metaBuilds: "metaBuilds",
   inventory: "inventory",
   trend: "trend",
+  streak: "streak",
+  benchKnown: "benchKnown",
 });
 const STAGE_DOC =
   "Campo de agora do plano: o que manter, comprar (com a loja lida) e passar de itens (stage.mjs).";
@@ -528,6 +536,8 @@ const strategyInputs = (slot) =>
     xp: "xp",
     levelEstimated: "levelEstimated",
     grants: "traits.grants",
+    // O mesmo nível-alvo que escolheu o tamanho da comp: a decisão da rodada (core/turn) mira nele.
+    targetLevel: "level.targetLevel",
   });
 const STRATEGY_DOC =
   "Economia, nível e rolagem do plano (strategy.mjs; a simulação de rolagem é o fato roll.sim de roll-sim.mjs).";
@@ -767,6 +777,16 @@ export function composeAnalysis(tactical, perPlan, teamCodeOf) {
     plan.stage = copies[slot].stage;
     plan.strategy = copies[slot].strategy;
     plan.teamCode = teamCodeOf(plan.board.map((u) => u.id));
+    // As trocas e o "Passar itens agora" leem as vagas da Formação (core/board/interim.mjs com a loja, o ouro e a faixa de
+    // vida): a tática calculou o mesmo sem a loja; aqui as duas viram uma só decisão.
+    if (plan.stage?.slots) {
+      plan.transitions = slotTransitions(plan.stage.slots);
+      for (const move of plan.itemMoves ?? [])
+        if (move.leaving && move.method !== "sem removedor disponível")
+          move.now =
+            plan.transitions.find((t) => t.exit?.id === move.from.id)?.ready ===
+            true;
+    }
   });
   return analysis;
 }
