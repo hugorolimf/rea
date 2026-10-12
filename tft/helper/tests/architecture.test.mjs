@@ -343,7 +343,7 @@ const RULES = [
         1,
         "STAR = POLICY.star: reusa a tabela mas a redeclara (M5)",
       ],
-      "tactics.mjs": [1, "STAR redeclarado com [0, 1, 1.8, 3.2] (M5)"],
+      // tactics.mjs: 1 -> 0 (substituto temporário: a força na vaga mora em core/board/interim.mjs, POLICY.interim).
     },
   },
   {
