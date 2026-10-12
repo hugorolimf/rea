@@ -63,13 +63,14 @@ próprio (ou é marcado como feito). Atualizada a cada agente que termina.
 
 ## 4. Integração, testes e limpeza
 
-| Item                                      | Origem                        | O que falta                                                                                                    | Executor     |
-| ----------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------ |
-| Suíte completa e golden depois da partida | todos os agentes desta rodada | Rodar a suíte, revisar e regravar os golden (substituições, reroll, itens, rolagem, overlay), commitar         | orquestrador |
-| Plano de substituições para `feitos/`     | `tft-substitutos`             | Depende dos golden acima                                                                                       | orquestrador |
-| Worktree `rea-sem-ocr`                    | integração                    | Já integrada; remover a pasta e a branch só se o usuário pedir                                                 | usuário      |
-| `PLANO-ENGINE-ITENS.md`                   | `tft-remover-ocr`             | O documento (em `feitos/`) ainda cita `screen.items` e `screen-reader.mjs`; atualizar ou marcar como histórico | orquestrador |
-| Ponte GEP própria                         | `overwolf-bridge/`            | Nunca rodou: depende de aprovação do Overwolf e de chave de desenvolvedor; mesmo assim não traz aprimoramentos | usuário      |
+| Item                                        | Origem                        | O que falta                                                                                                                                                                 | Executor     |
+| ------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Teste meta-store travando na suíte completa | orquestrador                  | `tests/meta-store.test.mjs` passa sozinho (15/15) mas trava (10 min, sem subteste) quando roda junto com os outros arquivos; achar o caso sem limite de tempo e pôr timeout | orquestrador |
+| Suíte completa e golden depois da partida   | todos os agentes desta rodada | Rodar a suíte, revisar e regravar os golden (substituições, reroll, itens, rolagem, overlay), commitar                                                                      | orquestrador |
+| Plano de substituições para `feitos/`       | `tft-substitutos`             | Depende dos golden acima                                                                                                                                                    | orquestrador |
+| Worktree `rea-sem-ocr`                      | integração                    | Já integrada; remover a pasta e a branch só se o usuário pedir                                                                                                              | usuário      |
+| `PLANO-ENGINE-ITENS.md`                     | `tft-remover-ocr`             | O documento (em `feitos/`) ainda cita `screen.items` e `screen-reader.mjs`; atualizar ou marcar como histórico                                                              | orquestrador |
+| Ponte GEP própria                           | `overwolf-bridge/`            | Nunca rodou: depende de aprovação do Overwolf e de chave de desenvolvedor; mesmo assim não traz aprimoramentos                                                              | usuário      |
 
 ## 5. Só se confirma em partida
 
