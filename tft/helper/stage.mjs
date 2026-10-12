@@ -14,6 +14,7 @@ import {
   tierFloor,
 } from "./economy.mjs";
 import { compBuild, wantedItems } from "./core/items/builds.mjs";
+import { bankItemTargets } from "./core/items/scenarios.mjs";
 import {
   baseItemId,
   isComponent,
@@ -22,6 +23,26 @@ import {
 } from "./core/catalog/items.mjs";
 import { isAvatar } from "./core/catalog/champions.mjs";
 import { movedInto } from "./core/items/moves.mjs";
+import { traitBook } from "./core/catalog/traits.mjs";
+import {
+  analysisInput,
+  interimContext,
+  interimSlots,
+} from "./core/board/interim.mjs";
+
+/** O que uma carta da loja faz no tabuleiro de agora (`buys` de core/board/interim.mjs), em uma frase. */
+function fillText(fill) {
+  if (!fill) return null;
+  if (fill.purpose === "vaga")
+    return `entra na vaga de ${fill.for?.name ?? fill.name}`;
+  if (fill.purpose === "troca")
+    return `entra no lugar de ${fill.replaces?.name ?? "um temporário"}`;
+  if (fill.purpose === "reserva")
+    return `guarde na reserva: o temporário segue em campo (compre os dois)${fill.sell ? ` · venda ${fill.sell.name} para abrir vaga na reserva` : ""}`;
+  if (fill.purpose === "temporario")
+    return `temporário para a vaga vazia: +${String(fill.gainHp).replace(".", ",")} de vida contra ${fill.costGold}g de juros`;
+  return null;
+}
 /** Devolve o campo sugerido para `options.level`, as compras com chance por loja e o que da meta fica para depois. */
 export function stagePlan(plan, analysis, catalog, options) {
   const level = Math.max(1, Math.min(11, options.level)),
@@ -50,26 +71,76 @@ export function stagePlan(plan, analysis, catalog, options) {
       items: u?.itemNames?.length ?? 0,
     };
   };
-  const strength = (u) =>
-    u.starLevel * (byId.get(u.championName)?.cost ?? u.price ?? 1) +
-    (u.itemNames?.length ?? 0) * 2;
-  // 1) Em campo agora: o que já é seu. Peças da meta primeiro, depois as temporárias mais fortes.
-  const ownedGoal = plan.board
-    .filter((u) => have(u.id))
-    .sort(
-      (a, b) =>
-        Number(b.name === plan.carry) - Number(a.name === plan.carry) ||
-        b.cost - a.cost,
+  // Faixa de vida (a MESMA de strategy.mjs: mesmas entradas, com a tendência e o estágio estimado): pesa a margem do
+  // substituto temporário, a compra de temporário na loja e o orçamento da loja abaixo.
+  const lobby = lobbyStrength(analysis),
+    pressure = pressureOf({
+      hp: analysis.self.health,
+      stage: stageForPressure(options.stage ?? null, lobby.foeLevel),
+      weak: lobby.weak,
+      trend: options.trend ?? null,
+      gold,
+      board:
+        lobby.size > 1 ? { mine: lobby.mine, typical: lobby.median } : null,
+      won: options.streak?.kind === "win",
+    }),
+    interestTier = gold === null ? 0 : tierFloor(gold);
+  // 1) Quem joga agora em cada vaga do plano: a regra única do substituto temporário (core/board/interim.mjs), a mesma das
+  // trocas de tactics.mjs, com a loja lida como possibilidade de compra. Troca aceita da comp (fixada: goal.swaps;
+  // sugerida: autoSwaps) aparece como "troca da comp".
+  const ictx = interimContext(catalog, traitBook(catalog)),
+    shopRead = Array.isArray(options.shop) && options.shop.length > 0,
+    iinput = {
+      goal: plan.board,
+      carry: plan.carry,
+      swaps:
+        plan === analysis.preview
+          ? (analysis.goal?.swaps ?? [])
+          : plan === analysis.recommendations?.[0]
+            ? (analysis.autoSwaps ?? [])
+            : [],
+      ...analysisInput(analysis, ictx),
+      benchKnown: options.benchKnown === true,
+      level,
+      gold,
+      band: pressure.band,
+      positions: plan.positions ?? [],
+    };
+  // Cartas da loja de agora; `buy(slot)` diz se o orçamento deixa comprar. Loja não lida: null (nada é inventado).
+  const shopCards = (buy) =>
+    shopRead
+      ? options.shop
+          .map((id, i) => {
+            const c = id ? byId.get(id) : null;
+            return c
+              ? { slot: i + 1, id, name: c.name, cost: c.cost, buy: buy(i + 1) }
+              : null;
+          })
+          .filter(Boolean)
+      : null;
+  // 1ª passada: toda carta é comprável (a vaga que cada uma ocuparia); o orçamento da loja decide quais de fato.
+  const draft = interimSlots({ ...iinput, shop: shopCards(() => true) }, ictx),
+    intent = new Map(draft.buys.map((b) => [b.slot, b]));
+  const boardOf = (res) => {
+    const playing = res.slots.filter(
+      (s) => s.playing && s.playing.source !== "loja",
     );
-  const temps = [...field.values()]
-    .filter((u) => !goalIds.has(u.championName))
-    .sort((a, b) => strength(b) - strength(a));
-  const board = ownedGoal.slice(0, level).map((u) => entry(u.id, "meta")),
-    hold = ownedGoal.slice(level).map((u) => entry(u.id, "meta"));
-  for (const u of temps) {
-    if (board.length >= level) break;
-    board.push(entry(u.championName, "temporario"));
-  }
+    const metas = playing
+      .filter((s) => s.kind !== "temporario")
+      .sort(
+        (a, b) =>
+          Number(b.playing.name === plan.carry) -
+            Number(a.playing.name === plan.carry) ||
+          b.playing.cost - a.playing.cost,
+      )
+      .map((s) => entry(s.playing.id, "meta"));
+    return [
+      ...metas,
+      ...playing
+        .filter((s) => s.kind === "temporario")
+        .map((s) => entry(s.playing.id, "temporario")),
+    ];
+  };
   // 2) Compras: peças da meta que a loja deste nível oferece, com a chance real por loja dada a pool visível.
   const wanted = plan.board
     .filter((u) => !have(u.id) && buyable(u.cost))
@@ -93,25 +164,12 @@ export function stagePlan(plan, analysis, catalog, options) {
         Number(b.isCarry) - Number(a.isCarry) ||
         b.chancePerShop - a.chancePerShop,
     );
-  // Cada compra entra numa vaga livre ou no lugar da temporária mais fraca ainda em campo.
-  const replaceable = board.filter((u) => u.status === "temporario").reverse();
-  let free = level - board.length;
-  const buyNow = wanted.map((w) => {
-    let replaces = null;
-    const hadFree = free > 0;
-    if (hadFree) free--;
-    else replaces = replaceable.shift()?.name ?? null;
-    return {
-      ...w,
-      replaces,
-      slot: replaces ? "troca" : hadFree ? "vaga" : "banco",
-    };
-  });
   // 3) Sobrou vaga sem peça da meta para ela: pontes compráveis que ativam sinergias da meta.
-  let open = level - board.length - wanted.length;
+  const board0 = boardOf(draft);
+  let open = level - board0.length - wanted.length;
   const bridges = [];
   if (open > 0) {
-    const taken = new Set([...board.map((u) => u.id), ...goalIds]);
+    const taken = new Set([...board0.map((u) => u.id), ...goalIds]);
     const candidates = catalog.champions
       .filter(
         (c) =>
@@ -154,16 +212,10 @@ export function stagePlan(plan, analysis, catalog, options) {
   // Com a vida em risco (a MESMA faixa de strategy.mjs: mesmas entradas, com a tendência e o estágio estimado) a ponte,
   // que ocupa uma vaga vazia agora, pode derrubar o patamar de juros; a cópia fora do plano que não fecha estrela não
   // estabiliza agora e fica: o ouro vai para cópias e upgrades do plano.
-  const lobby = lobbyStrength(analysis),
-    bridgeIds = new Set(bridges.map((b) => b.id)),
-    pressure = pressureOf({
-      hp: analysis.self.health,
-      stage: stageForPressure(options.stage ?? null, lobby.foeLevel),
-      weak: lobby.weak,
-      trend: options.trend ?? null,
-      gold,
-    }),
-    interestTier = gold === null ? 0 : tierFloor(gold);
+  // Cada carta também diz a vaga que ocuparia (core/board/interim.mjs): "entra na vaga de X", "no lugar de S", "compre os
+  // dois" (o titular vai para a reserva) ou "temporário mais forte agora" (peça fora da comp para uma vaga vazia, só quando
+  // a vida que ela segura paga os juros na faixa de vida de agora: já pesada lá, então o corte de juros abaixo não vale).
+  const bridgeIds = new Set(bridges.map((b) => b.id));
   // Cópias de 1★ suas por campeão lidas agora (campo + reserva, inclusive a do GEP): piso para a cópia da pool.
   const ownCopies = new Map();
   for (const u of [...analysis.self.units, ...(analysis.self.reserve ?? [])])
@@ -180,16 +232,19 @@ export function stagePlan(plan, analysis, catalog, options) {
       // Cópias suas: as da pool (campo + reserva do GEP), com piso nas estrelas lidas em campo e na reserva.
       const p = pool.get(c.name),
         own = Math.max(p?.own ?? 0, ownCopies.get(id) ?? 0),
-        inGoal = goalIds.has(id);
+        inGoal = goalIds.has(id),
+        fill = intent.get(slot + 1) ?? null;
       const role = inGoal
         ? c.name === plan.carry
           ? "carry da meta"
           : "peça da meta"
         : have(id)
           ? "cópia de unidade sua"
-          : bridgeIds.has(id)
-            ? "ponte para as sinergias da meta"
-            : null;
+          : fill?.purpose === "temporario"
+            ? "temporário mais forte agora"
+            : bridgeIds.has(id)
+              ? "ponte para as sinergias da meta"
+              : null;
       return {
         slot: slot + 1,
         id,
@@ -202,6 +257,7 @@ export function stagePlan(plan, analysis, catalog, options) {
         role,
         priority: -1,
         core: inGoal,
+        fill,
         enemyCopies: p?.enemy ?? 0,
         base: !role
           ? -1
@@ -246,6 +302,7 @@ export function stagePlan(plan, analysis, catalog, options) {
       .map((s) => s.slot);
     card.reason = [
       card.role,
+      fillText(card.fill),
       card.completes &&
         card.completes +
           (withSlots.length
@@ -275,7 +332,27 @@ export function stagePlan(plan, analysis, catalog, options) {
       card.action = "sem ouro";
       continue;
     }
-    if (!card.core && !pressure.danger && budget - card.cost < interestTier) {
+    // Peça da meta que não entra agora e não cabe na reserva lida (cheia, sem substituto para vender): espere.
+    if (
+      card.core &&
+      !card.completes &&
+      card.closesWith === null &&
+      !have(card.id) &&
+      !card.fill &&
+      draft.bench.known &&
+      draft.bench.free === 0
+    ) {
+      card.action = "segurar";
+      card.reason += " · reserva cheia: venda uma peça antes";
+      continue;
+    }
+    if (
+      !card.core &&
+      // Só rolando para estabilizar (perigo ainda não estabilizado) a carta secundária pode quebrar os juros.
+      !pressure.spend &&
+      card.fill?.purpose !== "temporario" &&
+      budget - card.cost < interestTier
+    ) {
       card.action = "segurar";
       card.reason += " · compraria abaixo de " + interestTier + "g de juros";
       continue;
@@ -283,6 +360,55 @@ export function stagePlan(plan, analysis, catalog, options) {
     card.action = "comprar";
     budget -= card.cost;
   }
+  // 2ª passada: só as cartas que o orçamento comprou entram no tabuleiro de agora (vaga, troca ou reserva).
+  const final = interimSlots(
+      {
+        ...iinput,
+        shop: shopCards(
+          (slot) => cards.find((c) => c.slot === slot)?.action === "comprar",
+        ),
+      },
+      ictx,
+    ),
+    slotOf = new Map(
+      final.slots.filter((s) => s.unit).map((s) => [s.unit.id, s]),
+    );
+  for (const card of cards) {
+    const fill = final.buys.find((b) => b.slot === card.slot) ?? null;
+    card.fill = fill;
+  }
+  const board = boardOf(final),
+    playingIds = new Set(board.map((u) => u.id)),
+    hold = plan.board
+      .filter((u) => have(u.id) && !playingIds.has(u.id))
+      .map((u) => entry(u.id, "meta"));
+  // Cada compra da meta: entra no lugar do temporário só se o supera em 1★ pela margem (senão vai para a reserva:
+  // compre os dois), ou numa vaga livre.
+  const buyNow = wanted.map((w) => {
+    const s = slotOf.get(w.id),
+      bought = s?.playing?.id === w.id && s.playing.source === "loja",
+      replaces = bought
+        ? (s.replaces?.name ?? null)
+        : s?.ifBought?.place === "troca"
+          ? (s.ifBought.replaces?.name ?? null)
+          : null,
+      place = bought
+        ? replaces
+          ? "troca"
+          : "vaga"
+        : (s?.ifBought?.place ?? "banco");
+    return {
+      ...w,
+      replaces,
+      slot: place,
+      // Quem segura a vaga agora (temporário) e quando o titular volta.
+      holder:
+        s?.kind === "temporario" && s.playing
+          ? { id: s.playing.id, name: s.playing.name, stars: s.playing.stars }
+          : null,
+      until: s?.until ?? null,
+    };
+  });
   const shop = cards;
   for (const b of buyNow) b.inShop = shop.some((s) => s.id === b.id);
   // Item de cada unidade em campo: o que já dá para montar com o banco, ou o próximo da build.
@@ -320,8 +446,8 @@ export function stagePlan(plan, analysis, catalog, options) {
       (build?.slotsFree ?? 0) - (movedIn.get(u.id)?.size ?? 0),
     );
   }
-  // Item pronto no banco: vai para a unidade em campo que mais o usa. Ordem: está na build dela (a da comp; sem
-  // ela, a reserva; melhor posição primeiro), depois papel compatível; peça da meta antes de temporária; precisa de slot livre.
+  // Item pronto no banco: vai só para peça da comp (a build dela pede; o temporário segura o do titular; papel compatível) ou
+  // fica guardado. A regra é core/items/scenarios.mjs (bankItemTargets).
   const itemNames = new Map(catalog.items.map((i) => [i.apiName, i.name])),
     kind = itemRole;
   // Mesma lista de itens de build(), Passar itens e dica de emblema (core/items/builds.mjs: a build publicada da comp; sem
@@ -334,59 +460,46 @@ export function stagePlan(plan, analysis, catalog, options) {
         u.slotsFree - u.equipNow.filter((e) => !e.usesHeld).length,
       ]),
     );
-  const bankItems = [];
-  for (const id of (options.inventory ?? []).filter(
-    (id) => !isComponent(id) && !isConsumable(id),
-  )) {
-    if (
-      board.some((u) =>
-        u.equipNow.some((e) => e.id === id && !e.used && (e.used = true)),
-      )
-    )
-      continue;
-    const options2 = board
-      .filter((u) => (room.get(u.id) ?? 0) > 0)
-      .map((u) => {
-        const rank = wishOf(u.id).indexOf(id),
-          role = (advice?.builds ?? []).find(
-            (b) => b.championId === u.id,
-          )?.role,
-          fits = kind(id) === "flex" || kind(id) === role;
-        return {
-          u,
-          rank,
-          fits,
-          score:
-            (rank >= 0 ? 20 - rank * 2 : fits ? 6 : -1) +
-            (u.status === "meta" ? 4 : 0) +
-            (u.name === plan.carry ? 3 : 0),
-        };
-      })
-      .filter((o) => o.score >= 0)
-      .sort((a, b) => b.score - a.score);
-    const pick = options2[0];
-    if (pick) room.set(pick.u.id, room.get(pick.u.id) - 1);
-    bankItems.push({
-      id,
-      name: itemNames.get(id) ?? id,
-      to: pick ? { id: pick.u.id, name: pick.u.name } : null,
-      reason: !pick
-        ? "nenhuma unidade em campo com slot livre usa bem este item; guarde"
-        : pick.rank >= 0
-          ? pick.rank +
-            1 +
-            "º item de " +
-            pick.u.name +
-            (compBuild(plan.meta, pick.u.id)
-              ? " na build da comp"
-              : " na build geral (reserva)")
-          : "papel compatível com " +
-            pick.u.name +
-            (pick.u.status === "meta"
-              ? ""
-              : " (temporário; passe adiante depois)"),
-    });
-  }
+  // Só peças da comp recebem item (core/items/scenarios.mjs: bankItemTargets); o temporário só SEGURA o item da build do
+  // titular da vaga dele.
+  const roleById = new Map(
+      (advice?.builds ?? []).map((b) => [b.championId, b.role]),
+    ),
+    boardIds = new Set(board.map((u) => u.id));
+  const bankItems = bankItemTargets({
+    items: (options.inventory ?? [])
+      .filter((id) => !isComponent(id) && !isConsumable(id))
+      .filter(
+        (id) =>
+          !board.some((u) =>
+            u.equipNow.some((e) => e.id === id && !e.used && (e.used = true)),
+          ),
+      ),
+    members: plan.board.map((u) => ({
+      id: u.id,
+      name: u.name,
+      onField: boardIds.has(u.id),
+      room: room.get(u.id) ?? 0,
+      role: roleById.get(u.id) ?? u.role ?? null,
+    })),
+    holders: final.slots
+      .filter((s) => s.kind === "temporario" && s.playing && s.unit)
+      .map((s) => ({
+        id: s.playing.id,
+        name: s.playing.name,
+        // O temporário não tem build própria: a vaga dele são os slots ainda vazios (3 menos os itens que leva).
+        room: Math.max(
+          0,
+          3 - (board.find((u) => u.id === s.playing.id)?.items ?? 3),
+        ),
+        for: { id: s.unit.id, name: s.unit.name },
+      })),
+    wish: wishOf,
+    fromComp: (id) => !!compBuild(plan.meta, id),
+    roleOf: kind,
+    carry: plan.carry,
+    nameOf: (id) => itemNames.get(id) ?? id,
+  });
   const later = plan.board
     .filter((u) => !have(u.id) && !buyable(u.cost))
     .map((u) => ({
@@ -409,12 +522,13 @@ export function stagePlan(plan, analysis, catalog, options) {
   }
   if (gold === null)
     notes.push("Ouro não lido: as compras aparecem sem checagem de custo.");
+  if (final.note) notes.push(final.note);
   return {
     level,
     board,
     bankItems,
     shop,
-    shopRead: Array.isArray(options.shop) && options.shop.length > 0,
+    shopRead,
     buyNow,
     bridges,
     hold,
@@ -422,6 +536,16 @@ export function stagePlan(plan, analysis, catalog, options) {
     goalProgress: {
       onBoard: board.filter((u) => u.status === "meta").length,
       goal: plan.board.length,
+    },
+    // Modelo por vaga (core/board/interim.mjs): original × quem joga agora (titular, temporário, troca da comp, compra da
+    // loja), o motivo e a volta. A Formação e o overlay desenham daqui.
+    slots: final.slots,
+    interim: {
+      margin: final.margin,
+      shopKnown: final.shopKnown,
+      bench: final.bench,
+      buys: final.buys,
+      note: final.note,
     },
     odds: odds.map((value, i) => ({ cost: i + 1, value })),
     note: notes.join(" "),

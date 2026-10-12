@@ -4,6 +4,9 @@
  * publicada na comp, a variação e as partidas) e a situação de cada item do jogador (de `holdings.mjs`). A interface e o
  * overlay só apresentam. Puro; carrega igual no servidor e no navegador.
  *
+ * Regra de alvo (do usuário): toda recomendação de item é só para os campeões da comp do plano (a fixada ou, sem ela, a
+ * recomendada): `planTargetIds`, `planBuildsOnly`, `bankItemTargets` e, no plano de itens, `buildOf` (item-plan.mjs).
+ *
  * Cenários:
  * - plano (Formação, Ao vivo, overlay, checklist): `tactics.mjs` → `championBuild` por peça (`itemPlans`); no navegador,
  *   `formationBuilds` + `championItemsView`;
@@ -99,4 +102,125 @@ export function championItemsView(cell, bank = []) {
     note: buildSourceNote(b),
     items: b ? championItems(cell, bank) : [],
   };
+}
+
+/**
+ * Alvo de TODA recomendação de item (regra do usuário): só os campeões da comp do plano, a fixada (`rec.preview`) ou,
+ * sem ela, a recomendada (`rec.recommendations[0]`), com as trocas aceitas já aplicadas no tabuleiro do plano. Peça fora
+ * da comp, em campo ou na reserva, não recebe build, "próximo item", item montado nem item do banco para si; ela só pode
+ * ceder itens ("Passar itens") ou, se for o temporário de uma vaga, SEGURAR um item da build do titular (`bankItemTargets`).
+ * Devolve o Set dos ids das peças do plano (vazio sem plano).
+ */
+export const planTargetIds = (plan) =>
+  new Set((plan?.board ?? []).map((u) => u?.id).filter(Boolean));
+
+/** As builds (`{ championId }`) só das peças da comp do plano: a de peça fora da comp sai da lista. */
+export const planBuildsOnly = (builds = [], plan = null) => {
+  const ids = planTargetIds(plan);
+  return (builds ?? []).filter((b) => ids.has(b.championId));
+};
+
+/**
+ * Item pronto do banco ("Equipar" da Formação e do overlay): para quem vai cada item completo do banco. Só peças da comp:
+ * 1. a peça da comp em campo, com vaga, cuja build pede o item (melhor posição; o carry desempata);
+ * 2. sem ela, o temporário que segura a vaga de um titular cuja build pede o item: ele SEGURA o item para o titular
+ *    ("segure X em S para T"); o alvo continua sendo o titular (`for`);
+ * 3. sem isso, a peça da comp em campo, com vaga, de papel compatível com o item;
+ * 4. senão, guarde (para o titular que ainda não está em campo, se a build dele pede o item).
+ * - `items`: ids completos do banco ainda não equipados (sem componentes nem consumíveis), na ordem do banco;
+ * - `members`: peças da comp `[{ id, name, onField, room, role }]` (`room` = slots livres agora; 0 fora de campo);
+ * - `holders`: temporários em campo `[{ id, name, room, for: { id, name } }]` (a vaga do titular `for`);
+ * - `wish(id)`: itens que a peça pede (`wantedItems`); `fromComp(id)`: a build dela é a publicada na comp;
+ * - `roleOf(itemId)`: papel do item ("ad" | "ap" | "tank" | "flex"); `carry`: nome do carry; `nameOf(itemId)`.
+ * Devolve `[{ id, name, to, for, reason }]` (`to`: onde equipar agora, ou null = guardar; `for`: o titular, quando `to`
+ * só segura o item). Não muta as entradas.
+ */
+export function bankItemTargets({
+  items = [],
+  members = [],
+  holders = [],
+  wish = () => [],
+  fromComp = () => true,
+  roleOf = () => "flex",
+  carry = null,
+  nameOf = (id) => id,
+} = {}) {
+  const room = new Map(
+    [...members, ...holders].map((u) => [u.id, Math.max(0, u.room ?? 0)]),
+  );
+  const rankIn = (u, id) => wish(u.id).indexOf(id);
+  const build = (u, rank) =>
+    `${rank + 1}º item de ${u.name} na build ${fromComp(u.id) ? "da comp" : "geral (reserva)"}`;
+  return (items ?? []).map((id) => {
+    const name = nameOf(id),
+      take = (u) => room.set(u.id, room.get(u.id) - 1),
+      free = (u) => (room.get(u.id) ?? 0) > 0,
+      field = members.filter((u) => u.onField !== false);
+    // 1) A peça da comp em campo que pede o item.
+    const wants = field
+      .filter(free)
+      .map((u) => ({ u, rank: rankIn(u, id) }))
+      .filter((x) => x.rank >= 0)
+      .sort(
+        (a, b) =>
+          a.rank - b.rank ||
+          Number(b.u.name === carry) - Number(a.u.name === carry),
+      )[0];
+    if (wants) {
+      take(wants.u);
+      return {
+        id,
+        name,
+        to: { id: wants.u.id, name: wants.u.name },
+        for: null,
+        reason: build(wants.u, wants.rank),
+      };
+    }
+    // 2) O temporário segura o item para o titular da vaga dele.
+    const held = holders
+      .filter(free)
+      .map((h) => ({ h, rank: h.for ? wish(h.for.id).indexOf(id) : -1 }))
+      .filter((x) => x.rank >= 0)
+      .sort((a, b) => a.rank - b.rank)[0];
+    if (held) {
+      take(held.h);
+      return {
+        id,
+        name,
+        to: { id: held.h.id, name: held.h.name },
+        for: { id: held.h.for.id, name: held.h.for.name },
+        reason: `segure ${name} em ${held.h.name} para ${held.h.for.name} (temporário na vaga dele): ${build(held.h.for, held.rank)}`,
+      };
+    }
+    // 3) Papel compatível, só entre as peças da comp em campo.
+    const fits = field
+      .filter(
+        (u) => free(u) && (roleOf(id) === "flex" || roleOf(id) === u.role),
+      )
+      .sort((a, b) => Number(b.name === carry) - Number(a.name === carry))[0];
+    if (fits) {
+      take(fits);
+      return {
+        id,
+        name,
+        to: { id: fits.id, name: fits.name },
+        for: null,
+        reason: `papel compatível com ${fits.name}`,
+      };
+    }
+    // 4) Guarde: para o titular que ainda não está em campo, se a build dele pede o item.
+    const later = members
+      .map((u) => ({ u, rank: rankIn(u, id) }))
+      .filter((x) => x.rank >= 0)
+      .sort((a, b) => a.rank - b.rank)[0];
+    return {
+      id,
+      name,
+      to: null,
+      for: later ? { id: later.u.id, name: later.u.name } : null,
+      reason: later
+        ? `guarde para ${later.u.name}: ${build(later.u, later.rank)}`
+        : "nenhuma peça da comp com slot livre usa este item; guarde",
+    };
+  });
 }

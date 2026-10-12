@@ -168,8 +168,8 @@ function reserveScores(c, ctx, add) {
     // Ordem da meta manda; o lobby observado só desempata itens que já estão na lista.
     let rank = 0;
     for (const id of meta) {
-      if (isEmblemItem(id) || isThiefsGloves(id) || !ctx.buildable(id))
-        continue;
+      // A Luva de Ladrão entra na disputa: se for o melhor item do campeão, vira a build inteira (ver `championBuild`).
+      if (isEmblemItem(id) || !ctx.buildable(id)) continue;
       rank++;
       let bonus = 0,
         why = "";
@@ -473,9 +473,17 @@ export function championBuild(
   const ranked = published
     ? scores
     : [...scores].sort((a, b) => b.score - a.score);
-  const ideal = [];
-  for (const s of ranked) {
+  // Luva de Ladrão na reserva: ocupa os 3 espaços, então só é a build quando é o melhor item do campeão — aí sozinha;
+  // senão fica de fora. A lista de desejos (item-plan.mjs `reserveGloves`) segue a mesma regra.
+  const glovesBuild =
+    !published &&
+    ranked.length > 0 &&
+    isThiefsGloves(ranked[0].id) &&
+    !ranked[0].blocked;
+  const ideal = glovesBuild ? [ranked[0]] : [];
+  for (const s of glovesBuild ? [] : ranked) {
     if (ideal.length === 3) break;
+    if (!published && isThiefsGloves(s.id)) continue;
     if (!published && ideal.some((i) => isManaItem(i.id) && isManaItem(s.id)))
       continue;
     ideal.push(s);
@@ -486,10 +494,19 @@ export function championBuild(
     heldLeft = [...heldParts];
   let freeUsed = 0;
   // O que já está equipado (cada cópia uma vez) não entra de novo; com build da comp, só itens dela e na ordem dela.
-  for (const s of pendingItems(published ? ideal : ranked, equipped)) {
+  for (const s of pendingItems(
+    published || glovesBuild ? ideal : ranked,
+    equipped,
+  )) {
     if (freeUsed >= slotsFree && !heldLeft.length) break;
-    // Item que não se monta (sem receita e fora do banco), Luvas do Ladrão e emblema bloqueado ficam só na build.
-    if (s.blocked || isThiefsGloves(s.id) || !ctx.buildable(s.id)) continue;
+    // Item que não se monta (sem receita e fora do banco) e emblema bloqueado ficam só na build. A Luva de Ladrão só
+    // se monta quando é a build reserva do campeão e ele está sem itens (ela ocupa os 3 espaços).
+    if (
+      s.blocked ||
+      (isThiefsGloves(s.id) && !(glovesBuild && equipped.length === 0)) ||
+      !ctx.buildable(s.id)
+    )
+      continue;
     // Completar a peça solta que a unidade já leva não gasta slot; começar um item novo gasta.
     const completesHeld =
       !!s.usesHeld && takeOne(heldLeft, s.usesHeld) !== null;

@@ -13,10 +13,17 @@ import {
   wantedItems,
 } from "./core/items/builds.mjs";
 import { coveredKeys } from "./core/items/moves.mjs";
+import { planTargetIds } from "./core/items/scenarios.mjs";
 import { spend, takeOne } from "./core/items/stock.mjs";
 import { championRole, isAvatar } from "./core/catalog/champions.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
-import { starCopies, starsForCopies } from "./core/pool/copies.mjs";
+import { starCopies } from "./core/pool/copies.mjs";
+import {
+  analysisInput,
+  interimContext,
+  interimSlots,
+  slotTransitions,
+} from "./core/board/interim.mjs";
 /** "campeão:item" de cada item já montado que a comp passa de um campeão para outro (regra: core/items/moves.mjs). */
 const coveredByMoves = coveredKeys;
 export function tactics(analysis, catalog, options = {}) {
@@ -94,6 +101,9 @@ export function tactics(analysis, catalog, options = {}) {
   // Sinergias de uma peça do plano: as do campeão mais as de emblemas equipados nela (regra única em
   // core/catalog/traits.mjs, a mesma do motor, do servidor e da interface).
   const book = traitBook(catalog);
+  // Régua e entradas do substituto temporário (core/board/interim.mjs): as mesmas que a Formação usa.
+  const interimCtx = interimContext(catalog, book),
+    interimInput = analysisInput(analysis, interimCtx);
   const traitsOfUnit = (id, equipped) =>
     book.of(byId.get(id)?.traits ?? [], equipped).traits;
   const emblemByTrait = new Map(book.recipes.map((e) => [e.trait, e]));
@@ -190,64 +200,19 @@ export function tactics(analysis, catalog, options = {}) {
     for (const u of frontline)
       place(u, u.role === "tank" ? 0 : 1, [3, 2, 4, 1, 5, 0, 6]);
     for (const u of ranged) place(u, 3, columns);
-    const incoming = planned.filter((u) => !current.has(u.id));
-    const outgoing = analysis.self.units.filter(
-      (u) => !planned.some((p) => p.id === u.championName),
+    // Quem entra e quem segura a vaga: a regra única de core/board/interim.mjs. A tática não lê nível, loja, ouro nem vida
+    // (sem nível, as vagas são as peças em campo); a análise final (composeAnalysis) troca estas trocas pelas das vagas da
+    // Formação (stage.mjs), calculadas com tudo isso: as duas nunca se contradizem.
+    const interim = interimSlots(
+      {
+        goal: planned,
+        carry,
+        ...interimInput,
+        level: Number.isFinite(options.level) ? options.level : null,
+      },
+      interimCtx,
     );
-    const available = [...outgoing];
-    const transitions = incoming.map((u) => {
-      let i = available.findIndex((o) => {
-        const c = byId.get(o.championName);
-        return c && role(c) === u.role;
-      });
-      if (i < 0) i = available.length ? 0 : -1;
-      const out = i >= 0 ? available.splice(i, 1)[0] : null;
-      return {
-        enter: { id: u.id, name: u.name },
-        exit: out
-          ? { id: out.championName, name: out.name, items: out.itemNames }
-          : null,
-        source: reserve.has(u.id) ? "reserve" : "shop",
-        reason: reserve.has(u.id)
-          ? "Já está na reserva informada. Prepare para entrar no campo, respeitando seu nível e os itens da unidade que sai."
-          : out
-            ? "Troca proposta para chegar à comp; compre e prepare a substituta antes de reservar a atual."
-            : "Adicionar quando houver slot livre no seu nível.",
-      };
-    });
-    // Força de uma unidade em campo: custo ponderado pelas estrelas, mais itens. Uma 2★ vale bem mais que a mesma 1★.
-    const STAR = [0, 1, 1.8, 3.2],
-      power = (cost, stars, items) =>
-        cost * STAR[Math.max(0, Math.min(3, stars))] + items * 0.6;
-    for (const t of transitions) {
-      if (!t.exit) continue;
-      const out = analysis.self.units.find((u) => u.championName === t.exit.id),
-        outCost = byId.get(t.exit.id)?.cost ?? out?.price ?? 1,
-        outStars = out?.starLevel ?? 1,
-        outPower = power(outCost, outStars, out?.itemNames?.length ?? 0);
-      const enterCost = byId.get(t.enter.id)?.cost ?? 1,
-        copies = analysis.pool.find((p) => p.name === t.enter.name)?.own ?? 0,
-        haveStars = starsForCopies(copies);
-      // Os itens de quem sai passam para quem entra, então a comparação é só de corpo: custo e estrelas.
-      const body = power(outCost, outStars, 0);
-      let required = 1;
-      while (required <= 3 && power(enterCost, required, 0) < body * 0.9)
-        required++;
-      Object.assign(t, {
-        exitStars: outStars,
-        exitPower: Math.round(outPower * 10) / 10,
-        enterCopies: copies,
-        enterStars: haveStars,
-        requiredStars: required > 3 ? null : required,
-        ready: required <= 3 && haveStars >= required,
-      });
-      if (t.ready)
-        t.reason = `Pode trocar: ${t.enter.name} ${haveStars}★ já vale ${t.exit.name} ${outStars}★. Passe os itens na troca.`;
-      else if (required > 3)
-        t.reason = `Não troque: ${t.enter.name} (custo ${enterCost}) não alcança ${t.exit.name} ${outStars}★ (custo ${outCost}) nem em 3★. Mantenha ${t.exit.name}.`;
-      else
-        t.reason = `Segure ${t.exit.name} ${outStars}★ em campo. Só troque quando ${t.enter.name} estiver ${required}★ (você tem ${copies} de ${starCopies(required)} cópias).`;
-    }
+    const transitions = slotTransitions(interim.slots);
     const { counts, byEmblem } = book.tally(
       planned.map((u) => ({
         traits: byId.get(u.id)?.traits ?? [],
@@ -546,8 +511,11 @@ export function tactics(analysis, catalog, options = {}) {
     targetComp = analysis.preview
       ? (options.goalComp ?? null)
       : (target?.meta ?? null);
+  // Só peças da comp do plano recebem build, "próximo item" e item montado (core/items/scenarios.mjs: planTargetIds);
+  // peça fora da comp, em campo ou na reserva, só cede itens ("Passar itens").
+  const targetPieces = planTargetIds(target);
   const currentBuilds = analysis.self.units
-    .filter((u) => byId.has(u.championName))
+    .filter((u) => byId.has(u.championName) && targetPieces.has(u.championName))
     .map((u) => ({
       ...build(
         byId.get(u.championName),
@@ -628,7 +596,8 @@ export function tactics(analysis, catalog, options = {}) {
     ready.push(c);
   }
   analysis.ownedItemAdvice = {
-    synergyTips: analysis.currentPlan?.synergyTips ?? [],
+    // Dicas de sinergia (e o emblema de cada uma) da comp do plano: o emblema vai para uma peça dela, não do tabuleiro.
+    synergyTips: target?.synergyTips ?? analysis.currentPlan?.synergyTips ?? [],
     builds: currentBuilds,
     ready,
     near: choices

@@ -21,6 +21,7 @@ import {
   baseItemId,
   isComponent,
   isEmblemTool,
+  isThiefsGloves,
 } from "./core/catalog/items.mjs";
 import {
   craftKindFromOrigins,
@@ -206,13 +207,21 @@ export function buildItemPlan({
     if (o.t === "i") return kindFromOrigin(insts[o.i].from, unitId);
     return craftKindFromOrigins([parts[o.a].from, parts[o.b].from], unitId);
   }
-  // Valor medido (positivo) de um item num campeão, uma consulta por par.
+  // Itens que cada campeão pode RECEBER: com build publicada na comp, só os dela (regra do usuário: o item é montado para
+  // a comp; componente sem uso nela fica guardado e não vira item de outra peça); sem build, a reserva medida.
+  const published = new Map(
+    units.map((u) => {
+      const list = buildOf(u.id);
+      return [u.id, list?.length ? new Set(list.map(baseItemId)) : null];
+    }),
+  );
+  // Valor medido (positivo) de um item num campeão, uma consulta por par; item fora da build publicada não vale nele.
   const measured = new Map(units.map((u) => [u.id, new Map()]));
   const measure = (u, o) => {
     const id = idOf(o),
       memo = measured.get(u);
     if (!memo.has(id)) {
-      const m = valueOf(u, id);
+      const m = published.get(u)?.has(id) === false ? null : valueOf(u, id);
       memo.set(id, m && m.value > 0 ? m : null);
     }
     return memo.get(id);
@@ -225,7 +234,9 @@ export function buildItemPlan({
   const active = bankRead && valueOf;
   if (active && (insts.length || parts.length)) {
     // Só entram as opções com valor positivo em algum campeão da comp (a lista medida dele): o resto não soma.
-    const wants = new Map(units.map((u) => [u.id, wantsOf(u.id)])),
+    const wants = new Map(
+        units.map((u) => [u.id, published.get(u.id) ?? wantsOf(u.id)]),
+      ),
       useful = (id) => units.some((u) => wants.get(u.id).has(id)),
       fixed = insts
         .map((x, i) => ({ t: "i", i }))
@@ -432,8 +443,14 @@ export function buildItemPlan({
           componentsNeeded: recipes.get(id) ?? [],
         };
       });
-    return rankedOf(u.id)
-      .filter((x) => isPlanItem(x.id) && !have.has(x.id))
+    // Reserva: a mesma regra da Luva de Ladrão do motor de builds (core/items/builds.mjs `glovesBuild`) — ela ocupa os
+    // 3 espaços, então só entra quando é o melhor item do campeão, e aí sozinha; senão fica de fora.
+    const ranked = rankedOf(u.id).filter((x) => isPlanItem(x.id)),
+      gloves = ranked.length > 0 && isThiefsGloves(ranked[0].id);
+    return (
+      gloves ? ranked.slice(0, 1) : ranked.filter((x) => !isThiefsGloves(x.id))
+    )
+      .filter((x) => !have.has(x.id))
       .slice(0, wishLimit)
       .map(({ id, m }) => ({
         item: { id, name: nameOf(id) },

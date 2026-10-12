@@ -380,3 +380,36 @@ test("(d) emblema da build publicada: fica na build; só monta em quem não tem 
     assert.equal(shown[0].label === "não equipa", blocked);
   }
 });
+
+/* ---------- Luva de Ladrão na reserva (lista de desejos e carrossel com a mesma regra) ---------- */
+
+test("Luva de Ladrão: reserva em que ela é o melhor item vira a build sozinha, e o carrossel busca as Luvas de Treino", () => {
+  const GLOVES = "DA_ThiefsGloves",
+    SPAR = "DA_Component_SparringGloves",
+    who = byId.get("DA_18_Cassiopeia");
+  // A build geral do campeão traz a Luva primeiro: ela vence a disputa e ocupa os 3 espaços.
+  const plan = championBuild(who, {
+    comp: null,
+    ctx: buildCtx({
+      metaBuilds: { [who.apiName]: [GLOVES, ARCH, "DA_BlueBuff"] },
+      stats: null,
+    }),
+  });
+  assert.deepEqual(ids(plan.ideal), [GLOVES]);
+  const picks = carouselPicks([plan], { carry: who.name, inventory: [] });
+  assert.equal(
+    picks[0]?.id,
+    SPAR,
+    "a Luva de Treino é o componente que o carrossel busca",
+  );
+  assert.equal(picks[0].uses[0].itemId, GLOVES);
+  // Com outro item na frente, a Luva fica fora da build (ela não divide espaço com outros itens).
+  const other = championBuild(who, {
+    comp: null,
+    ctx: buildCtx({
+      metaBuilds: { [who.apiName]: [ARCH, GLOVES, "DA_BlueBuff"] },
+      stats: null,
+    }),
+  });
+  assert.ok(!ids(other.ideal).includes(GLOVES), ids(other.ideal).join(","));
+});
