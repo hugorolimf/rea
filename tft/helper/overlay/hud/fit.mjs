@@ -226,6 +226,8 @@ export function keepOutRects(rects) {
     union(rects?.shopCards),
     union([rects?.levelXp, rects?.gold, rects?.xp]),
     rects?.stage,
+    // [ESTIMADO] Botões "Comprar XP" e "Atualizar" do jogo, onde moram os selos de nível e de rolagem.
+    union([rects?.xpButton, rects?.rerollButton]),
   ];
   return out.filter(validRect);
 }

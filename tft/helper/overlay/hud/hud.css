@@ -831,6 +831,9 @@
     &[data-tone="danger"] {
       --mk-c: var(--danger);
     }
+    &[data-tone="swap"] {
+      --mk-c: var(--violet);
+    }
     &[data-stale="1"] {
       opacity: 0.6;
     }
@@ -923,6 +926,9 @@
     &[data-tone="danger"] {
       --mk-c: var(--danger);
     }
+    &[data-tone="swap"] {
+      --mk-c: var(--violet);
+    }
     &[data-kind="gold"][data-tone="info"] {
       --mk-c: var(--gold);
     }
@@ -1002,6 +1008,9 @@
     }
     &[data-tone="danger"] {
       --mk-c: var(--danger);
+    }
+    &[data-tone="swap"] {
+      --mk-c: var(--violet);
     }
     &[data-stale="1"] {
       opacity: 0.55;
@@ -1486,5 +1495,406 @@
     & b {
       color: var(--go);
     }
+  }
+  /* Verbosidade normal: cada atalho com o rótulo curto ao lado (duas colunas). */
+  .keys-list[data-labels="1"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+    & .keys-pre {
+      grid-column: 1 / -1;
+    }
+  }
+  .keys-lbl {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Número ao lado da frase da dica ("❤ 28 · Vida em perigo"). */
+  .hl-lead {
+    white-space: nowrap;
+  }
+  .hl-sep {
+    color: var(--muted);
+  }
+}
+
+/* Painel da comp (comp.mjs): aberto pelo atalho "Ver comp"; não é região quente, então nunca captura o mouse fora do
+   modo de edição. Cada casa: retrato de quem ocupa a vaga, marca de onde está (nunca só cor), estrela, selo ⇄ com o
+   retrato pequeno da original esmaecido, e selo de compra (moeda + custo) quando a peça está na sua loja. */
+@layer components {
+  html[data-dim="1"] .cpanel {
+    opacity: 0.62;
+  }
+  .cpanel {
+    max-height: 520px;
+    overflow: hidden;
+  }
+  .cp-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    & .title {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  .cp-facts b {
+    color: var(--text);
+  }
+  .cp-units {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 6px;
+  }
+  .cp-u {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    padding-bottom: 2px;
+    & .cp-pt {
+      display: inline-flex;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--ring-c, var(--line));
+    }
+    /* Falta: retrato apagado e contorno tracejado; na reserva: anel azul; em campo: o anel do custo. */
+    &[data-where="absent"] .cp-pt,
+    &[data-where="unknown"] .cp-pt {
+      opacity: 0.45;
+      outline: 1.5px dashed var(--muted);
+      outline-offset: 2px;
+    }
+    &[data-where="reserve"] .cp-pt {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+    &[data-shop="1"] .cp-pt {
+      opacity: 1;
+      outline: 2px dashed var(--gold);
+      outline-offset: 2px;
+    }
+    &[data-carry="1"] .cp-pt {
+      box-shadow:
+        0 0 0 2px var(--ring-c, var(--line)),
+        0 0 0 4px var(--gold);
+    }
+    & .cp-st {
+      min-height: 10px;
+      color: var(--gold);
+      font-size: 9px;
+      font-style: normal;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    & .cp-mark {
+      position: absolute;
+      right: -4px;
+      bottom: 10px;
+      display: grid;
+      place-items: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--muted);
+      font-style: normal;
+      & .i {
+        width: 11px;
+        height: 11px;
+      }
+    }
+    &[data-where="field"] .cp-mark {
+      color: var(--go);
+    }
+    &[data-where="reserve"] .cp-mark {
+      color: var(--blue);
+    }
+    & .cp-crown {
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--gold);
+      font-size: 11px;
+      font-style: normal;
+      line-height: 1;
+    }
+    /* Original da vaga, pequena e esmaecida no canto, com o contorno da cor do custo; ⇄ diz "no lugar de". */
+    & .cp-orig {
+      position: absolute;
+      top: -4px;
+      left: -6px;
+      display: inline-flex;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1.5px var(--ring-c, var(--line));
+      opacity: 0.6;
+      filter: grayscale(0.5);
+    }
+    & .cp-swap {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      color: var(--amber);
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 700;
+      line-height: 1;
+    }
+    &[data-sub="troca-da-comp"] .cp-swap {
+      color: var(--blue);
+    }
+    & .cp-buy {
+      position: absolute;
+      bottom: 8px;
+      left: -6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+      padding: 0 3px;
+      border-radius: 6px;
+      background: var(--gold);
+      color: oklch(0.22 0.05 80);
+      font-size: 10px;
+      line-height: 1.4;
+      & .i {
+        width: 10px;
+        height: 10px;
+      }
+    }
+  }
+  .cp-legend,
+  .cp-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 6px;
+    color: var(--muted);
+    font-size: 11px;
+    & .i {
+      width: 11px;
+      height: 11px;
+    }
+  }
+  .cp-nav kbd {
+    padding: 0 4px;
+    border: 1px solid var(--card-line);
+    border-radius: 4px;
+    background: var(--soft);
+    font: inherit;
+    font-weight: 700;
+  }
+  .cp-loose {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+  .cp-lp {
+    display: inline-flex;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1.5px var(--ring-c, var(--line));
+  }
+  .cp-builds {
+    display: grid;
+    gap: 4px;
+    & li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    & li[data-carry="1"] .cp-bp {
+      box-shadow:
+        0 0 0 1.5px var(--ring-c, var(--line)),
+        0 0 0 3px var(--gold);
+    }
+  }
+  .cp-bp {
+    display: inline-flex;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1.5px var(--ring-c, var(--line));
+  }
+  .cp-bi {
+    display: inline-flex;
+    gap: 3px;
+  }
+  .cp-item[data-on="1"] {
+    outline: 1.5px solid var(--go);
+    outline-offset: 1px;
+    border-radius: 7px;
+  }
+  .cp-3star {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    & b:first-child {
+      color: var(--gold);
+    }
+  }
+  .cp-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    & .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+  }
+  /* Selos nos botões do jogo (badges.mjs): pequenos, na cor do veredito; a explicação fica no title (modo de edição). */
+  .layer-badges {
+    z-index: 2;
+  }
+  .badge {
+    --bd-c: var(--muted);
+    position: absolute;
+    display: grid;
+    gap: 0;
+    padding: calc(3px * var(--k)) calc(6px * var(--k));
+    border: calc(1.5px * var(--k)) solid var(--bd-c);
+    border-radius: calc(7px * var(--k));
+    background: rgb(10 14 24 / 0.9);
+    color: var(--text);
+    line-height: 1.25;
+    white-space: nowrap;
+    & .badge-tx {
+      color: var(--bd-c);
+      font-size: calc(12px * var(--k));
+    }
+    & .badge-sub {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: calc(11px * var(--k));
+    }
+    &[data-tone="go"] {
+      --bd-c: var(--go);
+    }
+    &[data-tone="danger"] {
+      --bd-c: var(--danger);
+    }
+    &[data-tone="amber"] {
+      --bd-c: var(--amber);
+    }
+    &[data-tone="info"] {
+      --bd-c: var(--blue);
+    }
+  }
+  html[data-interactive="1"] .badge {
+    pointer-events: auto;
+  }
+  /* Alvos da rolagem no selo do botão "Atualizar": retrato pequeno com a estrela-alvo; o primeiro em destaque. */
+  .badge .badge-tx {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(3px * var(--k));
+  }
+  .badge-t {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-end;
+    & .pt {
+      border-radius: 50%;
+    }
+    &[data-first="1"] .pt {
+      box-shadow: 0 0 0 calc(1.5px * var(--k)) var(--gold);
+    }
+  }
+  .badge-st {
+    margin-left: calc(-4px * var(--k));
+    color: var(--gold);
+    font-size: calc(9px * var(--k));
+    font-style: normal;
+  }
+  .car-best {
+    display: inline-flex;
+    color: var(--go);
+    font-style: normal;
+    & .i {
+      width: 12px;
+      height: 12px;
+    }
+  }
+  .hp-badges {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    & small {
+      display: block;
+      color: var(--muted);
+    }
+  }
+  .cpanel .trait-icon {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    background: var(--text);
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
+  }
+}
+
+/* Bloco "Entra e sai" (swaps.mjs) e "Montar agora" (itens): retratos e a palavra da ação; a frase inteira no title. */
+@layer components {
+  html[data-dim="1"] .swaps {
+    opacity: 0.62;
+  }
+  .sw-row,
+  .bn-row {
+    flex-wrap: nowrap;
+  }
+  .sw-pt {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-end;
+    & .pt {
+      border-radius: 50%;
+    }
+    & .st {
+      margin-left: -4px;
+    }
+  }
+  .sw-tx,
+  .bn-w {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .sw-row[data-kind="enter"] .sw-tx {
+    color: var(--go);
+  }
+  .sw-row[data-kind="leave"] .sw-tx {
+    color: var(--danger);
+  }
+  .sw-row[data-kind="sell"] .sw-tx {
+    color: var(--amber);
+  }
+  .sw-swap {
+    color: var(--violet);
+    font-style: normal;
+    font-weight: 700;
+  }
+  .sw-buy {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 4px;
+    border-radius: 6px;
+    background: var(--violet);
+    color: oklch(0.2 0.05 305);
+    font-size: 11px;
+    font-weight: 700;
+    & .i {
+      width: 11px;
+      height: 11px;
+    }
+  }
+  .bn-row[data-carry="1"] {
+    background: rgb(255 255 255 / 0.06);
+    border-radius: 8px;
   }
 }

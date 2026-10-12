@@ -568,10 +568,23 @@ test("dock: botão '?' só com host, um ponto por fonte, texto escapado e aviso 
     }),
     />integrado</,
   );
-  // Compacto (verbosidade mínima, o padrão): o estado normal "integrado" não ocupa a tela; só os pontos e o "?".
+  // Padrão (verbosidade normal): o dock como era, com o estado "integrado".
+  assert.match(
+    draw.dock({ health, mode: { ...mode, interactive: false }, hasHost: true }),
+    />integrado</,
+  );
+  // Compacto (verbosidade mínima, opção do "?"): o estado normal "integrado" não ocupa a tela; só os pontos e o "?".
   assert.ok(
     !draw
-      .dock({ health, mode: { ...mode, interactive: false }, hasHost: true })
+      .dock({
+        health,
+        mode: {
+          ...mode,
+          interactive: false,
+          hints: { ...normal, verbosity: "minimal" },
+        },
+        hasHost: true,
+      })
       .includes(">integrado<"),
   );
   assert.ok(
@@ -721,6 +734,9 @@ const integratedMode = (over = {}) =>
       help: "Control+Shift+F8",
       calibrate: "Control+Shift+F7",
       copyComp: "Control+Shift+F6",
+      compPanel: "Control+Shift+F5",
+      compPrev: "Control+Shift+F3",
+      compNext: "Control+Shift+F4",
     },
     game: { found: true, width: 1920, height: 1080 },
     ...over,
@@ -922,6 +938,8 @@ const HOST_METHODS = [
   "setHot",
   "setHotRects",
   "onCopyRequest",
+  // v4: atalhos do painel da comp.
+  "onCompPanel",
 ];
 
 test("página: só chama métodos do host do contrato e o preload os expõe todos", () => {

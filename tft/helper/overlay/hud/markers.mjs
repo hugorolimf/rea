@@ -75,6 +75,12 @@ export const isCompact = (settings) => settings?.verbosity === "minimal";
 export const shownText = (hint, settings) =>
   isCompact(settings) && hint?.short ? hint.short : hint?.text;
 
+/** Ícone + número ao lado do texto (`hint.lead`, ex. "❤ 28"), só fora da mínima (nela a forma curta já é isso). */
+export const shownLead = (hint, settings) =>
+  !isCompact(settings) && typeof hint?.lead === "string" && hint.lead
+    ? hint.lead
+    : null;
+
 /** Frase completa para a dica do mouse (modo interativo): texto, ação e porquê. */
 export const fullText = (hint) =>
   [hint?.text, hint?.action, hint?.why].filter(Boolean).join(" · ");
@@ -96,6 +102,8 @@ export function labelSize(
   const compact = isCompact(settings);
   for (const h of hints) {
     let w = LABEL.icon + LABEL.gap + measure(shownText(h, settings));
+    const lead = shownLead(h, settings);
+    if (lead) w += 14 + measure(lead);
     if (h.probable) w += 14;
     if (h.action && !compact) w += 22 + measure(h.action);
     if (h.parts?.length) w += 8 + h.parts.length * LABEL.part;
@@ -266,7 +274,8 @@ export function hintLine(hint, ui) {
     compact = isCompact(ui.settings);
   // Na mínima a frase inteira (com ação e porquê) fica na dica do mouse, visível no modo interativo.
   const title = compact ? ` title="${esc(fullText(hint))}"` : "";
-  return `<div class="hl" data-id="${esc(hint.id)}" data-tone="${esc(hint.tone)}" data-category="${esc(hint.category)}" data-stale="${hint.stale ? 1 : 0}" data-probable="${hint.probable ? 1 : 0}"${compact ? ' data-compact="1"' : ""}${title}><div class="hl-main">${iconHtml(hint, ui)}<span class="hl-tx">${richText(shownText(hint, ui.settings), { size: 18 })}</span>${hint.probable ? '<i class="hl-q" title="Leitura provável da loja: confira na tela do jogo">?</i>' : ""}${partsHtml(hint, ui)}${hint.action && !compact ? `<b class="hl-act">${esc(hint.action)}</b>` : ""}</div>${!compact && showsWhy(hint, ui.settings) ? `<p class="hl-why">${richText(hint.why, { size: 16 })}</p>` : ""}</div>`;
+  const lead = shownLead(hint, ui.settings);
+  return `<div class="hl" data-id="${esc(hint.id)}" data-tone="${esc(hint.tone)}" data-category="${esc(hint.category)}" data-stale="${hint.stale ? 1 : 0}" data-probable="${hint.probable ? 1 : 0}"${compact ? ' data-compact="1"' : ""}${title}><div class="hl-main">${iconHtml(hint, ui)}${lead ? `<b class="hl-lead">${esc(lead)}</b><span class="hl-sep" aria-hidden="true">·</span>` : ""}<span class="hl-tx">${richText(shownText(hint, ui.settings), { size: 18 })}</span>${hint.probable ? '<i class="hl-q" title="Leitura provável da loja: confira na tela do jogo">?</i>' : ""}${partsHtml(hint, ui)}${hint.action && !compact ? `<b class="hl-act">${esc(hint.action)}</b>` : ""}</div>${!compact && showsWhy(hint, ui.settings) ? `<p class="hl-why">${richText(hint.why, { size: 16 })}</p>` : ""}</div>`;
 }
 
 /** Agrupa as entradas de `placeMarkers` por alvo, na ordem em que aparecem. */

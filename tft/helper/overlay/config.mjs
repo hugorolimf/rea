@@ -61,19 +61,43 @@ export function defaultConfig() {
  * de existir). Quando um padrão muda, a versão sobe e `DEFAULT_CHANGES` diz qual era o valor antigo: na migração, o que
  * está gravado igual ao padrão antigo (o usuário nunca mexeu) passa ao novo; o que o usuário mudou nunca é tocado.
  */
-export const DEFAULTS_VERSION = 2;
+export const DEFAULTS_VERSION = 4;
 
 /**
- * O que mudou nos padrões ao sair de cada versão. `hints`: campo -> { old, now }; `layout`: elemento -> { old, now }
- * (elemento inteiro, comparado campo a campo).
+ * O que mudou nos padrões ao sair de cada versão. `hints`: campo -> { old, now, written? }; `layout`: elemento -> { old,
+ * now } (elemento inteiro, comparado campo a campo). Com `written: true` o valor só volta quando há PROVA de que foi uma
+ * migração que o gravou (e não o jogador): a mesma passada de `migrateConfig` o gravou agora, ou `opts.written` traz a
+ * chave (prova externa, ver `migrationEvidence`).
  * - v1 -> v2: overlay compacto, verbosidade das dicas "normal" -> "minimal". O layout dos elementos existentes não mudou
  *   (a legenda `keys` é nova e já entra com o padrão).
+ * - v2 -> v3: a tela padrão volta a ser a de antes; "minimal" -> "normal", SÓ se foi a migração v1 -> v2 que gravou o
+ *   "minimal" (escolha manual do jogador nunca é tocada).
+ * - v3 -> v4: a faixa de estado, a lista de dicas e o cartão "Vale rolar?" saem da tela padrão (viraram selos sobre o HUD
+ *   do jogo) e passam a ocultos (`layoutFields`: só o campo `hidden` que ainda está no padrão antigo, `false`; a posição
+ *   salva fica). Passo próprio porque a v3 já tinha sido gravada sem ele.
  */
 const DEFAULT_CHANGES = Object.freeze([
   Object.freeze({
     from: 1,
     hints: { verbosity: { old: "normal", now: "minimal" } },
     layout: {},
+  }),
+  Object.freeze({
+    from: 2,
+    hints: { verbosity: { old: "minimal", now: "normal", written: true } },
+    layout: {},
+  }),
+  Object.freeze({
+    from: 3,
+    hints: {},
+    layout: {},
+    // Faixa de estado, lista de dicas e cartão "Vale rolar?" saem da tela padrão (viraram selos sobre o HUD do jogo):
+    // só quem está com o padrão antigo do campo (`hidden: false`) passa a oculto; a posição salva não muda.
+    layoutFields: {
+      bar: { hidden: { old: false, now: true } },
+      hints: { hidden: { old: false, now: true } },
+      roll: { hidden: { old: false, now: true } },
+    },
   }),
 ]);
 
@@ -85,13 +109,16 @@ const sameFields = (a, b) =>
 
 /**
  * Migra o objeto CRU do arquivo (antes de `parseConfig`) para a versão atual dos padrões. Idempotente: na versão atual
- * não muda nada. Devolve `{ raw, migrated, changes }` (`raw` novo quando migrou; `changes` = textos do que mudou).
- * Nunca lança.
+ * não muda nada. Devolve `{ raw, migrated, changes }` (`raw` novo quando migrou; `changes` = textos do que mudou de fato,
+ * do valor gravado ao final: um campo que vai e volta na mesma passada não aparece). `opts.written`: chaves
+ * ("hints.verbosity") que uma migração ANTERIOR comprovadamente gravou (ver `migrationEvidence`); só elas, ou as gravadas
+ * nesta passada, valem para os passos com `written: true`. Nunca lança.
  */
 export function migrateConfig(
   raw,
   changesTable = DEFAULT_CHANGES,
   version = DEFAULTS_VERSION,
+  opts = {},
 ) {
   if (!isObject(raw)) return { raw, migrated: false, changes: [] };
   const from =
@@ -101,21 +128,69 @@ export function migrateConfig(
   if (from >= version) return { raw, migrated: false, changes: [] };
   const next = JSON.parse(JSON.stringify(raw));
   const changes = [];
+  // Chaves gravadas por uma migração: as comprovadas de fora e as desta passada.
+  const written = new Set(
+    Array.isArray(opts?.written)
+      ? opts.written.filter((k) => typeof k === "string")
+      : [],
+  );
+  const hintsBefore = isObject(next.hints) ? { ...next.hints } : {};
   for (const step of changesTable) {
     if (step.from < from || step.from >= version) continue;
-    for (const [k, { old, now }] of Object.entries(step.hints ?? {}))
-      if (isObject(next.hints) && next.hints[k] === old) {
-        next.hints[k] = now;
-        changes.push(`hints.${k}: ${old} -> ${now}`);
-      }
+    for (const [k, rule] of Object.entries(step.hints ?? {})) {
+      const key = `hints.${k}`;
+      if (!isObject(next.hints) || next.hints[k] !== rule.old) continue;
+      if (rule.written === true && !written.has(key)) continue;
+      next.hints[k] = rule.now;
+      written.add(key);
+    }
     for (const [id, { old, now }] of Object.entries(step.layout ?? {}))
       if (isObject(next.layout) && sameFields(next.layout[id], old)) {
         next.layout[id] = { ...now };
         changes.push(`layout.${id}: padrão antigo -> padrão novo`);
       }
+    // Campo a campo de um elemento: só muda o campo que está igual ao padrão antigo (o resto do elemento fica).
+    for (const [id, fields] of Object.entries(step.layoutFields ?? {}))
+      for (const [f, { old, now }] of Object.entries(fields))
+        if (
+          isObject(next.layout) &&
+          isObject(next.layout[id]) &&
+          next.layout[id][f] === old
+        ) {
+          next.layout[id] = { ...next.layout[id], [f]: now };
+          changes.push(`layout.${id}.${f}: ${old} -> ${now}`);
+        }
   }
+  if (isObject(next.hints))
+    for (const [k, v] of Object.entries(next.hints))
+      if (hintsBefore[k] !== v)
+        changes.unshift(`hints.${k}: ${hintsBefore[k]} -> ${v}`);
   next.defaultsVersion = version;
   return { raw: next, migrated: true, changes };
+}
+
+/**
+ * Prova de que uma migração anterior gravou um valor (para os passos com `written: true`), a partir dos backups que
+ * `loadAndMigrateConfig` deixou ao lado do arquivo. `raw`: o objeto atual; `backups`: os objetos lidos dos backups
+ * (`overlay.config.json.bak-*`). Hoje só existe uma regra: o arquivo está na v2 com `hints.verbosity` "minimal" e há um
+ * backup da v1 (sem `defaultsVersion`) cuja verbosidade NÃO era uma escolha de "minimal" nem de "detailed" (era "normal",
+ * ausente ou inválida): foi a migração v1 -> v2 que gravou o "minimal". Devolve as chaves comprovadas (`["hints.verbosity"]`
+ * ou `[]`). Nunca lança.
+ */
+export function migrationEvidence(raw, backups = []) {
+  if (!isObject(raw) || raw.defaultsVersion !== 2) return [];
+  if (!isObject(raw.hints) || raw.hints.verbosity !== "minimal") return [];
+  const fromV1 = (b) =>
+    isObject(b) &&
+    !(Number.isInteger(b.defaultsVersion) && b.defaultsVersion >= 2);
+  const choseOther = (b) =>
+    isObject(b.hints) &&
+    (b.hints.verbosity === "minimal" || b.hints.verbosity === "detailed");
+  return (Array.isArray(backups) ? backups : []).some(
+    (b) => fromV1(b) && !choseOther(b),
+  )
+    ? ["hints.verbosity"]
+    : [];
 }
 
 /** "integrated" ou "panel"; qualquer outra coisa vira "integrated". */
@@ -218,6 +293,12 @@ export function parseHotkeys(v) {
     if (!canon || used.has(canon)) {
       accel = DEFAULT_HOTKEYS[name];
       canon = normalizeAccelerator(accel);
+    }
+    // O padrão também já está com outra ação (o jogador deu a tecla dela a outra): fica sem atalho, em vez de repetir
+    // uma tecla que o registro recusaria. A legenda e a ajuda mostram "—" e o main não tenta registrar.
+    if (used.has(canon)) {
+      out[name] = "";
+      continue;
     }
     out[name] = accel;
     used.add(canon);
@@ -482,8 +563,29 @@ export function backupStamp(date = new Date()) {
   return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`;
 }
 
+/** Backups deixados pelas migrações ao lado do arquivo (`<arquivo>.bak-*`), lidos como objetos; ilegíveis ficam de fora. */
+async function readBackups(file) {
+  const dir = path.dirname(file),
+    prefix = `${path.basename(file)}.bak-`;
+  let names = [];
+  try {
+    names = (await fsp.readdir(dir)).filter((n) => n.startsWith(prefix));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const n of names.sort())
+    try {
+      out.push(JSON.parse(await fsp.readFile(path.join(dir, n), "utf8")));
+    } catch {
+      // Backup ilegível não prova nada.
+    }
+  return out;
+}
+
 /**
- * Lê o arquivo e, se ele é de uma versão antiga dos padrões, migra (`migrateConfig`): faz o backup
+ * Lê o arquivo e, se ele é de uma versão antiga dos padrões, migra (`migrateConfig`, com a prova dos backups de
+ * `migrationEvidence`): faz o backup
  * `overlay.config.json.bak-AAAAMMDD-HHMMSS` ao lado e grava o migrado. Devolve `{ cfg, text, migration }`: `text` é o
  * que ficou no disco (para o main distinguir a própria gravação), `migration` = `{ backup, changes }` ou null.
  * Arquivo ausente ou corrompido: padrão, sem migrar nem gravar.
@@ -501,7 +603,14 @@ export async function loadAndMigrateConfig(file, now = new Date()) {
   } catch {
     return { cfg: parseConfig(text), text, migration: null };
   }
-  const m = migrateConfig(raw);
+  // Prova, pelos backups ao lado, de que um valor foi gravado por uma migração anterior (e não escolhido pelo jogador).
+  const evidence =
+    isObject(raw) && raw.defaultsVersion === 2
+      ? migrationEvidence(raw, await readBackups(file))
+      : [];
+  const m = migrateConfig(raw, DEFAULT_CHANGES, DEFAULTS_VERSION, {
+    written: evidence,
+  });
   if (!m.migrated) return { cfg: parseConfig(raw), text, migration: null };
   const backup = `${file}.bak-${backupStamp(now)}`;
   await fsp.copyFile(file, backup);

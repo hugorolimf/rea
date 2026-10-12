@@ -22,8 +22,8 @@ import {
   parseHintSettings,
 } from "../overlay/hud/hints.mjs";
 
-// Os geradores são testados na verbosidade normal (a do padrão antigo); o padrão do jogador agora é a mínima
-// (overlay compacto) e tem teste próprio abaixo. Quem passa ajustes explícitos continua passando.
+// Os geradores são testados na verbosidade normal (a do padrão); a mínima (overlay compacto, opção do "?") tem teste
+// próprio abaixo. Quem passa ajustes explícitos continua passando.
 const NORMAL = Object.freeze({ verbosity: "normal" });
 const buildHints = (view, settings = NORMAL) => buildHintsWith(view, settings);
 
@@ -505,7 +505,10 @@ test("dicas: veredito de esperar o nível, subir de nível e perigo de vida no m
   assert.equal(alert.category, "alert");
   assert.equal(alert.priority, 100);
   assert.equal(alert.tone, "danger");
-  assert.equal(alert.text, "Vida em perigo (58 de vida)");
+  // A vida em número vem ao lado da frase ("❤ 58 · Vida em perigo"); a forma curta da mínima é só o número.
+  assert.equal(alert.text, "Vida em perigo");
+  assert.equal(alert.lead, "❤ 58");
+  assert.equal(alert.short, "❤ 58");
   assert.equal(alert.action, "Role para estabilizar");
   assert.equal(alert.why, "Vida baixa: role para segurar o tabuleiro.");
   assert.deepEqual(alert.anchors, [{ kind: "gold" }]);
@@ -640,6 +643,7 @@ test("dicas: o contrato de uma dica (campos, âncora única = primeira, 'none' s
     "category",
     "icon",
     "id",
+    "lead",
     "minVerbosity",
     "parts",
     "priority",
@@ -1039,7 +1043,8 @@ test("dicas: alerta de perigo (crítico e perigo), âncora só com o veredito de
     }),
   ).hints[0];
   assert.equal(danger.id, "alert:hp");
-  assert.equal(danger.text, "Vida em perigo (58 de vida)");
+  assert.equal(danger.text, "Vida em perigo");
+  assert.equal(danger.lead, "❤ 58");
   assert.equal(danger.action, "Role para estabilizar");
   assert.equal(danger.why, "Vida baixa.");
   assert.deepEqual(danger.anchors, [{ kind: "gold" }]);
@@ -1047,6 +1052,7 @@ test("dicas: alerta de perigo (crítico e perigo), âncora só com o veredito de
     viewWith({ economy: { pressure: "critical" }, bar: { ...BAR, hp: null } }),
   ).hints[0];
   assert.equal(critical.text, "Vida crítica");
+  assert.equal(critical.lead, null, "sem vida lida, sem número ao lado");
   assert.deepEqual(
     critical.anchors,
     [],
@@ -1199,11 +1205,11 @@ test("dicas: verbosidade fixa o piso e o teto (minimal 3, normal 5, detailed 8);
     det.hints.some((h) => h.id === "level:seal"),
     false,
   );
-  // Sem ajustes, ajustes inválidos ou verbosidade desconhecida: o padrão (mínima, overlay compacto).
+  // Sem ajustes, ajustes inválidos ou verbosidade desconhecida: o padrão (normal, a tela de antes).
   for (const bad of [undefined, null, 7, "detailed", { verbosity: "ultra" }])
     assert.equal(
       buildHintsWith(view, bad).hints.length,
-      min.hints.length,
+      norm.hints.length,
       JSON.stringify(bad),
     );
   // Piso de prioridade: com poucas dicas, minimal só deixa passar o que vale 70 ou mais e normal, 40 ou mais.
@@ -1300,8 +1306,8 @@ test("parseHintSettings: padrão completo, lixo vira padrão, sempre um objeto n
       wisp: true,
       learn: false,
     },
-    // Overlay compacto: o padrão é a verbosidade mínima; o jogador aumenta no "?".
-    verbosity: "minimal",
+    // A tela padrão é a de antes (verbosidade normal); a mínima continua como opção no "?".
+    verbosity: "normal",
   });
   assert.deepEqual(HINT_CATEGORIES, ["buy", "items", "gold", "wisp", "learn"]);
   assert.deepEqual(VERBOSITY_LEVELS, ["minimal", "normal", "detailed"]);
@@ -1359,7 +1365,7 @@ test("parseHintSettings: aproveita o que é válido, descarta o resto e não dei
     verbosity: "detailed",
   });
   assert.deepEqual(Object.keys(parsed.categories), HINT_CATEGORIES);
-  assert.equal(parseHintSettings({ verbosity: "ultra" }).verbosity, "minimal");
+  assert.equal(parseHintSettings({ verbosity: "ultra" }).verbosity, "normal");
   assert.equal(
     parseHintSettings({ verbosity: "minimal" }).verbosity,
     "minimal",

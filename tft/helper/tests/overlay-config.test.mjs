@@ -67,6 +67,9 @@ test("parseConfig: caminho feliz preserva valores válidos (objeto ou texto JSON
       help: "Control+Alt+H",
       calibrate: "Control+Alt+K",
       copyComp: "Control+Alt+C",
+      compPanel: "Control+Alt+V",
+      compPrev: "Control+Alt+B",
+      compNext: "Control+Alt+N",
     },
     mode: "panel",
     follow: false,
@@ -84,6 +87,15 @@ test("parseConfig: caminho feliz preserva valores válidos (objeto ou texto JSON
   assert.equal(old.hotkeys.toggle, "Control+Shift+F5");
   assert.equal(old.hotkeys.help, DEFAULT_HOTKEYS.help);
   assert.equal(old.mode, "integrated");
+  // F5 era o padrão novo do painel da comp: com a tecla já dada ao toggle, o painel fica sem atalho (não repete a tecla).
+  assert.equal(old.hotkeys.compPanel, "");
+  assert.equal(old.hotkeys.compPrev, DEFAULT_HOTKEYS.compPrev);
+  assert.equal(old.hotkeys.compNext, DEFAULT_HOTKEYS.compNext);
+  // Estável: gravar e ler de novo dá o mesmo.
+  assert.deepEqual(
+    parseConfig(JSON.parse(JSON.stringify(old))).hotkeys,
+    old.hotkeys,
+  );
 });
 
 test("parseConfig: modo, seguir, layout, calibração e dicas inválidos voltam ao padrão", () => {
@@ -193,6 +205,9 @@ test("hotkeys: aceleradores inválidos ou repetidos voltam ao padrão da ação"
     "help",
     "calibrate",
     "copyComp",
+    "compPanel",
+    "compPrev",
+    "compNext",
   ]);
   assert.equal(hk.help, DEFAULT_HOTKEYS.help);
   assert.equal(hk.calibrate, DEFAULT_HOTKEYS.calibrate);

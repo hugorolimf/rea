@@ -32,10 +32,15 @@ Padrão (configuráveis em `overlay.config.json`; usam teclas de função porque
 | `Control+Shift+F9`  | ◐     | mostrar/esconder                                                                           |
 | `Control+Shift+F10` | ✥     | modo de edição (arrastar e redimensionar os blocos; `Esc` ou o mesmo atalho volta ao jogo) |
 | `Control+Shift+F6`  | ⧉     | copiar o código da comp recomendada (cole no Planejador do jogo)                           |
+| `Control+Shift+F5`  | ▦     | mostrar/esconder o painel da comp (peças, quem está em campo, builds e sinergias)          |
+| `Control+Shift+F3`  | ◂     | comp anterior no painel (plano e sugeridas; não fixa nada)                                 |
+| `Control+Shift+F4`  | ▸     | próxima comp no painel (plano e sugeridas; não fixa nada)                                  |
 | `Control+Shift+F8`  | ?     | abrir/fechar a ajuda (liga o modo de edição junto)                                         |
 | `Control+Shift+F7`  | ⌖     | abrir/fechar a calibração (liga o modo de edição junto)                                    |
 | `Control+Shift+F11` | ⌕     | integrado: procura a janela do jogo de novo; painel: ancora ao monitor do TFT              |
 | `Control+Shift+F12` | ✕     | sair                                                                                       |
+
+F3, F4 e F5 com Ctrl+Shift foram escolhidas por estarem livres: ficam ao lado das existentes (F6 a F12), o TFT não usa Ctrl+Shift com teclas de função e programas comuns (Discord, AMD/NVIDIA, Windows) não as tomam. Se você der a tecla padrão de uma ação a outra (por exemplo `toggle` em F5), a ação que perdeu a tecla fica **sem atalho** ("—" na legenda, "sem atalho" na ajuda e uma linha no log), em vez de repetir uma tecla que o registro recusaria.
 
 A lista de atalhos tem **uma fonte só**: `hud/hotkeys.mjs` (id, tecla padrão, rótulo, texto curto e ícone). O processo principal registra percorrendo essa lista e manda à página o resultado de cada registro (`mode.shortcuts`); a legenda sobre o jogo e a ajuda só apresentam essa lista, sem escrever teclas. Se um atalho já estiver em uso por outro programa, o registro falha: ele aparece **marcado** (✖, em vermelho) na legenda e na ajuda, e a linha `atalhos registrados: ... (FALHOU)` vai ao `overlay.log`.
 
@@ -43,9 +48,9 @@ A lista de atalhos tem **uma fonte só**: `hud/hotkeys.mjs` (id, tecla padrão, 
 
 Um bloco pequeno à direita da loja (x 0,82, y 0,745 do HUD 16:9: abaixo da lista de jogadores, que é estimada, e longe do centro, onde ficam as cartas de aprimoramento e o carrossel), com:
 
-- o botão **⧉ Copiar**, que copia `plan.teamCode` da comp exibida (o mesmo código do botão da interface web; vem no `/api/overlay` que o overlay já recebe). A cópia é feita pelo processo principal (`clipboard` do Electron), porque a janela não é focável; o código só é gravado se tiver o formato do planejador (`isTeamCode`). Depois de copiar aparece "Copiado: cole no Planejador" por 1,5 s. Sem código o botão fica apagado e o clique (ou `Ctrl+Shift+F6`) mostra o motivo por 2 s (o erro do servidor, por exemplo "Campeão sem ID de importação confirmado", ou "Sem comp sugerida agora");
+- o botão **⧉ Copiar comp** ("⧉ Copiar" na verbosidade mínima), que copia `plan.teamCode` da comp exibida (o mesmo código do botão da interface web; vem no `/api/overlay` que o overlay já recebe). A cópia é feita pelo processo principal (`clipboard` do Electron), porque a janela não é focável; o código só é gravado se tiver o formato do planejador (`isTeamCode`). Depois de copiar aparece "Copiado: cole no Planejador" por 1,5 s. Sem código o botão fica apagado e o clique (ou `Ctrl+Shift+F6`) mostra o motivo por 2 s (o erro do servidor, por exemplo "Campeão sem ID de importação confirmado", ou "Sem comp sugerida agora");
 - o botão **⌨**, que recolhe ou abre a legenda (a escolha fica em `layout.keys.folded`);
-- a legenda compacta, só teclas e ícones (`Ctrl+Shift`+ · F9 ◐ · F10 ✥ · F6 ⧉ · ...), com o significado na dica do mouse e no `?`.
+- a legenda: na verbosidade normal (padrão) cada atalho com a tecla, o ícone e o rótulo curto, em duas colunas (`Ctrl+Shift`+ · F9 ◐ Mostrar/ocultar · F10 ✥ Editar · F6 ⧉ Copiar comp · F5 ▦ Ver comp · ...); na mínima só teclas e ícones, com o significado na dica do mouse e no `?`.
 
 Na primeira exibição a legenda fica aberta por 20 s e depois se recolhe sozinha (`layout.keys.seen`); dali em diante vale o que você escolher.
 
@@ -78,25 +83,47 @@ Cada dica tem categoria, prioridade, âncora, texto curto, ícone e ação suger
 
 A verbosidade controla o teto e a prioridade mínima (`minimal`: 3 dicas importantes; `normal`: até 5; `detailed`: até 8, com o porquê junto). Dicas sem alvo geométrico aparecem só na lista "Dicas". Dados velhos (leitura ou análise antigas) esmaecem e perdem o pulso.
 
-**Overlay compacto (verbosidade mínima, o padrão).** Para leitura de relance a tela padrão usa ícones, retratos e números no lugar de frases; quem quiser mais texto aumenta a verbosidade no `?` (o mesmo `VERBOSITY_LEVELS`, sem outro mecanismo). O que mudou na mínima e para onde foi:
+**Tela padrão (verbosidade normal).** O padrão voltou a ser a tela de antes, com as melhorias: etiquetas com a ação e o motivo curto ("Compre X", "Role até 30g" + "pare em 24g"), o alerta de vida com o número ao lado ("❤ 28 · Vida em perigo"), o cartão de itens com cabeçalhos, os cartões de carrossel e de aprimoramento com cabeçalho, o dock com o estado do modo e a legenda de atalhos com rótulos. Fora do que o usuário pediu tirar da tela padrão:
 
-| Antes (na tela)                                                        | Agora na mínima                                         | Onde ficou o resto                                                           |
-| ---------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Etiquetas "Compre X", "Role até 30g", "Passe X de A para B" + ação     | retrato + "Comprar", `30g ⚑24g`, [item] [A] → [B]       | frase, ação e porquê na dica do mouse (modo de edição)                       |
-| Alerta "Vida em perigo (28 de vida)"                                   | selo `❤ 28`                                             | frase e porquê na dica do mouse                                              |
-| Faixa com rótulos (Fase, Nível, Ouro, Vida), XP, juros, chip "ao vivo" | uma linha: ⚑ 4-2 · ◎ 54 · ↑ 8 · ❤ 58                    | XP, juros e origem de cada leitura na dica do mouse; chips só fora do normal |
-| Cartão de rolagem com veredito, motivo e "derruba os juros"            | uma linha: ↻ selo + `30g ⚑24g`                          | dica do mouse; forma longa na verbosidade normal                             |
-| Itens com títulos de grupo, notas, todos os campeões                   | só imagens: próximo item, carry, equipar e passar agora | demais campeões e notas na verbosidade normal / web                          |
-| Carrossel/aprimoramentos com cabeçalho, selo e detalhe                 | cartas/peças com a recomendada marcada, ↻ = troque      | origem, colocação esperada e porquê na dica do mouse                         |
-| Lista "Dicas" com as dicas que já têm marca no jogo                    | só as dicas sem alvo no jogo                            | as outras estão na própria marca                                             |
-| Dock com chip "integrado" e tamanho do jogo                            | `?` e os pontos de saúde                                | tamanho na dica dos pontos e na ajuda                                        |
-| `builds` e `plan` no modo painel                                       | fora                                                    | verbosidade normal, `?` ou a interface web                                   |
+- a **faixa de estado** (`bar`), a **lista de dicas** sem alvo (`hints`) e o **cartão "Vale rolar?"** (`roll`) começam ocultos (religáveis no `?`): ouro, nível e rolagem viraram selos sobre o próprio HUD do jogo (abaixo). Os avisos discretos da faixa (servidor sem resposta há N s, leitura ou análise velha, outro jogo) passam ao dock enquanto ela está oculta; a mensagem dos estados sem plano ("aguardando análise", "Partida encerrada") mora com o dock;
+- as marcas ancoradas (compra na loja, itens no banco) continuam; as de ouro/nível saem da marca quando os selos dos botões estão na tela, para não repetir.
 
-`tests/overlay-hud.test.mjs` ("compacto") limita o texto visível na mínima (nenhuma linha acima de 24 caracteres, no máximo 4 dicas) a partir do modelo real.
+**Verbosidade mínima (opção do `?`).** Para quem quer leitura de relance: ícones, retratos e números no lugar de frases, com a frase inteira na dica do mouse (modo de edição). `tests/overlay-hud.test.mjs` limita o texto visível SÓ nessa verbosidade (nenhuma linha acima de 24 caracteres) e tem um teste próprio de que a normal mostra o conteúdo completo.
+
+**Migração da configuração (padrões v3 e v4).** Ao iniciar, `loadAndMigrateConfig` faz backup (`overlay.config.json.bak-AAAAMMDD-HHMMSS`) e registra no `overlay.log` ("configuração migrada para os padrões vN ..."):
+
+- v2 -> v3: `hints.verbosity` volta de `"minimal"` para `"normal"` **só** se foi a migração v1 -> v2 que gravou o `"minimal"` (prova: um backup da v1 ao lado cuja verbosidade não era uma escolha de `"minimal"` ou `"detailed"`); uma escolha manual nunca é tocada;
+- v3 -> v4: `bar`, `hints` e `roll` passam a `hidden: true` só se ainda estavam com o padrão antigo do campo (`hidden: false`); a posição salva fica.
+
+Rodar de novo não muda nada (o arquivo já está na v4).
+
+### Selos nos botões do jogo (`hud/badges.mjs`)
+
+Durante a partida ao vivo, sobre o próprio HUD do TFT (posições `[ESTIMADO]` em `geometry.mjs`, `SHOP_BUTTONS`, ajustáveis pela calibração `F7` junto com o resto; marcadas nas zonas ocupadas):
+
+- **botão Atualizar (reroll)**: o veredito de rolagem na cor dele: "↻ role até 30g", "↻ não role", "↻ espere o nível 8", "↻ sem peça viável". Quando é para rolar, diz **por quem**: os retratos dos alvos (até 3, o primeiro em destaque, com a estrela-alvo) e o orçamento ("↻ [Kayle 3★] [Azir 2★] até 30g"). A dica lista cada alvo com a chance com o orçamento, as cópias (4/9), os rivais e o motivo. Fonte: `strategy.panels.rolling.rollFor` (tft-rolagem); sem ele, `call.targets`; sem ele, a lista de rolagem que o servidor já mandava (`rolling.targets`). Uma carta de alvo na loja ganha "achou: Kayle" sobre o cartão;
+- **botão Comprar XP**: "↑ suba agora · 4g" ou "↑ espere 4-1 · 8g" (o estágio em que a curva padrão, `POLICY.curve`, chega ao próximo nível), ou "↑ não suba" no nível final da comp;
+- **ao lado do ouro**: "⚑ 50g", o ouro a ter guardado agora (o piso da decisão, `economy.keep`, ou o da faixa de vida, `economy.floor`), verde no piso ou acima e âmbar abaixo; a dica diz o motivo ("juros: 50g dá +5", "vida em perigo: gaste até 10g").
+
+A explicação de cada selo vai na dica do mouse (modo de edição) e na seção "Selos nos botões do jogo" do `?`.
+
+### Painel da comp (`hud/comp.mjs`, atalhos F5 / F3 / F4)
+
+`Ctrl+Shift+F5` mostra ou esconde, sobre o jogo, a comp atual: as peças do plano (retrato, estrela, coroa no carry), onde cada uma está (✓ em campo, reserva, + falta), as builds de "Builds e 3★" (o motor único `core/items/builds.mjs`, com o item equipado contornado), os 3★ e as sinergias ativas. `Ctrl+Shift+F3`/`F4` passam pela comp do plano e pelas sugeridas da mesma análise ("Plano", "Sugerida 1", ...), sem fixar nada. Quando a peça em uso numa vaga não é a da comp, a casa mostra o retrato do substituto em destaque, o da original pequeno no canto (esmaecido, com o contorno da cor do custo) e o selo ⇄; a dica diz "Varus 2★ no lugar de Aphelios (temporário: volta quando Aphelios chegar a 2★)" ou "troca da comp: S no lugar de T". A peça do plano na sua loja ganha moeda + custo e "na sua loja (slot N): compre para a vaga de X". Fonte: o modelo por vaga `stage.slots` (`core/board/interim.mjs`); sem ele, as trocas aceitas (`autoSwaps`/`goal.swaps`), as trocas propostas (`transitions`) e a lista Comprar cruzada com a loja. O painel não captura o mouse fora do modo de edição e some com o mesmo atalho.
+
+### Entra e sai (`hud/swaps.mjs`, elemento `swaps`)
+
+Um bloco próprio do overlay (posicionável como os outros; padrão na coluna da direita, no lugar do antigo "Vale rolar?", longe da loja, dos aprimoramentos e do carrossel) com as trocas de agora, em ordem: "[Kog'Maw 2★] → [Aphelios] entra (da reserva)", "[Kayle] ↓ sai para a reserva", "$ vender [X]", "[$1 Rakan da loja] → vaga de [Brambleback]" e os temporários com ⇄ (a volta na dica). Nada é desenhado sobre o tabuleiro ou a reserva do jogo. Fonte: `stage.slots` e `stage.interim.buys[].sell`; sem eles, `transitions` (prontas = entra/sai; não prontas = temporário).
+
+**Substituto na loja.** O substituto temporário que o modelo manda comprar (`kind: "temporario"`, `playing.source: "loja"`, `buy.slot`) ganha na carta da loja "⇄ Compre X (temporário)" em violeta, com "no lugar de Aphelios" e a volta na dica; se a mesma carta também é peça da comp, vale a marca da comp.
+
+### Montar agora (cartão de itens)
+
+No topo do cartão de itens, o que montar AGORA para a comp do plano (como a página web): "[item] = [componente]+[componente] → [campeão]", "pronto: [item] → [campeão]", "segure [item] em [temporário] → para [titular]" e "falta [componente] para [item] [campeão]". O carry primeiro, até 3 linhas; o resto na dica do mouse. Fonte: as linhas "Itens dos campeões" do modelo (só peças da comp, core/items) e `stage.bankItems` (core/items/scenarios.mjs); a receita vem de `nextItemRecipe` com o banco lido. O carrossel mostra só o ícone de cada item (a recomendada marcada, a ordem e a receita); o campeão que traz o item fica só na dica do mouse.
 
 ### Elementos posicionáveis
 
-Nove elementos (`dock`, `bar`, `hints`, `roll`, `items`, `builds`, `plan`, `carousel` e `keys`, a legenda de atalhos com "Copiar comp"), com posição e largura em fração do **retângulo 16:9 do HUD** (igual à tela inteira numa janela 16:9), mantidos dentro das bordas (margem de 0,75%, como o TFTAcademy). `builds` e `plan` começam ocultos. No modo de edição (`F10`) cada um ganha uma alça para arrastar, um canto para redimensionar e um "x" para ocultar; a ajuda também liga e desliga cada um e tem "Resetar posições". A posição é salva em `overlay.config.json`.
+Onze elementos (`dock`, `bar`, `hints`, `roll`, `items`, `builds`, `plan`, `carousel`, `keys` (a legenda de atalhos com "Copiar comp"), `comp` (o painel da comp) e `swaps` ("Entra e sai")), com posição e largura em fração do **retângulo 16:9 do HUD** (igual à tela inteira numa janela 16:9), mantidos dentro das bordas (margem de 0,75%, como o TFTAcademy). `builds`, `plan`, `bar` (faixa de estado), `hints` (lista de dicas) e `roll` (cartão "Vale rolar?") começam ocultos e se religam no `?`. No modo de edição (`F10`) cada um ganha uma alça para arrastar, um canto para redimensionar e um "x" para ocultar; a ajuda também liga e desliga cada um e tem "Resetar posições". A posição é salva em `overlay.config.json`.
 
 ### Adaptação ao tamanho do jogo
 
@@ -106,7 +133,7 @@ O overlay se ajusta sozinho à janela do TFT (janela redimensionada, ultrawide, 
 - **Escala**: `--k` = (altura do HUD 16:9 / 1080) x a escala que você escolheu. A altura do HUD já é o menor dos eixos (altura/1080 ou largura/1920), então uma janela estreita não deixa o texto estourar. Piso de legibilidade 0,6 e teto 3: em janela muito pequena (por exemplo 960x540) a escala para no 0,6 e a ajuda avisa. Sua escala continua multiplicando por cima.
 - **Colisões e prioridade**: do mais para o menos importante: `dock` (nunca é recolhido), `bar`, `roll`, `items`, `hints`, `plan`, `builds`. Cada elemento fica onde você o pôs; se colidir com outro mais importante, ele procura a vaga mais próxima na mesma coluna e, se faltar, nas faixas livres (barras laterais do ultrawide, faixa de cima das janelas altas), sempre sem cobrir o banco, a loja, nível/ouro nem o estágio do jogo. Sem vaga, é **recolhido**: some da tela, o dock mostra "N recolhidos" (com os nomes no tooltip) e a ajuda lista quais. Quando o espaço volta (janela maior, conteúdo menor), ele reaparece sozinho, com uma pequena folga para não piscar.
 - **Modo interativo**: mostra o layout que você salvou, sem a adaptação, para você editar o que vê. Ao sair, a adaptação volta.
-- **Tamanho detectado**: o dock mostra, num chip, `largura×altura (px físicos) · escala efetiva`, em âmbar quando o piso ou o teto de legibilidade agiu; o tooltip e a ajuda (`F8`, seção "Tamanho do jogo") dão proporção, tamanho do HUD, escala e o que foi recolhido ou reposicionado.
+- **Tamanho detectado**: o dock mostra na dica dos pontos de saúde (e num chip só quando a escala bateu no piso ou no teto) `largura×altura (px físicos) · escala efetiva`, em âmbar quando o piso ou o teto de legibilidade agiu; o tooltip e a ajuda (`F8`, seção "Tamanho do jogo") dão proporção, tamanho do HUD, escala e o que foi recolhido ou reposicionado.
 - **Redimensionar ao vivo**: enquanto o retângulo do jogo muda o rastreador passa a ler a cada 120 ms e volta aos 750 ms ~2,5 s depois de estabilizar. Mudança de até 2 px é ignorada (nada de piscar), as maiores são acompanhadas ao vivo e ~400 ms depois da última se faz o ajuste exato (inclusive o segundo `setBounds` do DPI misto). Trocar de monitor ou de escala (`display-metrics-changed`) é agrupado em uma única reação.
 - **Minimizado/restaurado e janela ↔ janela sem borda**: o sumiço do jogo só conta depois de 1,5 s (a troca de modo de tela recria a janela por instantes). Passado o prazo o overlay é escondido (sem mexer na sua preferência de visível) e reaparece quando o jogo volta. O atalho de mostrar/esconder continua mandando.
 

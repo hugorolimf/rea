@@ -616,14 +616,16 @@ test("página: só lê /api/overlay; nunca pede análise nem estado, nem escreve
   assert.match(code, /\/api\/overlay/);
 });
 
-/* ---------- Overlay compacto (verbosidade mínima, o padrão) ---------- */
+/* ---------- Overlay compacto (verbosidade mínima, opção do "?") ---------- */
 
 test("compacto: na verbosidade mínima nenhuma linha visível passa de 24 caracteres e há no máximo 1 principal + 3 secundárias", async () => {
   const { buildHints, parseHintSettings } =
     await import("../overlay/hud/hints.mjs");
   const { drawHintList, hintLine } = await import("../overlay/hud/markers.mjs");
-  const settings = parseHintSettings(undefined);
-  assert.equal(settings.verbosity, "minimal", "o padrão é o compacto");
+  // O limite de texto vale só para a mínima, escolhida no "?"; o padrão é a normal (teste abaixo).
+  const settings = parseHintSettings({ verbosity: "minimal" });
+  assert.equal(settings.verbosity, "minimal");
+  assert.equal(parseHintSettings(undefined).verbosity, "normal");
   /** Texto que fica na tela: sem atributos (dicas do mouse), sem texto só para leitor de tela; uma linha por bloco. */
   const visibleLines = (html) =>
     html
@@ -673,4 +675,82 @@ test("compacto: na verbosidade mínima nenhuma linha visível passa de 24 caract
   assert.ok(!/<h3 class="eyebrow"/.test(parts.items), "sem títulos de grupo");
   // A forma completa continua na verbosidade normal (o jogador aumenta no "?").
   assert.match(draw.roll(v), /class="call"/);
+});
+
+/* ---------- Tela padrão (verbosidade normal): o conteúdo de antes, com as melhorias ---------- */
+
+test("padrão: a verbosidade normal mostra a tela de antes (rótulos, veredito com motivo, grupos, ação e motivo das dicas)", async () => {
+  const { buildHints, parseHintSettings } =
+    await import("../overlay/hud/hints.mjs");
+  const { drawHintList, hintLine } = await import("../overlay/hud/markers.mjs");
+  const { keysHtml, teamCodeState } = await import("../overlay/hud/keys.mjs");
+  const { shortcutList, DEFAULT_HOTKEYS } =
+    await import("../overlay/hud/hotkeys.mjs");
+  const settings = parseHintSettings(undefined);
+  assert.equal(settings.verbosity, "normal", "o padrão voltou a ser o normal");
+  const input = liveInput();
+  input.rec.recommendations[0].strategy.panels.economy.pressure = "danger";
+  const v = viewOf(feedOf(input));
+  const ui = {
+    esc,
+    richText: rich.richText,
+    glyph: glyphs.glyph,
+    unitPortrait: glyphs.unitPortrait,
+    itemPortrait: glyphs.itemPortrait,
+    settings,
+    k: 1,
+  };
+  // Faixa de estado com rótulos e o chip ao vivo.
+  const bar = draw.bar(v);
+  for (const label of ["Fase", "Nível", "Ouro", "Vida"])
+    assert.match(bar, new RegExp(`<small class="lbl">${label}</small>`));
+  assert.match(bar, /live-chip/);
+  // Cartão de rolagem com veredito e motivo, gasto, lojas e onde parar.
+  const roll = draw.roll(v);
+  assert.match(roll, /class="call"/);
+  assert.match(roll, /Chance boa de evoluir/);
+  assert.match(roll, /até 6 lojas/);
+  assert.match(roll, /pare em 24g/);
+  // Itens com os grupos de antes (próximo item, equipar) e os campeões.
+  const items = draw.items(v);
+  assert.match(items, /<h3 class="eyebrow">Próximo item<\/h3>/);
+  assert.match(items, /<h3 class="eyebrow">Equipar<\/h3>/);
+  assert.match(draw.plan(v), /<span class="eyebrow">Plano<\/span>/);
+  // Dicas com ação e motivo curto; a vida com o número ao lado da frase.
+  const hints = buildHints(v, settings);
+  const lines = hints.hints.map((h) => hintLine(h, ui)).join("");
+  assert.match(lines, /Role até 30g/);
+  assert.match(lines, /<b class="hl-act">pare em 24g<\/b>/);
+  assert.match(lines, /<b class="hl-lead">❤ 58<\/b>/);
+  assert.match(lines, /Vida em perigo/);
+  assert.ok(!/data-compact/.test(lines), "etiqueta inteira, não a curta");
+  assert.match(drawHintList(hints, ui), /<span class="eyebrow">Dicas<\/span>/);
+  // Dock como era: "?", pontos e o estado do modo.
+  const dock = draw.dock({
+    health: [],
+    mode: {
+      mode: "integrated",
+      interactive: false,
+      help: false,
+      calibrating: false,
+      hints: settings,
+    },
+    hasHost: true,
+  });
+  assert.match(dock, /class="chip dock-mode"[^>]*>integrado</);
+  // Legenda de atalhos com rótulo e o botão "⧉ Copiar comp".
+  const keys = keysHtml({
+    shortcuts: shortcutList(DEFAULT_HOTKEYS, {}),
+    copy: teamCodeState(v),
+    esc,
+  });
+  assert.match(keys, />⧉ Copiar comp<\/button>/);
+  assert.match(
+    keys,
+    /<span class="keys-lbl" aria-hidden="true">Ver comp<\/span>/,
+  );
+  // A página passa a verbosidade à legenda e mostra Formação e Plano no modo painel fora da mínima.
+  const hud = stripNonCode(read("overlay/hud/hud.mjs"), { keepStrings: true });
+  assert.match(hud, /compact: mode\.hints\.verbosity === "minimal"/);
+  assert.match(hud, /const extra = !compact \|\| integrated\(\);/);
 });

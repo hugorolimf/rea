@@ -69,12 +69,13 @@ export function editBannerHtml(mode, esc) {
 const tone = (t) => (t === "ok" || t === "bad" || t === "warn" ? t : "warn");
 
 /**
- * HTML do elemento, compacto: só teclas e ícones ("F9 ◐ · F10 ✥ · F6 ⧉"); o significado de cada um vai na dica do
- * mouse e no "?". `shortcuts`: `mode.shortcuts` normalizado (`parseShortcuts`); `folded`: legenda recolhida (sobram os
- * dois botões); `copy`: `teamCodeState(view)`; `flash`: retorno atual (`{ text, tone }`) ou null; `esc`: escape de HTML.
- * O botão de copiar e o de recolher são as únicas partes clicáveis fora do modo de edição (`data-hot`, conferidas pelo
- * cursor real no processo principal). Sem código o botão fica apagado (`aria-disabled`) e o clique ou o atalho mostram o
- * motivo por 2 s.
+ * HTML do elemento. Na verbosidade normal (padrão) cada linha é "tecla + ícone + rótulo curto" ("F9 ◐ Mostrar/ocultar")
+ * e o botão diz "⧉ Copiar comp"; na mínima (`compact`) só teclas e ícones ("F9 ◐ · F10 ✥ · F6 ⧉") e "⧉ Copiar", com o
+ * significado na dica do mouse e no "?". `shortcuts`: `mode.shortcuts` normalizado (`parseShortcuts`); `folded`: legenda
+ * recolhida (sobram os dois botões); `copy`: `teamCodeState(view)`; `flash`: retorno atual (`{ text, tone }`) ou null;
+ * `esc`: escape de HTML. O botão de copiar e o de recolher são as únicas partes clicáveis fora do modo de edição
+ * (`data-hot`, conferidas pelo cursor real no processo principal). Sem código o botão fica apagado (`aria-disabled`) e o
+ * clique ou o atalho mostram o motivo por 2 s.
  */
 export function keysHtml({
   shortcuts = [],
@@ -82,6 +83,7 @@ export function keysHtml({
   copy,
   flash = null,
   esc,
+  compact = false,
 }) {
   const list = shortcuts.filter((s) => s && typeof s.id === "string");
   const failed = list.filter((s) => s.ok === false);
@@ -90,7 +92,7 @@ export function keysHtml({
     ? ` (${keyText(copyKey.accelerator)})`
     : "";
   const can = !!copy?.code;
-  const copyBtn = `<button type="button" class="keys-copy" data-hot data-hit data-act="copy-comp" aria-disabled="${can ? "false" : "true"}" title="${esc(can ? `${copy.title}${copyHint}` : `Sem código para copiar: ${copy?.reason ?? ""}`)}">⧉ Copiar</button>`;
+  const copyBtn = `<button type="button" class="keys-copy" data-hot data-hit data-act="copy-comp" aria-disabled="${can ? "false" : "true"}" title="${esc(can ? `${copy.title}${copyHint}` : `Sem código para copiar: ${copy?.reason ?? ""}`)}">${compact ? "⧉ Copiar" : "⧉ Copiar comp"}</button>`;
   const failNote = failed.length
     ? `<b class="keys-failn" title="${esc(FAIL_TITLE)}">${failed.length}✖</b>`
     : "";
@@ -110,11 +112,11 @@ export function keysHtml({
         s.ok === false
           ? `${s.label}: ${keyText(s.accelerator)}. ${FAIL_TITLE}`
           : `${s.label}${s.accelerator ? `: ${keyText(s.accelerator)}` : " (sem atalho)"}`;
-      return `<li data-ok="${state}" data-id="${esc(s.id)}" title="${esc(title)}"><kbd>${esc(shown)}</kbd><i aria-label="${esc(s.short)}">${esc(s.icon ?? "")}</i>${s.ok === false ? '<b class="keys-fail">✖</b>' : ""}</li>`;
+      return `<li data-ok="${state}" data-id="${esc(s.id)}" title="${esc(title)}"><kbd>${esc(shown)}</kbd><i aria-label="${esc(s.short)}">${esc(s.icon ?? "")}</i>${s.ok === false ? '<b class="keys-fail">✖</b>' : ""}${compact ? "" : `<span class="keys-lbl" aria-hidden="true">${esc(s.short)}</span>`}</li>`;
     })
     .join("");
   const pre = mods
     ? `<li class="keys-pre" title="${esc(`Todos os atalhos usam ${mods} + a tecla`)}"><kbd>${esc(mods)}</kbd>+</li>`
     : "";
-  return `${head}<ul class="keys-list">${pre}${rows}</ul>`;
+  return `${head}<ul class="keys-list"${compact ? "" : ' data-labels="1"'}>${pre}${rows}</ul>`;
 }

@@ -511,6 +511,8 @@ test("ANCHOR_SIDE: lado preferido de cada tipo", () => {
       level: "top",
       xp: "top",
       stage: "bottom",
+      xpButton: "left",
+      reroll: "left",
     },
   );
   assert.ok(Object.isFrozen(ANCHOR_SIDE));
@@ -630,6 +632,8 @@ test("layout: padrão completo, congelado, rotulado, com builds e plan ocultos",
     "plan",
     "carousel",
     "keys",
+    "comp",
+    "swaps",
   ]);
   assert.deepEqual(Object.keys(DEFAULT_LAYOUT), [...ELEMENT_IDS]);
   assert.ok(Object.isFrozen(DEFAULT_LAYOUT));
@@ -648,8 +652,12 @@ test("layout: padrão completo, congelado, rotulado, com builds e plan ocultos",
   }
   assert.equal(DEFAULT_LAYOUT.builds.hidden, true);
   assert.equal(DEFAULT_LAYOUT.plan.hidden, true);
-  for (const id of ["dock", "bar", "hints", "roll", "items"])
+  for (const id of ["dock", "items", "carousel", "keys", "comp", "swaps"])
     assert.equal(DEFAULT_LAYOUT[id].hidden, false, id);
+  // Faixa de estado, lista de dicas e cartão "Vale rolar?" saem da tela padrão (selos sobre o HUD do jogo); religáveis no "?".
+  for (const id of ["bar", "hints", "roll"])
+    assert.equal(DEFAULT_LAYOUT[id].hidden, true, id);
+  assert.equal(setHidden(DEFAULT_LAYOUT, "bar", false).bar.hidden, false);
   assert.deepEqual({ ...W_RANGE }, { min: 0.08, max: 0.5 });
   assert.equal(EDGE_MARGIN, 0.0075);
 });
@@ -711,7 +719,7 @@ test("parseLayout: valores parciais ou inválidos voltam ao padrão do elemento"
     x: 0.1,
     y: DEFAULT_LAYOUT.bar.y,
     w: DEFAULT_LAYOUT.bar.w,
-    hidden: false,
+    hidden: DEFAULT_LAYOUT.bar.hidden,
   });
   assert.deepEqual(l.roll, { ...DEFAULT_LAYOUT.roll });
   assert.deepEqual(l.hints, { ...DEFAULT_LAYOUT.hints });
@@ -850,10 +858,10 @@ test("setHidden: devolve layout novo; ocultar e mostrar; id desconhecido não qu
   assert.equal(shown.builds.hidden, false);
   assert.equal(base.builds.hidden, true, "o layout de entrada não muda");
   assert.notEqual(shown, base);
-  const hidden = setHidden(shown, "bar", true);
-  assert.equal(hidden.bar.hidden, true);
+  const hidden = setHidden(shown, "items", true);
+  assert.equal(hidden.items.hidden, true);
   assert.equal(hidden.builds.hidden, false);
-  assert.equal(hidden.roll.hidden, false);
+  assert.equal(hidden.roll.hidden, DEFAULT_LAYOUT.roll.hidden);
   assert.deepEqual(setHidden(base, "nao-existe", true), base);
   assert.deepEqual(setHidden(undefined, "plan", false).plan, {
     ...DEFAULT_LAYOUT.plan,

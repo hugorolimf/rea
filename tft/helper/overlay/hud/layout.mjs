@@ -21,6 +21,8 @@ export const ELEMENT_IDS = Object.freeze([
   "plan",
   "carousel",
   "keys",
+  "comp",
+  "swaps",
 ]);
 
 /** Rótulo em pt-BR de cada elemento (painel de ajuda). */
@@ -34,6 +36,8 @@ export const ELEMENT_LABELS = Object.freeze({
   plan: "Plano da composição",
   carousel: "Carrossel e aprimoramentos: o que pegar",
   keys: "Atalhos e Copiar comp",
+  comp: "Painel da comp (atalho Ver comp)",
+  swaps: "Entra e sai: trocas de agora",
 });
 
 /**
@@ -43,9 +47,13 @@ export const ELEMENT_LABELS = Object.freeze({
 export const ELEMENT_PRIORITY = Object.freeze({
   dock: 0,
   bar: 1,
+  // Painel da comp: só tem conteúdo quando o jogador o abre pelo atalho, e então é o que ele quer ver.
+  comp: 1.2,
   // Só tem conteúdo durante o carrossel, quando é o que importa (a rolagem e as dicas da loja não valem ali).
   carousel: 1.5,
   roll: 2,
+  // Trocas de agora (quem entra da reserva, quem sai, o que vender, o substituto a comprar): decisão do momento.
+  swaps: 2.5,
   items: 3,
   hints: 4,
   // Legenda de atalhos e "Copiar comp": informação fixa, cede lugar às dicas; mora no canto livre à direita da loja.
@@ -62,9 +70,12 @@ const freezeEl = (el) => Object.freeze({ ...el });
 /** Layout padrão (congelado). Use `resetLayout()` para uma cópia editável. */
 export const DEFAULT_LAYOUT = Object.freeze({
   dock: freezeEl({ x: 0.8, y: 0.015, w: 0.125, hidden: false }),
-  bar: freezeEl({ x: 0.735, y: 0.06, w: 0.19, hidden: false }),
-  hints: freezeEl({ x: 0.735, y: 0.15, w: 0.19, hidden: false }),
-  roll: freezeEl({ x: 0.735, y: 0.33, w: 0.19, hidden: false }),
+  // Faixa de estado, lista de dicas e cartão "Vale rolar?": ocultos por padrão (religáveis no "?"). O ouro, o nível e a
+  // rolagem viraram selos sobre o próprio HUD do jogo (badges.mjs); os avisos da faixa (servidor sem resposta, leitura
+  // velha) passam ao dock enquanto a faixa está oculta.
+  bar: freezeEl({ x: 0.735, y: 0.06, w: 0.19, hidden: true }),
+  hints: freezeEl({ x: 0.735, y: 0.15, w: 0.19, hidden: true }),
+  roll: freezeEl({ x: 0.735, y: 0.33, w: 0.19, hidden: true }),
   items: freezeEl({ x: 0.735, y: 0.5, w: 0.19, hidden: false }),
   builds: freezeEl({ x: 0.735, y: 0.6, w: 0.19, hidden: true }),
   plan: freezeEl({ x: 0.735, y: 0.3, w: 0.19, hidden: true }),
@@ -80,6 +91,12 @@ export const DEFAULT_LAYOUT = Object.freeze({
     folded: false,
     seen: false,
   }),
+  // Painel da comp: ao lado da coluna da direita, na parte de cima do tabuleiro (o lado do rival), longe da loja, do
+  // banco de itens e do estágio. Fica vazio (e some) até o atalho abri-lo; no modo de edição aparece para ser posicionado.
+  comp: freezeEl({ x: 0.5, y: 0.09, w: 0.225, hidden: false }),
+  // Entra e sai: na coluna da direita, no lugar do antigo cartão "Vale rolar?" (longe da loja, dos aprimoramentos e do
+  // carrossel, que ficam no centro). Vazio (e oculto) quando não há troca.
+  swaps: freezeEl({ x: 0.735, y: 0.33, w: 0.19, hidden: false }),
 });
 
 /** Campos booleanos opcionais: só existem nos elementos cujo padrão os tem (hoje, a legenda `keys`). */

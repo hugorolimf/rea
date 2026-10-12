@@ -81,7 +81,16 @@ function checkArrangement(stage, result, { overlapsOk = [] } = {}) {
 }
 
 const SHOWN = ["dock", "bar", "hints", "roll", "items"];
-const layout = parseLayout(undefined);
+// A coluna completa (faixa, dicas e rolagem religadas no "?"): a adaptação é testada com tudo o que pode disputar espaço.
+// No padrão a faixa, as dicas e o cartão de rolagem começam ocultos (overlay-geometry.test).
+// O painel da comp e o "Entra e sai" só têm conteúdo de vez em quando (atalho / troca de agora): ficam de fora aqui.
+const layout = parseLayout({
+  bar: { hidden: false },
+  hints: { hidden: false },
+  roll: { hidden: false },
+  comp: { hidden: true },
+  swaps: { hidden: true },
+});
 
 /* ---------- quadro e escala ---------- */
 
@@ -556,10 +565,18 @@ test("arrangeElements: no modo manual (interativo) devolve o layout salvo, sem m
   assert.deepEqual(layout, frozen);
 });
 
-test("keepOutRects: banco, faixa da loja, nível/ouro e estágio", () => {
+test("keepOutRects: banco, faixa da loja, nível/ouro, estágio e os botões de XP e de rolar", () => {
   const r = anchorRects({ width: 1920, height: 1080 });
   const zones = keepOutRects(r);
-  assert.equal(zones.length, 4);
+  assert.equal(zones.length, 5);
+  // [ESTIMADO] Os botões "Comprar XP" e "Atualizar" (selos de nível e de rolagem) são zona ocupada.
+  const buttons = zones.find(
+    (z) =>
+      z.x === r.xpButton.x &&
+      z.y === r.xpButton.y &&
+      z.y + z.height === r.rerollButton.y + r.rerollButton.height,
+  );
+  assert.ok(buttons, "botões do jogo");
   const shop = zones.find((z) => z.width > 800);
   assert.ok(shop, "faixa da loja");
   assert.equal(shop.x, r.shopCards[0].x);
@@ -1059,9 +1076,9 @@ test("fit.mjs e follow.mjs são puros: sem DOM, sem node:*, sem entrada ao jogo"
   );
 });
 
-test("contrato do preload (overlayHost v3, só acréscimos à v2): a adaptação não pede nada ao host", () => {
+test("contrato do preload (overlayHost v4, só acréscimos às anteriores): a adaptação não pede nada ao host", () => {
   const preload = read("overlay/preload.cjs");
-  assert.match(preload, /version: 3/);
+  assert.match(preload, /version: 4/);
   for (const f of ["fit.mjs"]) {
     const code = stripNonCode(read(`overlay/hud/${f}`), { keepStrings: true });
     assert.ok(!/\bhost\b/.test(code), `${f} não fala com o host`);

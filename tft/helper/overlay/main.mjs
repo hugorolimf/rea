@@ -1084,6 +1084,28 @@ function requestCopy() {
 }
 
 /**
+ * Atalhos do painel da comp ("toggle", "prev", "next"): a página mostra, esconde e troca a comp do painel com os dados
+ * que já recebe. Mostrar o painel também mostra o overlay, se estiver oculto. Nada aqui fixa comp nem fala com o servidor.
+ */
+function requestComp(action) {
+  if (!alive() || lastOnline !== true) {
+    log(`painel da comp (${action}): o HUD não está carregado`);
+    return;
+  }
+  try {
+    // Com o overlay oculto, o atalho de mostrar/esconder abre o painel (não o fecha sem que ninguém o tenha visto).
+    const wasHidden = !win.isVisible();
+    if (wasHidden) showOverlay();
+    win.webContents.send(
+      "overlay:compPanel",
+      wasHidden && action === "toggle" ? "show" : action,
+    );
+  } catch (err) {
+    log(`falha ao pedir o painel da comp: ${errText(err)}`);
+  }
+}
+
+/**
  * Registra os atalhos na ordem da lista única (`hud/hotkeys.mjs`) e guarda o resultado de cada um em `hotkeyStatus`,
  * que vai à página: a legenda e a ajuda mostram exatamente o que foi registrado e marcam o que falhou.
  */
@@ -1098,6 +1120,9 @@ function registerHotkeys() {
     help: () => toggleUi("toggleHelp"),
     calibrate: () => toggleUi("toggleCalibrating"),
     copyComp: requestCopy,
+    compPanel: () => requestComp("toggle"),
+    compPrev: () => requestComp("prev"),
+    compNext: () => requestComp("next"),
   };
   const parts = [];
   for (const { id: name } of HOTKEY_ACTIONS) {
@@ -1111,7 +1136,11 @@ function registerHotkeys() {
     }
     hotkeyStatus[name] = ok;
     parts.push(`${name}=${accelerator}${ok ? "" : " (FALHOU)"}`);
-    if (!ok) {
+    if (!ok && !accelerator) {
+      log(
+        `atalho ${name} sem tecla: a tecla padrão dele já está com outra ação (troque em overlay.config.json)`,
+      );
+    } else if (!ok) {
       log(
         `atalho ${name} (${accelerator}) não registrado: já em uso ou inválido`,
       );

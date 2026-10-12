@@ -15,8 +15,9 @@ export const HINT_CATEGORIES = ["buy", "items", "gold", "wisp", "learn"];
 export const VERBOSITY_LEVELS = ["minimal", "normal", "detailed"];
 
 /**
- * Padrão: tudo ligado, menos "learn" (textos explicativos longos); verbosidade MÍNIMA (leitura de relance: ícones,
- * retratos e números; as frases vão para a dica do mouse no modo interativo e para o "?"). O jogador aumenta no "?".
+ * Padrão: tudo ligado, menos "learn" (textos explicativos longos); verbosidade NORMAL (etiquetas com a ação e o motivo
+ * curto, faixa com rótulos, cartões com cabeçalho). A mínima (leitura de relance: ícones, retratos e números; as frases
+ * vão para a dica do mouse) continua como opção no "?".
  */
 export const DEFAULT_HINT_SETTINGS = Object.freeze({
   categories: Object.freeze({
@@ -26,7 +27,7 @@ export const DEFAULT_HINT_SETTINGS = Object.freeze({
     wisp: true,
     learn: false,
   }),
-  verbosity: "minimal",
+  verbosity: "normal",
 });
 
 /** Por verbosidade: prioridade mínima e teto de dicas mostradas. */
@@ -82,6 +83,8 @@ function make(h, stale) {
     anchor: anchors[0] ?? NONE,
     anchors,
     text: h.text,
+    // Ícone + número ao lado do texto na verbosidade normal ("❤ 28 · Vida em perigo"); null quando não há.
+    lead: text(h.lead),
     // Forma curta (ícone + número/imagens) da verbosidade mínima; a frase inteira (`text`) vai para a dica do mouse.
     short: text(h.short),
     why: text(h.why),
@@ -120,7 +123,12 @@ function alertHints(view, mk) {
       // A linha do servidor diz o que fazer pela decisão tomada, sem contradizer o plano; sem ela, só a faixa.
       text:
         text(view.economy?.alert) ??
-        `${pressure === "critical" ? "Vida crítica" : "Vida em perigo"}${hp !== null ? ` (${hp} de vida)` : ""}`,
+        (pressure === "critical" ? "Vida crítica" : "Vida em perigo"),
+      // A vida em número ao lado da frase ("❤ 28 · Vida em perigo"), salvo quando a frase do servidor já começa por ela.
+      lead:
+        hp !== null && !text(view.economy?.alert)?.startsWith(`Vida ${hp}`)
+          ? `❤ ${hp}`
+          : null,
       short: `❤ ${hp ?? "!"}`,
       why: text(view.economy?.alertWhy) ?? roll?.reason,
       action: stabilize ? roll.title : null,
@@ -158,6 +166,30 @@ function buyHints(view, mk) {
         },
         pulse: !broke,
         probable: shop.probable === true,
+      }),
+    );
+  }
+  // Substituto temporário que o modelo por vaga manda comprar (`view.tempBuys`, swaps.mjs): ⇄ "Compre (temporário)",
+  // em outra cor. Se a carta também é de uma peça da comp, vale a da comp.
+  const taken = new Set(
+    out.flatMap((h) => h.anchors.map((a) => a.slot)).filter(Number.isInteger),
+  );
+  for (const t of view.tempBuys ?? []) {
+    if (!Number.isInteger(t?.slot) || taken.has(t.slot)) continue;
+    taken.add(t.slot);
+    out.push(
+      mk({
+        id: `buy-temp:${t.id}:${t.slot}`,
+        category: "buy",
+        priority: 85,
+        tone: "swap",
+        anchors: [{ kind: "shop", slot: t.slot }],
+        text: `⇄ Compre ${t.name ?? ""} (temporário)`.trim(),
+        short: "⇄ Comprar",
+        why: `no lugar de ${t.forName ?? "o titular"}${t.until ? ` ${t.until.replace(/^volta quando /, "até ")}` : ""}`,
+        action: `${t.cost != null ? `${t.cost}g · ` : ""}no lugar de ${t.forName ?? "o titular"}`,
+        icon: { kind: "champion", id: t.id ?? null, name: t.name ?? "" },
+        pulse: false,
       }),
     );
   }

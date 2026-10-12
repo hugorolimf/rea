@@ -21,15 +21,34 @@ import {
   portrait,
   setCatalog,
   stars,
+  traitIcon,
   unitPortrait,
 } from "/v2/js/ui/glyphs.js";
 import { nameChip, richText, segments } from "/v2/js/ui/rich-text.js";
 import { wispsView } from "/v2/js/wisps.js";
 import { augOfferView } from "/v2/js/augs.js";
+import { compOwnership, ownership } from "/v2/js/roster.js";
+import { compBuildRows } from "/core/items/builds.mjs";
+import { POLICY } from "/core/economy/policy.mjs";
+import { interestOf } from "/core/economy/gold.mjs";
+import { starCopies } from "/core/pool/copies.mjs";
+import {
+  badgesHelpHtml,
+  buildBadges,
+  drawBadges,
+  placeBadges,
+} from "./badges.mjs";
 import { calibrationHtml, mountCalibrate } from "./calibrate.mjs";
+import { swapRows, swapsHtml, tempBuys } from "./swaps.mjs";
+import {
+  compPanelHtml,
+  compPanelStep,
+  compsOf,
+  resolveIndex,
+} from "./comp.mjs";
 import { createDraw } from "./draw.mjs";
 import { fitSummary, keepOutRects, stageFrame } from "./fit.mjs";
-import { anchorRects } from "./geometry.mjs";
+import { anchorRects, placeLabel, resolveAnchor } from "./geometry.mjs";
 import { healthOf } from "./health.mjs";
 import { mountHelp } from "./help.mjs";
 import { buildHints } from "./hints.mjs";
@@ -41,6 +60,7 @@ import {
   keysHtml,
   teamCodeState,
 } from "./keys.mjs";
+import { keyParts } from "./hotkeys.mjs";
 import { ELEMENT_IDS, isFolded, setFolded } from "./layout.mjs";
 import {
   drawHintList,
@@ -92,6 +112,16 @@ const deps = {
   wispsView,
   // Aprimoramentos: a mesma regra da seção do Ao vivo (oferta do GEP + ordem da análise).
   augOfferView,
+  // Painel da comp: a lista (comp.mjs), onde está cada peça (roster.js) e as builds de "Builds e 3★" (motor único).
+  compsOf,
+  ownership,
+  compOwnership,
+  compBuildRows,
+  // Bloco "Entra e sai" e as compras de substituto na loja (swaps.mjs).
+  swapRows,
+  tempBuys,
+  // Cópias por estrela (regra do jogo): "4/9" dos alvos da rolagem.
+  starCopies,
   // Lidos a cada desenho: o catálogo só existe depois de `setCatalog`.
   get catalogItems() {
     return getCatalog().items;
@@ -150,6 +180,8 @@ const preview = { layout: null, calibration: null };
  */
 let fit = null,
   collapsedNow = [];
+/** Selos dos botões do jogo do último desenho (badges.mjs), para o painel "?" explicar cada um. */
+let badgesNow = [];
 
 const sizeOf = () => ({ width: window.innerWidth, height: window.innerHeight });
 const integrated = () => mode.mode === "integrated";
@@ -171,8 +203,10 @@ function setPreview(kind, value) {
 
 /** Seções do HUD de cada elemento posicionável. O dock e a lista de dicas só existem no modo integrado ou no painel. */
 const SECTIONS = {
-  dock: ["dock"],
-  bar: ["bar", "message"],
+  // A mensagem dos estados sem plano ("aguardando análise", "Partida encerrada") mora com o dock, que nunca some: a faixa
+  // de estado agora começa oculta.
+  dock: ["dock", "message"],
+  bar: ["bar"],
   hints: ["hints"],
   roll: ["roll"],
   items: ["items"],
@@ -181,15 +215,19 @@ const SECTIONS = {
   // Carrossel e aprimoramentos dividem o elemento: os dois são "escolha agora" e nunca acontecem na mesma rodada.
   carousel: ["carousel", "augments"],
   keys: ["keys"],
+  comp: ["comp"],
+  swaps: ["swaps"],
 };
 /** Ordem dos cartões no modo painel. */
 const PANEL_ORDER = [
   "bar",
   "message",
+  "comp",
   "carousel",
   "augments",
   "hints",
   "roll",
+  "swaps",
   "items",
   "builds",
   "plan",
@@ -243,6 +281,8 @@ function paintKeys() {
           copy: teamCodeState(current.view),
           flash: copyFlash,
           esc,
+          // Verbosidade normal (padrão): rótulo ao lado de cada tecla; mínima: só tecla e ícone.
+          compact: mode.hints.verbosity === "minimal",
         })
       : "",
   );
@@ -280,11 +320,60 @@ async function copyComp() {
   }
 }
 
+/**
+ * Avisos discretos (servidor sem resposta, leitura velha) no dock quando a faixa de estado está oculta no modo integrado
+ * (o padrão): o selo de servidor sem resposta continua na tela.
+ */
+const dockNotices = () =>
+  integrated() && layoutNow().bar?.hidden ? (current.view?.notices ?? []) : [];
+
+/* ---------- Painel da comp (comp.mjs) ---------- */
+
+/** Painel da comp: aberto ou não e qual comp (pela chave, para seguir a mesma entre análises). Só apresentação. */
+let compState = { open: false, index: 0, key: null };
+const compUi = { ...ui, stars, traitIcon };
+
+/** Tecla final de um atalho da lista registrada (a legenda escreve os modificadores uma vez; aqui só a tecla). */
+const keyOf = (id) => {
+  const s = (mode.shortcuts ?? []).find((x) => x.id === id);
+  return s?.accelerator && s.ok !== false ? keyParts(s.accelerator).key : "";
+};
+
+function paintComp() {
+  const comps = current.view?.comps ?? [];
+  const index = resolveIndex(compState, comps);
+  put(
+    $("comp"),
+    compPanelHtml(
+      {
+        open: compState.open,
+        comp: comps[index] ?? null,
+        index,
+        total: comps.length,
+        status: current.view?.status ?? "loading",
+        keys: {
+          toggle: keyOf("compPanel"),
+          prev: keyOf("compPrev"),
+          next: keyOf("compNext"),
+        },
+      },
+      compUi,
+    ),
+  );
+}
+
+/** Atalho do painel: abre, fecha ou troca a comp; o elemento muda de tamanho, então o palco é redesenhado. */
+function onCompAction(action) {
+  compState = compPanelStep(compState, action, current.view?.comps ?? []);
+  redrawAll();
+}
+
 /** Cartões, lista de dicas e dock: o que depende dos dados e do modo, não da geometria. */
 function paintData() {
   const view = current.view;
   html.dataset.dim = view?.dim ? "1" : "0";
-  // Verbosidade mínima (padrão): leitura de relance, ícones e números; as frases vão para a dica do mouse e o "?".
+  // Verbosidade normal (padrão): os cartões com cabeçalho, rótulos e motivo curto. Mínima (opção do "?"): leitura de
+  // relance, ícones e números; as frases vão para a dica do mouse.
   const compact = mode.hints.verbosity === "minimal",
     o = { compact };
   if (view) {
@@ -295,6 +384,7 @@ function paintData() {
     put($("carousel"), draw.carousel(view, o));
     put($("augments"), draw.augments(view, o));
     put($("roll"), draw.roll(view, o));
+    put($("swaps"), swapsHtml(view.swaps, ui));
     put($("items"), draw.items(view, o));
     // Blocos que repetem o que já está na tela (formação inteira, plano completo): fora do painel compacto; no
     // integrado eles já começam ocultos no layout e o jogador os liga no "?".
@@ -320,9 +410,16 @@ function paintData() {
   );
   put(
     $("dock"),
-    draw.dock({ health: healthNow(), mode, hasHost: !!host, fit }),
+    draw.dock({
+      health: healthNow(),
+      mode,
+      hasHost: !!host,
+      fit,
+      notices: dockNotices(),
+    }),
   );
   paintKeys();
+  paintComp();
 }
 
 let helpPanel = null,
@@ -354,19 +451,42 @@ function paintStage() {
   });
   put(
     $("dock"),
-    draw.dock({ health: healthNow(), mode, hasHost: !!host, fit }),
+    draw.dock({
+      health: healthNow(),
+      mode,
+      hasHost: !!host,
+      fit,
+      notices: dockNotices(),
+    }),
   );
 
   // Sem o jogo detectado não há âncoras: só os elementos aparecem.
   const found = mode.game.found && valid;
   const rects = found ? geometry : null;
+  // Selos nos botões do jogo (Atualizar, Comprar XP) e ao lado do ouro (badges.mjs): a decisão de rolar, de subir e o
+  // ouro a guardar ficam onde o jogador clica, no lugar do cartão "Vale rolar?" e da faixa de estado.
+  badgesNow = buildBadges(current.view, { curve: POLICY.curve, interestOf });
+  const placedBadges =
+    rects && !mode.calibrating
+      ? placeBadges(badgesNow, rects, size, {
+          k,
+          measure,
+          resolveAnchor,
+          placeLabel,
+        })
+      : [];
+  put($("badges"), drawBadges(placedBadges, ui));
+  // Com os selos sobre os botões, as dicas de ouro/nível (rolar, esperar, subir, juros) não se repetem nas marcas.
+  const hintsShown = placedBadges.length
+    ? current.hints.hints.filter((h) => h.category !== "gold")
+    : current.hints.hints;
   const placed =
     rects && !mode.calibrating
-      ? placeMarkers(current.hints.hints, rects, size, {
+      ? placeMarkers(hintsShown, rects, size, {
           k,
           settings: mode.hints,
           measure,
-          avoid: Object.values(arrangement.rects),
+          avoid: [...Object.values(arrangement.rects), ...placedBadges],
         })
       : [];
   put($("markers"), drawMarkers(placed, { ...ui, settings: mode.hints, k }));
@@ -389,7 +509,7 @@ function paintStage() {
 
   put($("fsbanner"), draw.banner(mode));
   put($("editbanner"), editBannerHtml(mode, esc));
-  helpPanel?.render(mode, healthNow(), ui, fit);
+  helpPanel?.render(mode, healthNow(), ui, fit, badgesHelpHtml(badgesNow, esc));
 }
 
 function redrawAll() {
@@ -558,6 +678,12 @@ if (host) {
   // Atalho global de copiar: o main pede e a página copia pelo mesmo caminho do botão (uma fonte só para o código).
   try {
     host.onCopyRequest?.(() => void copyComp());
+  } catch (e) {
+    console.error(e);
+  }
+  // Atalhos do painel da comp (mostrar/esconder, anterior, próxima): só mudam o que a página mostra.
+  try {
+    host.onCompPanel?.(onCompAction);
   } catch (e) {
     console.error(e);
   }

@@ -171,10 +171,26 @@ export function createDraw(ui) {
   }
 
   /**
-   * Carrossel: o que pegar. Com a leitura do carrossel (`from: "reading"`) cada linha é a peça (campeão + item que ele
-   * traz) em ordem de valor para o plano; sem ela (`"priority"`) é a lista do que pegar SE aparecer, e o selo diz isso.
+   * Carrossel: o que pegar. Com a leitura do carrossel (`from: "reading"`) cada linha é o item da peça (sem o retrato do
+   * campeão que o traz) em ordem de valor para o plano; sem ela (`"priority"`) é a lista do que pegar SE aparecer, e o selo diz isso.
    * Tudo em imagens: o motivo vai no tooltip da linha.
    */
+  /**
+   * Linha do carrossel: só o ícone do item (a ordem de prioridade e a recomendada marcada); o campeão que vem com o item e
+   * quem o usa ficam só na dica do mouse, sem retrato.
+   */
+  const carHead = (p) =>
+    `${p.rank != null ? `<b class="rank">${esc(p.rank)}</b>` : ""}${p.rank === 1 ? `<i class="car-best" title="recomendada">${glyph("check")}</i>` : ""}`;
+  const carTitle = (p, extra = null) =>
+    [
+      p.reason,
+      p.champion?.name ? `vem com ${p.champion.name}` : null,
+      p.forChampion?.name ? `para ${p.forChampion.name}` : null,
+      extra,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
   function carousel(view, o = {}) {
     const c = view.carousel;
     if (!c) return "";
@@ -206,10 +222,7 @@ export function createDraw(ui) {
             ? `${op("→")}<span class="car-target${p.completes ? " is-close" : ""}">${item(p.target, 24)}</span>`
             : ""
           : "";
-      const who = p.forChampion
-        ? `<span class="car-for">${mini(p.forChampion, 22)}</span>`
-        : "";
-      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc(p.reason)}">${p.rank != null ? `<b class="rank">${esc(p.rank)}</b>` : ""}${p.champion ? mini(p.champion, 30) : ""}${p.item.id ? item(p.item, 30) : ""}${target}${who}</li>`;
+      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc(carTitle(p))}">${carHead(p)}${p.item.id ? item(p.item, 30) : ""}${target}</li>`;
     };
     return `<header><span class="eyebrow">Carrossel</span>${tag ? `<b class="pill" data-tone="${reading && ranked ? "go" : "amber"}" title="${esc(title)}">${esc(tag)}</b>` : ""}</header>${
       c.picks.length
@@ -228,7 +241,7 @@ export function createDraw(ui) {
         (!reading || p.kind === "component") && p.target
           ? `${op("→")}<span class="car-target${p.completes ? " is-close" : ""}">${item(p.target, 24)}</span>`
           : "";
-      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc([p.reason, reading ? null : "o carrossel não foi lido: pegue se aparecer"].filter(Boolean).join(" · "))}">${p.rank != null ? `<b class="rank">${esc(p.rank)}</b>` : ""}${p.champion ? mini(p.champion, 30) : ""}${p.item.id ? item(p.item, 30) : ""}${target}</li>`;
+      return `<li class="line car-row" data-first="${p.rank === 1 ? 1 : 0}" data-complete="${p.completes ? 1 : 0}" title="${esc(carTitle(p, reading ? null : "o carrossel não foi lido: pegue se aparecer"))}">${carHead(p)}${p.item.id ? item(p.item, 30) : ""}${target}</li>`;
     };
     return `<ul class="lines car-list" aria-label="Carrossel: o que pegar">${c.picks.slice(0, 3).map(row).join("")}</ul>`;
   }
@@ -324,7 +337,35 @@ export function createDraw(ui) {
     return `<li class="line" data-carry="${r.carry ? 1 : 0}">${mini(r.unit)}<span class="bi-list" role="group" aria-label="Itens recomendados de ${esc(r.unit.name)}">${cells}</span>${r.reserve ? `<small class="bi-src" title="${esc(r.note ?? "")}">reserva</small>` : ""}</li>`;
   }
 
-  /** Itens: próximo item, itens de cada campeão, equipar e passar itens. */
+  /**
+   * "Montar agora" para a comp do plano: "[item] = [componente]+[componente] → [campeão]", "pronto: [item] → [campeão]",
+   * "segure [item] em [temporário] → para [titular]" e "falta [componente] para [item] [campeão]". Só imagens e a palavra
+   * da ação; a frase inteira vai na dica do mouse.
+   */
+  const partsHtml = (parts) =>
+    parts
+      .map(
+        (p) =>
+          `<span class="nx-part" data-state="${esc(p.state ?? "missing")}">${item(p, 20, { hidden: true })}</span>`,
+      )
+      .join(op("+"));
+  function buildRow(b) {
+    const body =
+      b.kind === "craft"
+        ? `${item(b.item, 26)}${op("=")}${partsHtml(b.parts)}${op("→")}${mini(b.unit)}`
+        : b.kind === "ready"
+          ? `<small class="bn-w">pronto:</small>${item(b.item, 26)}${op("→")}${mini(b.unit)}`
+          : b.kind === "hold"
+            ? `<small class="bn-w">segure</small>${item(b.item, 26)}<small class="bn-w">em</small>${mini(b.unit)}${op("→")}<small class="bn-w">para</small>${mini(b.for)}`
+            : `<small class="bn-w">falta</small>${partsHtml(b.parts)}<small class="bn-w">para</small>${item(b.item, 26)}${mini(b.unit, 20)}`;
+    return `<li class="line bn-row" data-kind="${esc(b.kind)}" data-carry="${b.carry ? 1 : 0}" title="${esc(b.text)}">${body}</li>`;
+  }
+  const buildGroup = (it) =>
+    it.build?.length
+      ? `<h3 class="eyebrow">Montar agora</h3><ul class="lines">${it.build.map(buildRow).join("")}</ul>${it.buildRest?.length ? `<p class="detail" title="${esc(it.buildRest.join("\n"))}">+${esc(it.buildRest.length)} na dica</p>` : ""}`
+      : "";
+
+  /** Itens: montar agora, próximo item, itens de cada campeão, equipar e passar itens. */
   function items(view, o = {}) {
     const it = view.items;
     if (!it) return "";
@@ -343,13 +384,16 @@ export function createDraw(ui) {
         ...it.equip.filter((r) => r.inField !== false).map(equipRow),
         ...it.moves.filter((r) => r.now).map(moveRow),
       ];
-      return rows.length ? `<ul class="lines">${rows.join("")}</ul>` : "";
+      const built = (it.build ?? []).map(buildRow);
+      return rows.length || built.length
+        ? `${built.length ? `<ul class="lines">${built.join("")}</ul>` : ""}${rows.length ? `<ul class="lines">${rows.join("")}</ul>` : ""}`
+        : "";
     }
     const group = (label, rows, draw) =>
       rows.length
         ? `<h3 class="eyebrow">${label}</h3><ul class="lines">${rows.map(draw).join("")}</ul>`
         : "";
-    return `${group("Próximo item", it.next, nextRow)}${group("Itens dos campeões", it.champs ?? [], champRow)}${it.champsMore > 0 ? `<p class="detail">+${esc(it.champsMore)} ${it.champsMore === 1 ? "campeão" : "campeões"} com item pendente</p>` : ""}${group("Equipar", it.equip, equipRow)}${group("Passar itens", it.moves, moveRow)}`;
+    return `${buildGroup(it)}${group("Próximo item", it.next, nextRow)}${group("Itens dos campeões", it.champs ?? [], champRow)}${it.champsMore > 0 ? `<p class="detail">+${esc(it.champsMore)} ${it.champsMore === 1 ? "campeão" : "campeões"} com item pendente</p>` : ""}${group("Equipar", it.equip, equipRow)}${group("Passar itens", it.moves, moveRow)}`;
   }
 
   /** Itens por campeão: equipados (cheios) e os que a build ainda pede (tracejados). */
@@ -429,22 +473,32 @@ export function createDraw(ui) {
    * modo. `state`: `{ health, mode, hasHost, fit }` (`health` de `healthOf`, `mode` normalizado, `fit` de `fitSummary`:
    * tamanho detectado da janela do jogo, escala efetiva e o que foi recolhido por falta de espaço; opcional).
    */
-  function dock({ health, mode, hasHost, fit }) {
+  function dock({ health, mode, hasHost, fit, notices = [] }) {
+    // Avisos da faixa de estado (servidor sem resposta, leitura ou análise velha, outro jogo) quando a faixa está oculta.
+    const notes = (Array.isArray(notices) ? notices : [])
+      .map(
+        (n) =>
+          `<span class="chip note" data-kind="${esc(n.kind)}" title="${esc(n.title)}">${glyph("warn")}${esc(n.text)}</span>`,
+      )
+      .join("");
     const dots = (health ?? [])
       .map((h) => {
         const ok = h.ok === true ? "1" : h.ok === false ? "0" : "?";
         return `<i class="dot" data-id="${esc(h.id)}" data-ok="${ok}" role="img" aria-label="${esc(h.text)}" title="${esc(h.text)}&#10;${esc(h.title)}"></i>`;
       })
       .join("");
-    // Tamanho detectado e escala efetiva (para saber que o overlay está se adaptando) e o que foi recolhido.
-    const size = fit?.short
-      ? `<span class="chip dock-fit" data-limit="${esc(fit.limit ?? "")}" title="${esc(fit.title)}">${esc(fit.short)}</span>`
-      : "";
+    // O dock é o de sempre ("?", pontos de saúde e o estado do modo). O tamanho detectado e a escala efetiva ficam na dica
+    // do mouse dos pontos e na ajuda; o selo de tamanho só aparece quando a escala bateu no piso ou no teto (um aviso).
+    const size =
+      fit?.short && fit.limit
+        ? `<span class="chip dock-fit" data-limit="${esc(fit.limit)}" title="${esc(fit.title)}">${esc(fit.short)}</span>`
+        : "";
+    const foldedTitle = `Recolhido por falta de espaço: ${(fit?.collapsedLabels ?? []).join(", ")}. Volta sozinho quando houver espaço.`;
     const folded = fit?.collapsed?.length
-      ? `<span class="chip dock-fold" title="${esc(`Recolhido por falta de espaço: ${(fit.collapsedLabels ?? []).join(", ")}. Volta sozinho quando houver espaço.`)}">${glyph("warn")}${esc(fit.collapsed.length)} recolhido${fit.collapsed.length > 1 ? "s" : ""}</span>`
+      ? `<span class="chip dock-fold" title="${esc(foldedTitle)}">${glyph("warn")}${esc(fit.collapsed.length)} recolhido${fit.collapsed.length > 1 ? "s" : ""}</span>`
       : "";
-    // Compacto (verbosidade mínima): só "?" e os pontos; o estado aparece quando não é o normal (integrado) e o tamanho
-    // detectado fica na dica do mouse dos pontos e na ajuda.
+    // Compacto (verbosidade mínima, opção do "?"): o estado aparece só quando não é o normal (integrado) e o recolhido
+    // vira só o número.
     const compact = mode?.hints?.verbosity === "minimal";
     const label = modeLabel(mode);
     const modeChip =
@@ -453,9 +507,9 @@ export function createDraw(ui) {
         : `<span class="chip dock-mode" title="Estado do overlay">${esc(label)}</span>`;
     const foldedChip =
       compact && fit?.collapsed?.length
-        ? `<span class="chip dock-fold" title="${esc(`Recolhido por falta de espaço: ${(fit.collapsedLabels ?? []).join(", ")}. Volta sozinho quando houver espaço.`)}">${glyph("warn")}${esc(fit.collapsed.length)}</span>`
+        ? `<span class="chip dock-fold" title="${esc(foldedTitle)}">${glyph("warn")}${esc(fit.collapsed.length)}</span>`
         : folded;
-    return `<div class="dock-row">${hasHost ? `<button type="button" class="dock-help" data-hit data-act="help" aria-pressed="${mode.help ? "true" : "false"}" title="Ajuda e configurações do overlay">?</button>` : ""}<span class="dock-dots" role="group" aria-label="Saúde das fontes"${compact && fit?.title ? ` title="${esc(fit.title)}"` : ""}>${dots}</span>${modeChip}${compact ? "" : size}${foldedChip}</div>`;
+    return `<div class="dock-row">${hasHost ? `<button type="button" class="dock-help" data-hit data-act="help" aria-pressed="${mode.help ? "true" : "false"}" title="Ajuda e configurações do overlay">?</button>` : ""}<span class="dock-dots" role="group" aria-label="Saúde das fontes"${fit?.title ? ` title="${esc(fit.title)}"` : ""}>${dots}</span>${modeChip}${compact ? "" : size}${foldedChip}</div>${notes ? `<div class="chips dock-notes">${notes}</div>` : ""}`;
   }
 
   /** Aviso fixo de tela cheia exclusiva (o overlay não aparece sobre o jogo nesse modo). */

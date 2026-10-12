@@ -118,9 +118,9 @@ export function fitHtml(fit, esc) {
 
 /**
  * HTML do painel. `mode`: modo normalizado; `health`: `healthOf(...)`; `ui`: `{ esc, glyph }`; `fit`: `fitSummary(...)`
- * (opcional). Fora do modo integrado, os controles de elementos, calibração e seguir o jogo ficam desabilitados.
+ * (opcional); `extra`: HTML já escapado de mais uma seção (os selos dos botões do jogo, badges.mjs). Fora do modo integrado, os controles de elementos, calibração e seguir o jogo ficam desabilitados.
  */
-export function helpHtml(mode, health, ui, fit = null) {
+export function helpHtml(mode, health, ui, fit = null, extra = "") {
   const { esc, glyph } = ui,
     integrated = mode.mode === "integrated",
     off = integrated ? "" : " disabled",
@@ -169,7 +169,7 @@ export function helpHtml(mode, health, ui, fit = null) {
     : "";
   const step = (act, d, label) =>
     `<button type="button" class="hp-btn" data-act="${act}" data-d="${d}" title="${esc(label)}">${d < 0 ? "−" : "+"}</button>`;
-  return `<header class="hp-head"><b>Ajuda do overlay</b><button type="button" class="hp-btn" data-act="close" title="Fechar a ajuda">Fechar</button></header>${warn}<div class="hp-cols"><section><h4>Atalhos</h4><ul class="hp-keys">${keys}</ul><h4>Aparência</h4><div class="hp-row"><span>Escala</span>${step("scale", -SCALE_STEP, "Diminuir a escala")}<output>${esc(percent(mode.scale))}</output>${step("scale", SCALE_STEP, "Aumentar a escala")}</div><div class="hp-row"><span>Opacidade</span>${step("opacity", -OPACITY_STEP, "Diminuir a opacidade")}<output>${esc(percent(mode.opacity))}</output>${step("opacity", OPACITY_STEP, "Aumentar a opacidade")}</div><h4>Fontes de dados</h4><ul class="hp-health">${dots}</ul>${integrated ? fitHtml(fit, esc) : ""}</section><section><h4>Dicas na tela</h4><div class="hp-tags">${cats}</div><p class="hp-note">Alertas de vida aparecem sempre.</p><h4>Quantidade de dicas</h4><div class="hp-tags">${verbs}</div><h4>Elementos</h4><div class="hp-tags">${els}</div><div class="hp-row"><button type="button" class="hp-btn" data-act="reset"${off}>Resetar posições</button></div><h4>Modo</h4><div class="hp-tags">${toggle(integrated, 'data-act="mode" data-m="integrated"', "Integrado ao jogo")}${toggle(!integrated, 'data-act="mode" data-m="panel"', "Painel")}${toggle(mode.follow, 'data-act="follow"', "Seguir o jogo", off)}</div><div class="hp-row"><button type="button" class="hp-btn" data-act="calibrate"${off} aria-pressed="${mode.calibrating ? "true" : "false"}">${mode.calibrating ? "Concluir a calibração" : "Calibrar"}</button><button type="button" class="hp-btn" data-act="refresh"${off}>Procurar o jogo</button></div></section></div><p class="hp-note">O overlay só aparece sobre o jogo em janela ou janela sem borda. Ele apenas mostra: não clica, não digita e não lê o jogo.</p>`;
+  return `<header class="hp-head"><b>Ajuda do overlay</b><button type="button" class="hp-btn" data-act="close" title="Fechar a ajuda">Fechar</button></header>${warn}<div class="hp-cols"><section><h4>Atalhos</h4><ul class="hp-keys">${keys}</ul><h4>Aparência</h4><div class="hp-row"><span>Escala</span>${step("scale", -SCALE_STEP, "Diminuir a escala")}<output>${esc(percent(mode.scale))}</output>${step("scale", SCALE_STEP, "Aumentar a escala")}</div><div class="hp-row"><span>Opacidade</span>${step("opacity", -OPACITY_STEP, "Diminuir a opacidade")}<output>${esc(percent(mode.opacity))}</output>${step("opacity", OPACITY_STEP, "Aumentar a opacidade")}</div><h4>Fontes de dados</h4><ul class="hp-health">${dots}</ul>${integrated ? fitHtml(fit, esc) : ""}${integrated && typeof extra === "string" ? extra : ""}</section><section><h4>Dicas na tela</h4><div class="hp-tags">${cats}</div><p class="hp-note">Alertas de vida aparecem sempre.</p><h4>Quantidade de dicas</h4><div class="hp-tags">${verbs}</div><h4>Elementos</h4><div class="hp-tags">${els}</div><div class="hp-row"><button type="button" class="hp-btn" data-act="reset"${off}>Resetar posições</button></div><h4>Modo</h4><div class="hp-tags">${toggle(integrated, 'data-act="mode" data-m="integrated"', "Integrado ao jogo")}${toggle(!integrated, 'data-act="mode" data-m="panel"', "Painel")}${toggle(mode.follow, 'data-act="follow"', "Seguir o jogo", off)}</div><div class="hp-row"><button type="button" class="hp-btn" data-act="calibrate"${off} aria-pressed="${mode.calibrating ? "true" : "false"}">${mode.calibrating ? "Concluir a calibração" : "Calibrar"}</button><button type="button" class="hp-btn" data-act="refresh"${off}>Procurar o jogo</button></div></section></div><p class="hp-note">O overlay só aparece sobre o jogo em janela ou janela sem borda. Ele apenas mostra: não clica, não digita e não lê o jogo.</p>`;
 }
 
 /**
@@ -189,10 +189,10 @@ export function mountHelp(node, host, getMode) {
       .catch(() => {});
   });
   return {
-    render(mode, health, ui, fit = null) {
+    render(mode, health, ui, fit = null, extra = "") {
       node.hidden = !mode.help;
       if (!mode.help) return;
-      const html = helpHtml(mode, health, ui, fit);
+      const html = helpHtml(mode, health, ui, fit, extra);
       if (node.dataset.sig !== html) {
         node.dataset.sig = html;
         node.innerHTML = html;

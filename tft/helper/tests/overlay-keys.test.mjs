@@ -146,7 +146,9 @@ test("atalhos: a legenda mostra a lista registrada pelo main, com as teclas conf
   );
   let at = -1;
   for (const s of mode.shortcuts) {
-    const row = `<kbd>${esc(s.accelerator.split("+").pop())}</kbd><i aria-label="${esc(s.short)}">${esc(s.icon)}</i>`;
+    // Sem tecla (a padrão já foi dada a outra ação, como o F5 do painel da comp aqui): "—".
+    const shown = s.accelerator ? s.accelerator.split("+").pop() : "—";
+    const row = `<kbd>${esc(shown)}</kbd><i aria-label="${esc(s.short)}">${esc(s.icon)}</i>`;
     const i = html.indexOf(row);
     assert.ok(i > at, `${s.id}: linha ausente ou fora de ordem`);
     at = i;
@@ -161,7 +163,9 @@ test("atalhos: a legenda mostra a lista registrada pelo main, com as teclas conf
   const help = helpHtml(mode, healthOf(null, {}), { esc, glyph });
   for (const s of mode.shortcuts)
     assert.ok(
-      help.includes(`<kbd>${esc(s.accelerator)}</kbd><span>${esc(s.label)}`),
+      help.includes(
+        `<kbd>${esc(s.accelerator || "sem atalho")}</kbd><span>${esc(s.label)}`,
+      ),
       s.id,
     );
 });
@@ -178,7 +182,17 @@ test("atalhos: o que falhou ao registrar aparece marcado na legenda (aberta e re
   });
   assert.match(
     open,
-    /<li data-ok="0" data-id="copyComp"[^>]*title="[^"]*já está em uso[^"]*"><kbd>F6<\/kbd><i aria-label="Copiar comp">⧉<\/i><b class="keys-fail">✖<\/b><\/li>/,
+    /<li data-ok="0" data-id="copyComp"[^>]*title="[^"]*já está em uso[^"]*"><kbd>F6<\/kbd><i aria-label="Copiar comp">⧉<\/i><b class="keys-fail">✖<\/b><span class="keys-lbl" aria-hidden="true">Copiar comp<\/span><\/li>/,
+  );
+  // Na mínima (opção do "?") a linha é só tecla, ícone e a marca da falha.
+  assert.match(
+    keysHtml({
+      shortcuts: mode.shortcuts,
+      copy: teamCodeState(null),
+      esc,
+      compact: true,
+    }),
+    /<li data-ok="0" data-id="copyComp"[^>]*><kbd>F6<\/kbd><i aria-label="Copiar comp">⧉<\/i><b class="keys-fail">✖<\/b><\/li>/,
   );
   assert.equal((open.match(/data-ok="0"/g) ?? []).length, 1, "só o que falhou");
   assert.match(open, /<b class="keys-failn"[^>]*>1✖<\/b>/);
@@ -301,7 +315,17 @@ test("copiar comp: o botão copia plan.teamCode da comp exibida, que o overlay j
   });
   assert.match(
     html,
-    /<button type="button" class="keys-copy" data-hot data-hit data-act="copy-comp" aria-disabled="false" title="[^"]*\(Ctrl\+Shift\+F6\)">⧉ Copiar<\/button>/,
+    /<button type="button" class="keys-copy" data-hot data-hit data-act="copy-comp" aria-disabled="false" title="[^"]*\(Ctrl\+Shift\+F6\)">⧉ Copiar comp<\/button>/,
+  );
+  assert.match(
+    keysHtml({
+      shortcuts: shortcutList(DEFAULT_HOTKEYS, {}),
+      copy: tc,
+      esc,
+      compact: true,
+    }),
+    />⧉ Copiar<\/button>/,
+    "na mínima o botão fica curto",
   );
   // Retorno depois de copiar: aria-live, 1,5 s.
   assert.equal(COPY_FLASH_MS, 1500);
@@ -943,35 +967,111 @@ test("sonda: timeout isolado não troca a página; 3 seguidos marcam fora do ar 
   assert.ok(!/const PROBE_TIMEOUT_MS = 2500/.test(main));
 });
 
-test("migração: valor igual ao padrão antigo migra; editado fica; rodar duas vezes não muda nada", async () => {
-  const { DEFAULTS_VERSION, migrateConfig, loadAndMigrateConfig, backupStamp } =
+test("migração: padrão antigo migra; v2 -> v3 só volta o que a migração gravou; editado fica; idempotente", async () => {
+  const { DEFAULTS_VERSION, migrateConfig, migrationEvidence, backupStamp } =
     await import("../overlay/config.mjs");
-  assert.equal(DEFAULTS_VERSION, 2);
+  assert.equal(DEFAULTS_VERSION, 4);
+  assert.equal(backupStamp(new Date(2026, 9, 11, 20, 5, 9)), "20261011-200509");
   const old = {
     hints: { verbosity: "normal", categories: { buy: true } },
     layout: { bar: { x: 0.5, y: 0.1, w: 0.2, hidden: false } },
   };
+  // Só até a v2 (a tabela antiga): "normal" -> "minimal".
+  const v2 = migrateConfig(old, undefined, 2);
+  assert.equal(v2.raw.hints.verbosity, "minimal");
+  assert.deepEqual(v2.changes, ["hints.verbosity: normal -> minimal"]);
+  // Até a v3 na mesma passada: a v1 -> v2 gravou "minimal" e a v2 -> v3 o desfaz; no fim nada mudou na verbosidade.
   const m = migrateConfig(old);
   assert.equal(m.migrated, true);
-  assert.equal(m.raw.hints.verbosity, "minimal");
-  assert.equal(m.raw.defaultsVersion, 2);
-  assert.deepEqual(m.raw.layout, old.layout, "layout mexido pelo usuário fica");
+  assert.equal(m.raw.hints.verbosity, "normal");
+  assert.equal(m.raw.defaultsVersion, 4);
+  // Ida e volta da verbosidade na mesma passada não é mudança; a faixa, que estava no padrão antigo (visível), passa a
+  // oculta sem perder a posição.
+  assert.deepEqual(m.changes, ["layout.bar.hidden: false -> true"]);
+  assert.deepEqual(m.raw.layout.bar, { ...old.layout.bar, hidden: true });
+  assert.equal(old.layout.bar.hidden, false, "não altera a entrada");
+  // Quem já ocultou (ou o elemento sem o campo) não é tocado pela regra de campo.
+  const hiddenAlready = migrateConfig({
+    defaultsVersion: 2,
+    layout: {
+      hints: { x: 0.2, y: 0.2, w: 0.2, hidden: true },
+      roll: { x: 0.3 },
+    },
+  });
+  assert.deepEqual(hiddenAlready.changes, []);
+  assert.deepEqual(hiddenAlready.raw.layout.roll, { x: 0.3 });
   assert.equal(old.hints.verbosity, "normal", "não altera a entrada");
-  assert.deepEqual(m.changes, ["hints.verbosity: normal -> minimal"]);
-  // Escolha do usuário (diferente do padrão antigo) fica.
-  assert.equal(
-    migrateConfig({ hints: { verbosity: "detailed" } }).raw.hints.verbosity,
-    "detailed",
+  // v2 com "minimal": sem prova de que foi a migração, é escolha do jogador e fica.
+  const manual = migrateConfig({
+    defaultsVersion: 2,
+    hints: { verbosity: "minimal" },
+  });
+  assert.equal(manual.migrated, true);
+  assert.equal(manual.raw.hints.verbosity, "minimal");
+  assert.equal(manual.raw.defaultsVersion, 4);
+  assert.deepEqual(manual.changes, []);
+  // Com a prova (backup da v1 que não escolhia "minimal"): volta ao normal.
+  const proved = migrateConfig(
+    { defaultsVersion: 2, hints: { verbosity: "minimal" } },
+    undefined,
+    undefined,
+    { written: ["hints.verbosity"] },
   );
-  // Idempotente: o migrado não muda de novo; e uma escolha "normal" feita DEPOIS da migração é respeitada.
+  assert.equal(proved.raw.hints.verbosity, "normal");
+  assert.deepEqual(proved.changes, ["hints.verbosity: minimal -> normal"]);
+  // Outras escolhas da v2 nunca são tocadas, com ou sem prova.
+  for (const verbosity of ["normal", "detailed"])
+    assert.equal(
+      migrateConfig(
+        { defaultsVersion: 2, hints: { verbosity } },
+        undefined,
+        undefined,
+        { written: ["hints.verbosity"] },
+      ).raw.hints.verbosity,
+      verbosity,
+    );
+  // v1 com escolha "detailed" ou "minimal" (feita antes de qualquer migração): fica.
+  for (const verbosity of ["detailed", "minimal"])
+    assert.equal(
+      migrateConfig({ hints: { verbosity } }).raw.hints.verbosity,
+      verbosity,
+    );
+  // Idempotente: o migrado não muda de novo.
   const again = migrateConfig(m.raw);
   assert.equal(again.migrated, false);
   assert.equal(again.raw, m.raw);
-  assert.equal(
-    migrateConfig({ defaultsVersion: 2, hints: { verbosity: "normal" } }).raw
-      .hints.verbosity,
-    "normal",
+  // Prova pelos backups: só um backup da v1 cuja verbosidade não era uma escolha de "minimal"/"detailed".
+  const cur = { defaultsVersion: 2, hints: { verbosity: "minimal" } };
+  assert.deepEqual(
+    migrationEvidence(cur, [{ hints: { verbosity: "normal" } }]),
+    ["hints.verbosity"],
   );
+  assert.deepEqual(migrationEvidence(cur, [{ port: null }]), [
+    "hints.verbosity",
+  ]);
+  assert.deepEqual(
+    migrationEvidence(cur, [{ hints: { verbosity: "minimal" } }]),
+    [],
+  );
+  assert.deepEqual(
+    migrationEvidence(cur, [{ hints: { verbosity: "detailed" } }]),
+    [],
+  );
+  assert.deepEqual(
+    migrationEvidence(cur, [
+      { defaultsVersion: 2, hints: { verbosity: "normal" } },
+    ]),
+    [],
+    "backup da v2 não prova a v1 -> v2",
+  );
+  assert.deepEqual(migrationEvidence(cur, []), []);
+  assert.deepEqual(
+    migrationEvidence({ defaultsVersion: 2, hints: { verbosity: "normal" } }, [
+      {},
+    ]),
+    [],
+  );
+  assert.deepEqual(migrationEvidence(null, null), []);
   // Elemento de layout igual ao padrão antigo passa ao novo (tabela de exemplo).
   const table = [
     {
@@ -1007,32 +1107,109 @@ test("migração: valor igual ao padrão antigo migra; editado fica; rodar duas 
     2,
   );
   assert.equal(moved.raw.layout.dock.x, 0.81, "mexido à mão não é tocado");
-  // No disco: backup ao lado, arquivo migrado, segunda carga sem migrar.
+});
+
+test('migração no disco: a configuração migrada para "minimal" volta ao "normal" com backup novo; escolha manual fica', async () => {
+  const { loadAndMigrateConfig } = await import("../overlay/config.mjs");
   const os = await import("node:os");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ovl-mig-"));
+  const backups = () =>
+    fs
+      .readdirSync(dir)
+      .filter((f) => f.includes(".bak-"))
+      .sort();
   try {
     const file = path.join(dir, "overlay.config.json");
-    fs.writeFileSync(file, JSON.stringify(old));
-    const when = new Date(2026, 9, 11, 20, 5, 9);
+    // O caso do usuário: backup da v1 (verbosidade "normal") deixado pela migração v1 -> v2, e o arquivo na v2 com "minimal".
+    const v1 = {
+      port: null,
+      mode: "integrated",
+      hints: { categories: { buy: true }, verbosity: "normal" },
+    };
+    fs.writeFileSync(`${file}.bak-20261011-180606`, JSON.stringify(v1));
+    const v2 = {
+      ...v1,
+      hints: { categories: { buy: true }, verbosity: "minimal" },
+      layout: { roll: { x: 0.8229, y: 0.3077, w: 0.1607, hidden: false } },
+      defaultsVersion: 2,
+    };
+    fs.writeFileSync(file, JSON.stringify(v2));
+    const when = new Date(2026, 9, 11, 21, 30, 0);
     const r1 = await loadAndMigrateConfig(file, when);
-    assert.equal(r1.cfg.hints.verbosity, "minimal");
+    assert.equal(r1.cfg.hints.verbosity, "normal");
+    assert.equal(r1.cfg.defaultsVersion, 4);
+    assert.deepEqual(r1.migration.changes, [
+      "hints.verbosity: minimal -> normal",
+      "layout.roll.hidden: false -> true",
+    ]);
+    assert.equal(
+      r1.cfg.layout.roll.hidden,
+      true,
+      "rolagem vira selo no botão do jogo",
+    );
+    assert.equal(
+      r1.cfg.layout.bar.hidden,
+      true,
+      "sem faixa salva: o padrão novo",
+    );
     assert.equal(
       path.basename(r1.migration.backup),
-      "overlay.config.json.bak-20261011-200509",
+      "overlay.config.json.bak-20261011-213000",
     );
-    assert.equal(
-      JSON.parse(fs.readFileSync(r1.migration.backup, "utf8")).hints.verbosity,
-      "normal",
-      "backup é o original",
-    );
+    const saved = JSON.parse(fs.readFileSync(r1.migration.backup, "utf8"));
+    assert.equal(saved.hints.verbosity, "minimal", "o backup novo é o da v2");
+    assert.equal(saved.defaultsVersion, 2);
+    assert.equal(r1.cfg.layout.roll.x, 0.8229, "o resto da configuração fica");
     assert.equal(r1.text, fs.readFileSync(file, "utf8"));
+    // Idempotente: a segunda carga não migra nem cria backup.
     const r2 = await loadAndMigrateConfig(file, when);
     assert.equal(r2.migration, null, "segunda vez não migra");
-    assert.equal(
-      fs.readdirSync(dir).filter((f) => f.includes(".bak-")).length,
-      1,
+    assert.equal(r2.cfg.hints.verbosity, "normal");
+    assert.deepEqual(backups(), [
+      "overlay.config.json.bak-20261011-180606",
+      "overlay.config.json.bak-20261011-213000",
+    ]);
+    // Escolha manual (v2 com "minimal" sem backup da v1 que o explique): fica "minimal"; só a versão sobe.
+    for (const b of backups()) fs.rmSync(path.join(dir, b));
+    fs.writeFileSync(file, JSON.stringify(v2));
+    const r3 = await loadAndMigrateConfig(file, when);
+    assert.equal(r3.cfg.hints.verbosity, "minimal");
+    assert.equal(r3.cfg.defaultsVersion, 4);
+    assert.deepEqual(r3.migration.changes, [
+      "layout.roll.hidden: false -> true",
+    ]);
+    // Arquivo da v1 nunca migrado: segue "normal" (a ida e a volta se anulam) e vai direto à v4.
+    for (const b of backups()) fs.rmSync(path.join(dir, b));
+    fs.writeFileSync(file, JSON.stringify(v1));
+    const r4 = await loadAndMigrateConfig(file, when);
+    assert.equal(r4.cfg.hints.verbosity, "normal");
+    assert.equal(r4.cfg.defaultsVersion, 4);
+    // Arquivo já na v3 (gravado antes do passo da faixa/dicas/rolagem): só o `hidden` que estava no padrão antigo muda;
+    // a verbosidade, as posições e um elemento já oculto ficam; com backup e uma vez só.
+    for (const b of backups()) fs.rmSync(path.join(dir, b));
+    const v3 = {
+      ...v1,
+      hints: { categories: { buy: true }, verbosity: "minimal" },
+      layout: {
+        bar: { x: 0.7384, y: 0.1366, w: 0.19, hidden: false },
+        hints: { x: 0.736, y: 0.3434, w: 0.19, hidden: true },
+        roll: { x: 0.0075, y: 0.0726, w: 0.1607, hidden: false },
+      },
+      defaultsVersion: 3,
+    };
+    fs.writeFileSync(file, JSON.stringify(v3));
+    const r5 = await loadAndMigrateConfig(file, when);
+    assert.deepEqual(r5.migration.changes, [
+      "layout.bar.hidden: false -> true",
+      "layout.roll.hidden: false -> true",
+    ]);
+    assert.equal(r5.cfg.hints.verbosity, "minimal", "escolha da v3 fica");
+    assert.deepEqual(
+      [r5.cfg.layout.bar.x, r5.cfg.layout.bar.hidden, r5.cfg.layout.roll.x],
+      [0.7384, true, 0.0075],
     );
-    assert.equal(backupStamp(when), "20261011-200509");
+    assert.equal(backups().length, 1);
+    assert.equal((await loadAndMigrateConfig(file, when)).migration, null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

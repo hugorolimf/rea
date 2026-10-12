@@ -16,6 +16,11 @@ export const DEFAULT_HOTKEYS = Object.freeze({
   help: "Control+Shift+F8",
   calibrate: "Control+Shift+F7",
   copyComp: "Control+Shift+F6",
+  // Painel da comp sobre o jogo (comp.mjs): F5 mostra/esconde; F3 e F4 passam pela comp do plano e pelas sugeridas. O
+  // TFT não usa Ctrl+Shift com teclas de função, e F3-F5 ficam ao lado dos atalhos que já existem (F6-F12).
+  compPanel: "Control+Shift+F5",
+  compPrev: "Control+Shift+F3",
+  compNext: "Control+Shift+F4",
 });
 
 /** Ids das ações com atalho, na ordem de `DEFAULT_HOTKEYS`. */
@@ -45,6 +50,25 @@ export const HOTKEY_ACTIONS = Object.freeze(
       label: "Copiar o código da comp (cole no Planejador do jogo)",
       short: "Copiar comp",
       icon: "⧉",
+    },
+    {
+      id: "compPanel",
+      label:
+        "Mostrar ou ocultar a comp atual (peças, quem está em campo, builds e sinergias)",
+      short: "Ver comp",
+      icon: "▦",
+    },
+    {
+      id: "compPrev",
+      label: "Comp anterior no painel (plano e sugeridas; não fixa nada)",
+      short: "Comp anterior",
+      icon: "◂",
+    },
+    {
+      id: "compNext",
+      label: "Próxima comp no painel (plano e sugeridas; não fixa nada)",
+      short: "Próxima comp",
+      icon: "▸",
     },
     { id: "help", label: "Abrir ou fechar a ajuda", short: "Ajuda", icon: "?" },
     {

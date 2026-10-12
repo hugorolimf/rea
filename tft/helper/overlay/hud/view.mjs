@@ -99,6 +99,10 @@ function barOf(model, stateStale) {
         : { kind: "snapshot", text: "snapshot" };
   return {
     stage: hero.stage ? `${hero.stage.stage}-${hero.stage.round}` : null,
+    // O mesmo estágio como objeto (`{ stage, round }`), para comparar sem reler o texto (selo de nível, badges.mjs).
+    at: hero.stage
+      ? { stage: hero.stage.stage, round: hero.stage.round }
+      : null,
     level:
       lv == null
         ? null
@@ -148,12 +152,130 @@ function barOf(model, stateStale) {
   };
 }
 
+/** Quantos alvos o selo de rolagem mostra. */
+export const ROLL_TARGETS_SHOWN = 3;
+
+const STAR_GOAL = Object.freeze({ "1★": 1, "2★": 2, "3★": 3 });
+
+/**
+ * Alvos da rolagem ("por quem rolar"), na ordem do servidor, até `ROLL_TARGETS_SHOWN`. Fontes, a primeira que existir:
+ * 1. `rolling.rollFor.targets` (o campo do tft-rolagem: `{ id, name, cost, goal: "2★"|"3★"|"falta", have: "2/3", chance,
+ *    rivals: { copies, hidden, names }, why, text, detail, carry, inShop, slots }`);
+ * 2. `call.targets` (`[{ id, name, goal, have, chance, rivals, why }]`, `goal` = estrela-alvo em número, `have` = cópias);
+ * 3. as peças da lista de rolagem que o servidor já mandava (`rolling.targets` de roll.mjs: evoluções viáveis primeiro,
+ *    com `goalStars`, `own`, `goal` em cópias, `chance` com o orçamento e `enemy`).
+ * Devolve `[{ id, name, goal, goalText, have, need, haveText, chance, rivals, why, text, slots }]`.
+ */
+function rollTargets(r, rollFor, starCopies = null) {
+  const id = (t) => t && typeof t.id === "string";
+  const txt = (v) => (typeof v === "string" && v ? v : null);
+  if (rollFor && Array.isArray(rollFor.targets))
+    return rollFor.targets
+      .filter(id)
+      .slice(0, ROLL_TARGETS_SHOWN)
+      .map((t) => ({
+        id: t.id,
+        name: t.name ?? t.id,
+        goal: STAR_GOAL[t.goal] ?? null,
+        goalText: txt(t.goal),
+        have: null,
+        need: null,
+        haveText: txt(t.have),
+        chance: num(t.chance),
+        rivals: num(t.rivals?.copies),
+        why: txt(t.why),
+        text: txt(t.text),
+        slots:
+          t.inShop === true && Array.isArray(t.slots)
+            ? t.slots.filter((n) => Number.isInteger(n))
+            : [],
+      }));
+  const call = r?.call;
+  if (Array.isArray(call?.targets) && call.targets.length)
+    return call.targets
+      .filter(id)
+      .slice(0, ROLL_TARGETS_SHOWN)
+      .map((t) => {
+        const goal = num(t.goal);
+        // Cópias para a estrela-alvo: a regra do jogo de core/pool/copies.mjs (`deps.starCopies`).
+        const need =
+          num(t.need) ??
+          (typeof starCopies === "function" && goal !== null
+            ? num(starCopies(goal))
+            : null);
+        return {
+          id: t.id,
+          name: t.name ?? t.id,
+          goal,
+          goalText: goal ? `${goal}★` : null,
+          have: num(t.have),
+          need,
+          haveText:
+            num(t.have) !== null && need !== null ? `${t.have}/${need}` : null,
+          chance: num(t.chance),
+          rivals: num(t.rivals),
+          why: txt(t.why),
+          text: null,
+          slots: [],
+        };
+      });
+  return (Array.isArray(r?.targets) ? r.targets : [])
+    .filter((t) => id(t) && t.status === "ok")
+    .slice(0, ROLL_TARGETS_SHOWN)
+    .map((t) => ({
+      id: t.id,
+      name: t.name ?? t.id,
+      goal: num(t.goalStars),
+      goalText: num(t.goalStars) ? `${t.goalStars}★` : null,
+      have: num(t.own),
+      need: num(t.goal),
+      haveText:
+        num(t.own) !== null && num(t.goal) !== null
+          ? `${t.own}/${t.goal}`
+          : null,
+      chance: num(t.chance),
+      rivals: num(t.enemy),
+      why: txt(t.whyText),
+      text: null,
+      slots: [],
+    }));
+}
+
+/**
+ * Cartas da loja de agora que são alvos da rolagem: `inShop`/`slots` de `rollFor` quando existe; senão `panel.roll.shop`
+ * (já cruzado com a loja). `[{ id, name, slots }]`.
+ */
+function rollFound(r, targets) {
+  const fromFor = targets.filter((t) => t.slots.length);
+  if (fromFor.length)
+    return fromFor.map((t) => ({
+      id: t.id,
+      name: t.name,
+      slots: [...t.slots],
+    }));
+  const ids = new Set(targets.map((t) => t.id));
+  return (Array.isArray(r?.shop) ? r.shop : [])
+    .filter(
+      (h) => h && ids.has(h.id) && Array.isArray(h.slots) && h.slots.length,
+    )
+    .map((h) => ({ id: h.id, name: h.name ?? h.id, slots: [...h.slots] }));
+}
+
+/** `strategy.panels.rolling.rollFor` do plano exibido (o mesmo de `economyOf`), ou null. */
+const rollForOf = (rec) => {
+  const f = (rec?.preview ?? rec?.recommendations?.[0])?.strategy?.panels
+    ?.rolling?.rollFor;
+  return f && typeof f === "object" ? f : null;
+};
+
 /** Veredito de rolagem do servidor em um cartão curto; só com a partida ao vivo. */
-function rollOf(model) {
+function rollOf(model, deps = null, rec = null) {
   const r = model.plan?.panel?.roll;
   if (!r || !model.status.live) return null;
   const c = r.call;
   if (!c && !r.pill.text) return null;
+  const rollFor = rollForOf(rec);
+  const targets = rollTargets(r, rollFor, deps?.starCopies);
   return {
     tone: r.pill.tone,
     pill: r.pill.text,
@@ -164,6 +286,17 @@ function rollOf(model) {
     // Nível em que o servidor manda rolar (o veredito "wait" diz "espere o nível N").
     at: num(c?.at?.level) ?? num(r.at),
     spend: r.go ? { gold: r.spend, shops: r.shops, keep: num(r.keep) } : null,
+    // Peça que a rolagem busca e a chance dela (selo do botão "Atualizar", badges.mjs).
+    main: c?.main?.name
+      ? { id: c.main.id ?? null, name: c.main.name, stars: num(c.main.stars) }
+      : null,
+    mainChance: num(c?.mainChance),
+    // Por quem rolar (até 3 alvos), o resumo do servidor ("Role 25g (até 12 lojas), pare em 50g") e as cartas dos alvos
+    // na loja de agora (selo do botão "Atualizar", badges.mjs).
+    targets,
+    forText:
+      typeof rollFor?.text === "string" && rollFor.text ? rollFor.text : null,
+    found: rollFound(r, targets),
     interest: r.interest ? { from: r.interest.from, to: r.interest.to } : null,
   };
 }
@@ -233,6 +366,87 @@ function champsOf(model) {
         next: !!i.next,
       })),
     }));
+}
+
+/** Quantas linhas de "Montar agora" ficam visíveis; o resto vai na dica do mouse. */
+export const BUILD_NOW_SHOWN = 3;
+
+/**
+ * "Montar agora" para a comp do plano, como a página web: o que dá para montar com o banco (item = componentes →
+ * campeão), o item completo pronto no banco e para quem (`stage.bankItems`: "pronto: X → Y", ou "segure em S → para T"
+ * quando um temporário o segura para o titular) e o componente que falta para fechar um item ("falta C para X").
+ * Fontes, sem recalcular regra: as linhas "Itens dos campeões" do modelo (só peças da comp em campo, carry primeiro, cada
+ * item com a situação de core/items) e `stage.bankItems` da análise (core/items/scenarios.mjs). A receita vem de
+ * `deps.nextItemRecipe` com o banco lido. Devolve `[{ kind: "craft"|"ready"|"hold"|"missing", item, parts, unit, for,
+ * carry, text }]` na ordem: carry primeiro, depois montar, pronto, segurar e falta.
+ */
+function buildNowOf(model, plan, bank, deps) {
+  const recipe = (item) =>
+    typeof deps?.nextItemRecipe === "function"
+      ? deps.nextItemRecipe(item, deps.catalogItems ?? new Map(), { bank })
+      : null;
+  const carryId = model.plan?.carryId ?? null;
+  const out = [];
+  for (const r of stepRows(model, "builds")) {
+    const unit = brief(r.unit);
+    for (const i of r.items ?? []) {
+      const crafts = i.kind === "ready" && /^monta/.test(i.text ?? "");
+      if (!crafts && i.kind !== "half") continue;
+      const rec = recipe(i.item);
+      const parts = (rec?.parts ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        state: p.state,
+      }));
+      if (crafts)
+        out.push({
+          kind: "craft",
+          item: brief(i.item),
+          parts,
+          unit,
+          for: null,
+          carry: !!r.carry,
+          text: `monte ${i.item?.name ?? ""} (${parts.map((p) => p.name).join(" + ")}) em ${unit.name}`,
+        });
+      else {
+        const miss = parts.filter((p) => p.state === "missing");
+        out.push({
+          kind: "missing",
+          item: brief(i.item),
+          parts: miss,
+          unit,
+          for: null,
+          carry: !!r.carry,
+          text: `falta ${miss.map((p) => p.name).join(" + ") || "componente"} para ${i.item?.name ?? ""} de ${unit.name}`,
+        });
+      }
+    }
+  }
+  for (const b of plan?.stage?.bankItems ?? []) {
+    if (!b?.id || !b.to?.id) continue;
+    const hold = !!b.for?.id;
+    out.push({
+      kind: hold ? "hold" : "ready",
+      item: { id: b.id, name: b.name ?? "" },
+      parts: [],
+      unit: brief(b.to),
+      for: hold ? brief(b.for) : null,
+      carry: (hold ? b.for.id : b.to.id) === carryId,
+      text: hold
+        ? `segure ${b.name ?? ""} em ${b.to.name} → para ${b.for.name}`
+        : `pronto: ${b.name ?? ""} → ${b.to.name}`,
+    });
+  }
+  const order = { craft: 0, ready: 1, hold: 2, missing: 3 };
+  return out
+    .map((x, n) => ({ x, n }))
+    .sort(
+      (a, b) =>
+        Number(b.x.carry) - Number(a.x.carry) ||
+        order[a.x.kind] - order[b.x.kind] ||
+        a.n - b.n,
+    )
+    .map(({ x }) => x);
 }
 
 /** "Equipar" (peça em campo e banco) em versão resumida. */
@@ -459,6 +673,36 @@ function buyOf(model) {
   };
 }
 
+/**
+ * Trocas de agora (`deps.swapRows`) e substitutos a comprar na loja (`deps.tempBuys`), de swaps.mjs, sobre o plano
+ * exibido; só ao vivo (fora dela não há o que trocar agora). `{ swaps, tempBuys }`.
+ */
+function swapsFrom(model, rec, deps) {
+  const plan = rec?.preview ?? rec?.recommendations?.[0] ?? null;
+  if (!model.status.live || !plan) return { swaps: [], tempBuys: [] };
+  const call = (fn) => {
+    if (typeof fn !== "function") return [];
+    try {
+      const v = fn(plan);
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  };
+  return { swaps: call(deps?.swapRows), tempBuys: call(deps?.tempBuys) };
+}
+
+/** Comps do painel da comp (`deps.compsOf`, de comp.mjs); sem a função ou com dado estranho, nenhuma. */
+function compsFrom(model, rec, deps) {
+  if (typeof deps?.compsOf !== "function") return [];
+  try {
+    const list = deps.compsOf({ model, rec, deps });
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Wisps da loja agora (só ao vivo e com a função e o catálogo injetados); um dado estranho nunca derruba a tela. */
 function wispsOf(model, seen, rec, deps) {
   if (!model.status.live || typeof deps.wispsView !== "function") return [];
@@ -485,6 +729,8 @@ function economyOf(rec) {
     interest: num(e.interest),
     next: num(e.next),
     keep: num(e.keep),
+    // Piso de ouro da faixa de vida/economia que a decisão respeita (selo do ouro, badges.mjs).
+    floor: num(e.floor),
     after: num(e.after),
     pressure: str(e.pressure),
     text: str(e.text),
@@ -494,18 +740,37 @@ function economyOf(rec) {
   };
 }
 
-/** Nível do plano exibido (`strategy.panels.leveling`, com `go` e `passive` só ao vivo, como no modelo da interface). */
-function levelOf(model) {
+/** Decisão da rodada do plano exibido (`strategy.turn`, core/turn/turn.mjs), ou null (servidor antigo). */
+const turnOf = (rec) => {
+  const t = (rec?.preview ?? rec?.recommendations?.[0])?.strategy?.turn;
+  return t && typeof t === "object" && Array.isArray(t.steps) ? t : null;
+};
+
+/**
+ * Nível do plano exibido (`strategy.panels.leveling`, com `go` e `passive` só ao vivo, como no modelo da interface). Com a
+ * decisão da rodada (`turn`), o "suba", o "não suba" e o "espere quando" vêm dela: o selo não calcula a curva por conta
+ * própria e não contradiz a decisão.
+ */
+function levelOf(model, rec = null) {
   const lv = model.plan?.panel?.level;
   if (!lv) return null;
+  const t = turnOf(rec)?.level ?? null;
   return {
     level: num(lv.level),
     go: lv.go === true,
     cost: num(lv.cost),
     passive: lv.passive === true,
-    finalLevel: num(lv.finalLevel),
+    finalLevel: num(t?.final) ?? num(lv.finalLevel),
     verdict: str(lv.verdict),
     text: str(lv.text),
+    turn: t
+      ? {
+          done: t.done === true,
+          next: t.next
+            ? { when: str(t.next.when), why: str(t.next.why) }
+            : null,
+        }
+      : null,
   };
 }
 
@@ -553,7 +818,8 @@ function sourcesOf(model, seen, bar) {
  *   campos sem fonte, como "ouro" e "loja", quando o GEP não está ativo);
  * - `carousel`: o cartão do carrossel enquanto o servidor diz que estamos nele (ver `carouselOf`), ou null;
  * - `augments`: o cartão dos aprimoramentos enquanto a escolha está aberta no jogo (ou "sem fonte" na rodada dela; ver
- *   `augmentsOf`), ou null.
+ *   `augmentsOf`), ou null;
+ * - `comps`: as comps do painel da comp (a do plano e as sugeridas, `deps.compsOf` de comp.mjs) ou [] sem plano.
  */
 export function overlayView(
   feed,
@@ -583,6 +849,9 @@ export function overlayView(
     sources: null,
     carousel: null,
     augments: null,
+    comps: [],
+    swaps: [],
+    tempBuys: [],
   };
   const notices = [];
   // Selo discreto com a idade da última resposta: a página continua com os últimos dados (o overlay não troca de página).
@@ -704,8 +973,17 @@ export function overlayView(
   const bank = Array.isArray(stateBody?.seen?.items)
       ? stateBody.seen.items
       : [],
-    roll = rollOf(model),
+    roll = rollOf(model, deps, rec),
+    buildNow = buildNowOf(
+      model,
+      rec?.preview ?? rec?.recommendations?.[0] ?? null,
+      Array.isArray(stateBody?.seen?.items) ? stateBody.seen.items : null,
+      deps,
+    ),
     items = {
+      // "Montar agora" para a comp do plano: até BUILD_NOW_SHOWN visíveis; o resto (`buildRest`) vai na dica do mouse.
+      build: buildNow.slice(0, BUILD_NOW_SHOWN),
+      buildRest: buildNow.slice(BUILD_NOW_SHOWN).map((b) => b.text),
       next: nextOf(model, deps),
       equip: equipOf(model),
       moves: movesOf(model),
@@ -713,6 +991,7 @@ export function overlayView(
       champsMore: Math.max(0, stepRows(model, "builds").length - CHAMPS_SHOWN),
     },
     hasItems =
+      items.build.length ||
       items.next.length ||
       items.equip.length ||
       items.moves.length ||
@@ -721,6 +1000,10 @@ export function overlayView(
     plan = planOf(model, rec, deps);
   return {
     ...base,
+    // Painel da comp (atalhos "Ver comp"/anterior/próxima): a regra mora em comp.mjs, injetada como `deps.compsOf`.
+    comps: compsFrom(model, rec, deps),
+    // Bloco "Entra e sai" e as compras de substituto na loja (swaps.mjs, injetado): só com a partida ao vivo.
+    ...swapsFrom(model, rec, deps),
     status: "ready",
     roll,
     items: hasItems ? items : null,
@@ -729,7 +1012,9 @@ export function overlayView(
     buy: buyOf(model),
     wisps: wispsOf(model, stateBody?.seen, rec, deps),
     economy: economyOf(rec),
-    level: levelOf(model),
+    level: levelOf(model, rec),
+    // A decisão da rodada em uma linha ("Compre Aphelios → suba para 8 → role 6 vezes por Kayle 3★ → guarde 30g").
+    turn: model.status.live ? (turnOf(rec)?.headline ?? null) : null,
     sections: [
       base.augments && "augments",
       base.carousel && "carousel",

@@ -65,6 +65,17 @@ export const LEVEL_XP_PAD = Object.freeze({
   y: 0.006,
 });
 
+/**
+ * [ESTIMADO] Botões do próprio TFT à esquerda da 1ª carta da loja, empilhados: "Comprar XP" (4g) em cima e
+ * "Atualizar" (reroll, 2g) embaixo, na faixa y ~0,86-0,97 do HUD 16:9 (frações como em HUD_REGIONS). Não foram medidos
+ * numa captura: são do HUD padrão (a 1ª carta começa em x ~0,279) e a calibração (Ctrl+Shift+F7) corrige o desvio junto
+ * com o resto da grade. O overlay só DESENHA selos perto deles; nunca clica.
+ */
+export const SHOP_BUTTONS = Object.freeze({
+  xp: Object.freeze({ x: 0.191, y: 0.862, w: 0.083, h: 0.05 }),
+  reroll: Object.freeze({ x: 0.191, y: 0.918, w: 0.083, h: 0.052 }),
+});
+
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 const r2 = (n) => Math.round(n * 100) / 100;
 const r4 = (n) => Math.round(n * 10000) / 10000;
@@ -268,6 +279,9 @@ export function anchorRects(stage, calibration = DEFAULT_CALIBRATION) {
     shopNames,
     bankSlots,
     bank,
+    // [ESTIMADO] Botões "Comprar XP" e "Atualizar" (SHOP_BUTTONS), com a mesma calibração da loja.
+    xpButton: cooked(inRect(hud, SHOP_BUTTONS.xp), hud),
+    rerollButton: cooked(inRect(hud, SHOP_BUTTONS.reroll), hud),
   };
 }
 
@@ -295,6 +309,10 @@ export function resolveAnchor(anchor, rects) {
       return rects.xp ?? null;
     case "stage":
       return rects.stage ?? null;
+    case "xpButton":
+      return rects.xpButton ?? null;
+    case "reroll":
+      return rects.rerollButton ?? null;
     default:
       return null;
   }
@@ -308,6 +326,9 @@ export const ANCHOR_SIDE = Object.freeze({
   level: "top",
   xp: "top",
   stage: "bottom",
+  // Selos dos botões do jogo: à esquerda deles (a loja fica à direita e o texto de nível em cima).
+  xpButton: "left",
+  reroll: "left",
 });
 
 const OPPOSITE = { top: "bottom", bottom: "top", left: "right", right: "left" };

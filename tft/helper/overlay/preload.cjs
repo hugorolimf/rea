@@ -1,6 +1,6 @@
 "use strict";
-// Ponte mínima e fixa entre o HUD e o processo principal (contrato `window.overlayHost`, versão 3).
-// Cada versão só ACRESCENTA métodos à anterior (a 3: copiar comp e regiões quentes); todos os nomes antigos continuam. O main revalida tudo com os parsers:
+// Ponte mínima e fixa entre o HUD e o processo principal (contrato `window.overlayHost`, versão 4).
+// Cada versão só ACRESCENTA métodos à anterior (a 3: copiar comp e regiões quentes; a 4: atalhos do painel da comp); todos os nomes antigos continuam. O main revalida tudo com os parsers:
 // as checagens daqui só evitam enviar lixo. A ponte nunca envia entrada ao jogo; só pede ajustes da própria janela.
 // `require` é obrigatório: o preload do Electron roda em CommonJS (e em sandbox não aceita `import`).
 // oxlint-disable-next-line typescript/no-var-requires
@@ -10,6 +10,7 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isBool = (v) => typeof v === "boolean";
 const MODES = new Set(["integrated", "panel"]);
+const COMP_ACTIONS = new Set(["toggle", "show", "prev", "next"]);
 const send = (channel, ...args) => {
   ipcRenderer.send(channel, ...args);
 };
@@ -17,7 +18,7 @@ const send = (channel, ...args) => {
 contextBridge.exposeInMainWorld(
   "overlayHost",
   Object.freeze({
-    version: 3,
+    version: 4,
     getMode: () => ipcRenderer.invoke("overlay:getMode"),
     onMode(cb) {
       if (typeof cb !== "function") return () => {};
@@ -113,6 +114,26 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("overlay:copyRequest", handler);
       return () => {
         ipcRenderer.removeListener("overlay:copyRequest", handler);
+      };
+    },
+    // --- v4 ---
+    /**
+     * Atalhos do painel da comp: o main avisa a ação ("toggle", "show", "prev" ou "next") e a página mostra, esconde ou
+     * troca a comp do painel com os dados que já tem. Nada vai ao servidor nem ao jogo.
+     */
+    onCompPanel(cb) {
+      if (typeof cb !== "function") return () => {};
+      const handler = (_event, action) => {
+        if (!COMP_ACTIONS.has(action)) return;
+        try {
+          cb(action);
+        } catch {
+          // Erro do HUD não deve derrubar a ponte.
+        }
+      };
+      ipcRenderer.on("overlay:compPanel", handler);
+      return () => {
+        ipcRenderer.removeListener("overlay:compPanel", handler);
       };
     },
   }),

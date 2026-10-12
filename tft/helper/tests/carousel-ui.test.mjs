@@ -246,8 +246,9 @@ test("overlay: bloco malformado do servidor não derruba a tela", () => {
 
 /* ---------- Overlay: HTML ---------- */
 
-test("overlay: o HTML mostra campeões e itens como imagens (nunca o nome sozinho) e o selo certo", () => {
-  const read = draw.carousel(viewOf(feedOf(input())));
+test("overlay: o HTML mostra só o ícone do item em cada opção (sem o retrato do campeão) e o selo certo", () => {
+  const v = viewOf(feedOf(input()));
+  const read = draw.carousel(v);
   assert.match(read, /class="eyebrow">Carrossel</);
   assert.match(read, /data-tone="go"[^>]*>lido do jogo</);
   assert.equal(
@@ -259,12 +260,22 @@ test("overlay: o HTML mostra campeões e itens como imagens (nunca o nome sozinh
     true,
     "ícone de item em cada linha",
   );
-  assert.ok(
-    (read.match(/class="mini"/g) ?? []).length >= CAROUSEL_SHOWN,
-    "retrato do campeão da peça",
-  );
+  // O campeão que está com o item não aparece em imagem; o nome dele fica só na dica do mouse.
+  assert.equal((read.match(/class="mini"/g) ?? []).length, 0, "sem retrato");
+  assert.ok(!/class="pt "/.test(read), "nenhum retrato de campeão");
+  const withChamp = v.carousel.picks.find((p) => p.champion?.name);
+  if (withChamp)
+    assert.ok(
+      read.includes(`vem com ${withChamp.champion.name}`),
+      "o nome do campeão vai no title",
+    );
   assert.match(read, /\+4 peças/);
   assert.match(read, /data-first="1"/);
+  assert.match(
+    read,
+    /class="car-best" title="recomendada"/,
+    "a recomendada marcada",
+  );
   // Nenhum nome fora de atributo ou de texto de leitor de tela: tirando tags e atributos, só sobra o rótulo e o contador.
   const visible = read
     .replace(/<b class="sr">[^<]*<\/b>/g, "")

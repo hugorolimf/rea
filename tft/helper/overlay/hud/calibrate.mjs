@@ -37,6 +37,9 @@ export function calibrationShapes(rects) {
   add("level", "level", "Nível", rects.level);
   add("xp", "xp", "XP", rects.xp);
   add("stage", "stage", "Estágio", rects.stage);
+  // [ESTIMADO] Botões do jogo onde moram os selos de nível e de rolagem.
+  add("xp-button", "button", "Comprar XP", rects.xpButton);
+  add("reroll-button", "button", "Atualizar", rects.rerollButton);
   return out;
 }
 
