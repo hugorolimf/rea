@@ -119,22 +119,31 @@
       <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
       <div class="contest" id="contest" role="status" hidden></div>
 
+      <!-- Formação como vista principal: o tabuleiro com as decisões da rodada nas casas (comprar, trocar, segure, vaga,
+           substituições; o detalhe abre ao clicar), a Loja embaixo e o widget de Roll ao lado. Itens ao lado da
+           Formação e, embaixo, o Plano e os Aprimoramentos. -->
       <div class="deck" id="deck">
-        <section class="todo" aria-labelledby="todo-title">
-          <div class="section-head"><h2 id="todo-title">Agora</h2></div>
-          <ol class="steps" id="steps"></ol>
-          <p class="empty-steps">Nada a fazer nesta leitura.</p>
+        <section class="field" aria-labelledby="field-title">
+          <div class="section-head"><h2 id="field-title">Formação</h2><span class="field-view" id="field-view" hidden><span class="chip" id="field-shown" data-tone="violet"></span><span class="field-comp" id="field-comp"></span><button type="button" class="btn btn-sm btn-quiet" id="field-toggle" aria-pressed="false" hidden><svg class="i" aria-hidden="true"><use href="#i-swap"/></svg><span></span></button></span><span class="chips" id="counts"></span><button type="button" class="btn btn-sm copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
+          <p class="field-note" id="field-note" hidden></p>
+          <p class="field-missing" id="field-missing" hidden></p>
+          <div class="field-body">
+            <div class="field-main">
+              <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
+              <p class="field-hint" id="field-hint" hidden>Clique numa peça: o que fazer nela, a troca sugerida e os itens.</p>
+              <div class="field-shop" id="field-shop" role="group" aria-labelledby="field-shop-title" hidden><h3 class="field-shop-title" id="field-shop-title">Loja</h3><div class="shop-row" id="shop-row"></div></div>
+              <div class="champ-items" id="champ-items" hidden></div>
+              <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
+            </div>
+            <aside class="panel" id="panel" aria-label="Roll: decisão de rolar e chance de cada peça"></aside>
+          </div>
         </section>
-        <aside class="panel" id="panel" aria-label="Decisão da rodada: nível, roll e loja"></aside>
-        <div class="col">
-          <section class="field" aria-labelledby="field-title">
-            <div class="section-head"><h2 id="field-title">Formação</h2><span class="field-view" id="field-view" hidden><span class="chip" id="field-shown" data-tone="violet"></span><span class="field-comp" id="field-comp"></span><button type="button" class="btn btn-sm btn-quiet" id="field-toggle" aria-pressed="false" hidden><svg class="i" aria-hidden="true"><use href="#i-swap"/></svg><span></span></button></span><span class="chips" id="counts"></span><button type="button" class="btn btn-sm copy-code" id="copy-code" hidden title="Copiar o código da equipe para importar no planejador do jogo"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copiar código</span></button></div>
-            <p class="field-note" id="field-note" hidden></p>
-            <p class="field-missing" id="field-missing" hidden></p>
-            <svg class="board" id="board" role="img" aria-label="Formação da comp alvo em hexágonos"></svg>
-            <div class="champ-items" id="champ-items" hidden></div>
-            <ul class="traits" id="traits" aria-label="Sinergias da formação"></ul>
-          </section>
+        <section class="items-sec" aria-labelledby="items-title">
+          <div class="section-head"><h2 id="items-title">Itens</h2></div>
+          <div class="inventory" id="inventory" hidden></div>
+          <ol class="steps" id="steps-items"></ol>
+        </section>
+        <div class="below">
           <section class="plan-sec" id="plan-sec" aria-labelledby="plan-title" hidden>
             <div class="section-head"><h2 id="plan-title">Plano</h2><span class="chips" id="plan-chips"></span></div>
             <div id="plan-body"></div>
@@ -143,15 +152,6 @@
             <div class="section-head"><h2 id="augs-title">Aprimoramentos</h2></div>
             <ol class="aug-path" id="augs-path" aria-label="Aprimoramentos escolhidos em 2-1, 3-2 e 4-2"></ol>
             <div class="aug-offers" id="augs-offers" hidden></div>
-          </section>
-          <section class="subs-sec" id="subs-sec" aria-labelledby="subs-title" hidden>
-            <div class="section-head"><h2 id="subs-title">Substituições</h2></div>
-            <ul class="subs" id="subs"></ul>
-          </section>
-          <section class="items-sec" aria-labelledby="items-title">
-            <div class="section-head"><h2 id="items-title">Itens</h2></div>
-            <div class="inventory" id="inventory" hidden></div>
-            <ol class="steps" id="steps-items"></ol>
           </section>
         </div>
       </div>

@@ -335,8 +335,8 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
           sc?.best
             ? `<span class="chip" data-tone="gold">${glyph("crown")}melhor comp</span>`
             : "",
-          sc?.expected != null
-            ? `<span class="hud-tag">${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º esperado${sc.top4 != null ? ` · ${Math.round(sc.top4)}% top 4` : ""}</span>`
+          sc?.expected != null || sc?.win != null
+            ? `<span class="hud-tag">${sc.win != null ? `${String(Math.round(sc.win * 10) / 10).replace(".", ",")}% de vitória` : ""}${sc.win != null && sc.expected != null ? " · " : ""}${sc.expected != null ? `${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º esperado` : ""}${sc.top4 != null ? ` · ${Math.round(sc.top4)}% top 4` : ""}</span>`
             : sc?.chance != null
               ? `<span class="hud-tag">chance ${Math.round(sc.chance * 100)}%</span>`
               : "",
@@ -364,7 +364,7 @@ export function mountHud(root, { onOpenGoal = null } = {}) {
       setTitle(
         goalWrap,
         plan
-          ? `${g ? `${g.have}/${g.total} peças da comp já em campo · ` : ""}${plan.title}${sc ? ` · score ${sc.value}/100 (colocação esperada${sc.expected != null ? ` ${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º` : ""}, já com o alcance, os seus itens e aprimoramentos)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
+          ? `${g ? `${g.have}/${g.total} peças da comp já em campo · ` : ""}${plan.title}${sc ? ` · score ${sc.value}/100 (vitória esperada${sc.win != null ? ` ${String(Math.round(sc.win * 10) / 10).replace(".", ",")}%` : ""}${sc.expected != null ? `, colocação esperada ${String(Math.round(sc.expected * 10) / 10).replace(".", ",")}º` : ""}; já com o alcance, a estrela da peça-chave, os seus itens e aprimoramentos)${sc.chance != null ? ` · chance de montar ${Math.round(sc.chance * 100)}%${sc.chancePlan != null ? ` (nível alvo: ${Math.round(sc.chancePlan * 100)}%)` : ""}` : ""}` : ""}`
           : "",
       );
     },

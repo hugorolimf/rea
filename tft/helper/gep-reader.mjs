@@ -22,7 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { isConsumable } from "./core/catalog/items.mjs";
+import { anvilKind, isConsumable } from "./core/catalog/items.mjs";
 import { parseStage, stageText } from "./core/state/clock.mjs";
 
 /** Silêncio máximo (ms) do banco da partida para a fonte ainda valer. Ver "Frescor" em FONTES-DE-DADOS.md. */
@@ -399,11 +399,18 @@ export function parseBench(data, isChampion = () => true, isItem = () => true) {
   const v = parseJson(data);
   if (!isPlain(v)) return null;
   const units = [],
-    unknown = [];
+    unknown = [],
+    anvils = [];
   for (const [cell, piece] of Object.entries(v)) {
     const at = /^cell_(\d+)$/.exec(cell)?.[1],
       name = text(piece?.name);
     if (at === undefined || !name) continue;
+    // Bigorna: fica na reserva de campeões como uma peça de nível 0 (`DA_AnvilComponent`, `DA_AnvilCompletedItems`,
+    // `DA_AnvilArtifact`); não é campeão, ocupa a vaga e vai para o estoque de itens (escolha como um carrossel).
+    if (anvilKind(name)) {
+      anvils.push(name);
+      continue;
+    }
     if (!isChampion(name)) {
       unknown.push(name);
       continue;
@@ -419,7 +426,7 @@ export function parseBench(data, isChampion = () => true, isItem = () => true) {
       source: "gep",
     });
   }
-  return { units: units.sort((a, b) => a.cell - b.cell), unknown };
+  return { units: units.sort((a, b) => a.cell - b.cell), unknown, anvils };
 }
 
 /** Tabuleiro do jogador: 4 linhas × 7 colunas (28 casas, `cell_1..cell_28` no GEP). */
@@ -741,7 +748,11 @@ export function applyGepEvent(state, row, env = {}) {
     }
     case "bench": {
       const b = parseBench(row.data, env.isChampion, env.isItem);
-      if (b) state.bench = stamp(b.units, ts, { unknown: b.unknown.length });
+      if (b)
+        state.bench = stamp(b.units, ts, {
+          unknown: b.unknown.length,
+          anvils: b.anvils,
+        });
       break;
     }
     case "board": {
@@ -899,7 +910,11 @@ function evaluateCore(snap, ctx, now, staleMs) {
         }
       : null,
     bench: s.bench
-      ? { ...field(s.bench, s.bench.value), unknown: s.bench.unknown }
+      ? {
+          ...field(s.bench, s.bench.value),
+          unknown: s.bench.unknown,
+          anvils: s.bench.anvils ?? [],
+        }
       : null,
     board: s.board
       ? { ...field(s.board, s.board.value), unknown: s.board.unknown }
@@ -1362,6 +1377,8 @@ export function mergeGep(seen, gep, pick = () => true) {
   if (f.bench)
     take("bench", f.bench, (v) => {
       out.gepBench = v;
+      // Bigornas que estão na sua reserva (ids, uma por bigorna).
+      out.gepAnvils = f.bench.anvils ?? [];
     });
   else sources.bench = seen.sources?.bench ?? null;
   // Tabuleiro do jogador com a casa de cada peça: só o GEP observa a posição (o TFTEoGStats.json traz as peças, não as

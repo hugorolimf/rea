@@ -17,6 +17,7 @@ import { focusView } from "./focus.js";
 import { goalStore, matchKeyOf, swapStore } from "./comps.js";
 import { buildModel } from "./model.js";
 import { formationShown } from "./formation-view.js";
+import { cellMarks } from "./board-look.js";
 import { rosterOf } from "./roster.js";
 import { createPrefs, safeStorage } from "./prefs.js";
 import { canRegister, registerServiceWorker } from "./pwa.js";
@@ -39,8 +40,7 @@ import { mountFocusBar } from "./ui/focus-bar.js";
 import { mountHud } from "./ui/hud.js";
 import { mountPanel } from "./ui/panel.js";
 import { mountShell } from "./ui/shell.js";
-import { mountSteps } from "./ui/steps.js";
-import { mountSubs } from "./ui/subs.js";
+import { mountSteps, shopCardHtml } from "./ui/steps.js";
 import { mountAugs } from "./ui/augs.js";
 import { mountPlan } from "./ui/plan.js";
 import { mountTooltips } from "./ui/tooltip.js";
@@ -88,8 +88,8 @@ const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
       drawChampItems();
     },
   }),
-  steps = mountSteps($("steps")),
   itemSteps = mountSteps($("steps-items")),
+  // Widget de Roll ao lado do tabuleiro: o veredito e, numa lista só, a chance de cada peça (por loja e rolando).
   panel = mountPanel($("panel")),
   // Plano em andamento: o que já foi conquistado e o que falta, guardado pelo servidor entre as rodadas.
   planSec = mountPlan($("plan-sec")),
@@ -97,12 +97,15 @@ const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
   itemsView = mountItems($("items")),
   endedView = mountEnded($("ended")),
   inventory = mountInventory($("inventory")),
+  // Detalhe da peça clicada na Formação: o que fazer nela, a substituição (Usar/Desfazer) e os itens.
   champItems = mountChampItems($("champ-items"), {
     onClose() {
       selectedCell = null;
       board.clear();
       drawChampItems();
     },
+    onUse: useSwap,
+    onUndo: undoSwap,
   }),
   // Aprimoramentos: oferta e escolhidos vêm do jogo (GEP, lido pelo servidor). Desmarcar só corrige uma leitura errada.
   augs = mountAugs($("augs-sec"), {
@@ -110,47 +113,6 @@ const hud = mountHud($("hud"), { onOpenGoal: openGoalModal }),
       if (replayOf()) return;
       seedManualPicks(); // corrigir uma escolha do GEP mantém as demais
       augPicks.remove(matchKeyOf(latestState), id);
-      lastKey = "";
-      void refresh();
-    },
-  }),
-  subs = mountSubs($("subs-sec"), $("subs"), {
-    // Trocar uma peça: na comp fixada entra nas trocas dela; no automático vale para a comp sugerida sem fixá-la.
-    onUse(out, into) {
-      if (replayOf()) return; // não grava trocas da partida revista na partida ao vivo
-      const key = matchKeyOf(latestState),
-        goal = goals.get(key),
-        id = goal?.id ?? last?.rec?.recommendations?.[0]?.meta?.id;
-      if (!id) return;
-      // Trocar uma peça que já entrou por substituição refaz a troca a partir da peça original da comp.
-      const current = goal ? goal.swaps : autoSwaps.get(key, id),
-        prior = current.find((s) => s.in === out),
-        origin = prior?.out ?? out,
-        swaps = current.filter((s) => s !== prior && s.out !== origin),
-        next = into === origin ? swaps : [...swaps, { out: origin, in: into }];
-      if (goal) goals.set(key, id, next);
-      else autoSwaps.set(key, id, next);
-      lastKey = "";
-      void refresh();
-    },
-    onUndo(out) {
-      if (replayOf()) return;
-      const key = matchKeyOf(latestState),
-        goal = goals.get(key),
-        id = goal?.id ?? last?.rec?.recommendations?.[0]?.meta?.id;
-      if (!id) return;
-      if (goal)
-        goals.set(
-          key,
-          id,
-          goal.swaps.filter((s) => s.out !== out),
-        );
-      else
-        autoSwaps.set(
-          key,
-          id,
-          autoSwaps.get(key, id).filter((s) => s.out !== out),
-        );
       lastKey = "";
       void refresh();
     },
@@ -291,7 +253,6 @@ function render(model) {
     hud.update(model);
     drawFormation(model);
     const all = model.plan?.steps ?? [];
-    steps.update(all.filter((s) => s.group === "now"));
     itemSteps.update(all.filter((s) => s.group === "items"));
     inventory.update(
       status.waiting ? null : last?.rec?.ownedItemAdvice,
@@ -323,10 +284,6 @@ function render(model) {
     // Partida revista: só leitura; nada lê nem grava os dados da partida ao vivo.
     const replay = !!status.replay,
       chosen = status.waiting ? [] : (last?.rec?.chosenAugments ?? []);
-    subs.update(
-      replay ? { ...model.plan, compId: null } : model.plan,
-      replay ? [] : status.swaps,
-    );
     augs.update({
       // Oferta aberta e fonte dos aprimoramentos: do estado lido agora (GEP), não da análise.
       seen: replay || status.waiting ? null : (latestState?.seen ?? null),
@@ -405,7 +362,19 @@ function drawFormation(model) {
   const view = formationShown(plan, formationAlt),
     missing = view?.missing?.length ? view.missing : null;
   shownCells = view?.cells ?? [];
-  board.update(view ? { cells: shownCells, traits: view.traits } : null);
+  // Decisões da rodada (compra, troca sugerida e aplicada) só na comp padrão: a outra do seletor não tem decisão.
+  const replay = !!model?.status?.replay,
+    own = view && !view.toggle?.pressed ? plan : null,
+    { marks, loose } = cellMarks(
+      own,
+      shownCells,
+      replay ? [] : (model?.status?.swaps ?? []),
+    );
+  shownMarks = marks;
+  canSwap = !!plan?.compId && !replay;
+  board.update(view ? { cells: shownCells, traits: view.traits, marks } : null);
+  $("field-hint").hidden = !shownCells.length;
+  drawShop(own, loose);
   // A outra comp sem posições/vagas na análise: uma linha no lugar do tabuleiro (as sinergias continuam).
   $("board").toggleAttribute("hidden", !!missing);
   const miss = $("field-missing");
@@ -444,10 +413,33 @@ function drawFormation(model) {
       ? view.teamCodeError
       : "Copiar o código da equipe para importar no planejador do jogo";
   // As trocas contadas são as da comp padrão: com a outra à vista, as contagens somem.
-  const c = view?.toggle?.pressed ? null : plan?.counts;
+  const c = view?.toggle?.pressed ? null : plan?.counts,
+    marked = [...marks.values()],
+    inShop = marked.filter((m) => m.want?.shop).length,
+    flex = marked.filter((m) => m.flex).length;
   $("counts").innerHTML = c
-    ? `${c.ready ? `<span class="chip chip-go" title="trocas para fazer agora">⇄ ${c.ready}</span>` : ""}${c.hold ? `<span class="chip chip-amber" title="trocas para segurar (inclui 'não troque')">⏸ ${c.hold}</span>` : ""}`
+    ? `${inShop ? `<span class="chip chip-go" title="peças da comp na loja agora (selo da moeda na casa)">◎ ${inShop} na loja</span>` : ""}${c.ready ? `<span class="chip chip-go" title="trocas para fazer agora">⇄ ${c.ready}</span>` : ""}${c.hold ? `<span class="chip chip-amber" title="trocas para segurar (inclui 'não troque')">⏸ ${c.hold}</span>` : ""}${flex ? `<span class="chip" data-tone="violet" title="peças com troca sugerida (selo no alto da casa; clique nela)">⇆ ${flex}</span>` : ""}`
     : "";
+}
+
+/*
+ * Faixa "Loja" embaixo do tabuleiro: cada carta da loja de agora com o que fazer e, depois, as compras cuja peça não
+ * tem casa nesta formação. As peças da comp na loja também ficam marcadas na casa delas.
+ */
+let shopDrawn = "";
+function drawShop(plan, loose) {
+  const cards = [
+      ...(plan?.steps?.find((s) => s.id === "shop")?.rows ?? []),
+      ...loose,
+    ],
+    html = cards
+      .map((r) => `<div class="row row-tile">${shopCardHtml(r)}</div>`)
+      .join("");
+  $("field-shop").hidden = !cards.length;
+  if (html !== shopDrawn) {
+    shopDrawn = html;
+    $("shop-row").innerHTML = html;
+  }
 }
 $("field-toggle").addEventListener("click", () => {
   formationAlt = !formationAlt;
@@ -476,14 +468,62 @@ $("copy-code").addEventListener("click", async (e) => {
   }, 1500);
 });
 
-// Itens do campeão clicado na Formação.
+/*
+ * Substituições da Formação (detalhe da casa): trocar uma peça na comp fixada entra nas trocas dela; no automático vale
+ * para a comp sugerida sem fixá-la. Partida revista: só leitura, nada grava nas trocas da partida ao vivo.
+ */
+function useSwap(out, into) {
+  if (replayOf()) return;
+  const key = matchKeyOf(latestState),
+    goal = goals.get(key),
+    id = goal?.id ?? last?.rec?.recommendations?.[0]?.meta?.id;
+  if (!id) return;
+  // Trocar uma peça que já entrou por substituição refaz a troca a partir da peça original da comp.
+  const current = goal ? goal.swaps : autoSwaps.get(key, id),
+    prior = current.find((s) => s.in === out),
+    origin = prior?.out ?? out,
+    swaps = current.filter((s) => s !== prior && s.out !== origin),
+    next = into === origin ? swaps : [...swaps, { out: origin, in: into }];
+  if (goal) goals.set(key, id, next);
+  else autoSwaps.set(key, id, next);
+  lastKey = "";
+  void refresh();
+}
+function undoSwap(out) {
+  if (replayOf()) return;
+  const key = matchKeyOf(latestState),
+    goal = goals.get(key),
+    id = goal?.id ?? last?.rec?.recommendations?.[0]?.meta?.id;
+  if (!id) return;
+  if (goal)
+    goals.set(
+      key,
+      id,
+      goal.swaps.filter((s) => s.out !== out),
+    );
+  else
+    autoSwaps.set(
+      key,
+      id,
+      autoSwaps.get(key, id).filter((s) => s.out !== out),
+    );
+  lastKey = "";
+  void refresh();
+}
+
+// Peça clicada na Formação (o detalhe dela) e as marcas das casas (compra e troca) da comp à vista.
 let selectedCell = null,
-  lastModel = null;
+  lastModel = null,
+  shownMarks = new Map(),
+  canSwap = false;
 function drawChampItems() {
   // As casas da comp à vista na Formação (a padrão ou a outra do seletor).
   const cell = shownCells.find((c) => c.id === selectedCell) ?? null;
   // Partida revista: o banco de agora não vale para ela.
-  champItems.update(cell, replayOf() ? [] : (latestState?.seen?.items ?? []));
+  champItems.update(cell, replayOf() ? [] : (latestState?.seen?.items ?? []), {
+    mark: cell ? (shownMarks.get(cell.id) ?? null) : null,
+    canUse: canSwap,
+  });
 }
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && selectedCell) {

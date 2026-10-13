@@ -87,7 +87,8 @@ export const POLICY = {
     item: 2,
     synergy: { early: 1, late: 2, lateLevel: 6 },
     hpPerPoint: { early: 0.44, mid: 0.38, late: 0.35 },
-    margin: 1,
+    // Quem entra na vaga precisa render mais que quem está (atributos, sinergia e itens): empate fica com o atual.
+    margin: 0,
     role: 1,
     carryItems: 2,
     returnChance: 0.5,
@@ -96,6 +97,45 @@ export const POLICY = {
     goldPerHp: 1,
     bench: 9,
   },
+  // Comp ajustada ao nível (core/comps/level-fit.mjs). Política (a confirmar em partida): a partir de `minLevel` a vaga de
+  // apoio pode trocar de peça; a troca exige ganho acima de `margin` colocação nos tabuleiros da própria comp no nível
+  // (`comp_options` da MetaTFT; `minBoardGames` partidas no nível, `minPairGames` de cada lado e ganho maior que o erro
+  // padrão). Peça sua 2★/3★ só sai se a média geral dela na sua estrela for pior por `margin` (`minUnitGames` partidas).
+  // A alternativa que você não tem precisa custar mais que `nível − cheapGap` (no 8, custo 3+; no 9, 4+).
+  // Vale a partir do nível `minLevel`; a MetaTFT só publica tabuleiros a partir do 7, então abaixo dele a referência são os
+  // tabuleiros do nível `refLevel` (a alternativa ainda precisa ser comprável no SEU nível).
+  levelFit: {
+    minLevel: 5,
+    refLevel: 7,
+    margin: 0.15,
+    minPairGames: 40,
+    minBoardGames: 150,
+    minUnitGames: 500,
+    cheapGap: 6,
+    // Regra reserva (sem tabuleiros da comp no nível, e nos tabuleiros de vantagem): "barata para o nível" é custo ≤
+    // nível − `cheapFallback` (custo 1 no 6, 1–2 no 7, 1–3 no 8, 1–4 no 9).
+    cheapFallback: 5,
+    // Teto do ganho somado das trocas por nível que entra na força da comp (cada ganho foi medido contra o tabuleiro
+    // original, sozinho; somar vários superestima).
+    maxGain: 1,
+  },
+  // Bloquear o rival (engine.mjs `denialsOf`): só peças que mudam o jogo na próxima estrela, pela colocação média publicada
+  // dos tabuleiros com ela nessa estrela (meta-stats `unit["id|estrela"]`): até `maxAvg` e pelo menos `minLift` melhor que
+  // na estrela de agora, com `minGames` partidas. A chance de o rival juntar as cópias vale para as próximas `shops` lojas
+  // dele (nível estimado pelas vagas em campo); a sugestão só sai com essa chance em pelo menos `minChance` e um valor
+  // (ameaça × queda da chance com a sua compra) de pelo menos `minValue`. `limit` sugestões. Política, não medida.
+  deny: {
+    maxAvg: 3.8,
+    minLift: 0.5,
+    minGames: 2000,
+    shops: 6,
+    minChance: 0.08,
+    minValue: 0.03,
+    limit: 5,
+  },
+  // Passar itens (tactics.mjs): item numa peça que fica só muda de campeão se o outro ganhar mais com ele (ganho do item no
+  // campeão nesta comp, core/items/builds.mjs `compItemOptions`) por mais que `margin` colocação: mover gasta removedor.
+  itemMove: { margin: 0.05 },
   // Valor de um upgrade no ganho esperado: carry pesa mais, cada item equipado soma 25%; unidade nova vale metade.
   carryWeight: 2,
   itemWeight: 0.25,

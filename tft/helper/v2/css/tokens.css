@@ -114,7 +114,8 @@
     --rail-w: 68px;
     --appbar-h: 44px;
     --bottomnav-h: 58px;
-    --panel-w: clamp(300px, 26vw, 360px);
+    --roll-w: clamp(300px, 24vw, 380px);
+    --items-w: clamp(300px, 24vw, 400px);
     --focus: var(--go);
 
     /* ---- Movimento: o JS publica as molas calculadas (math.js → linear()) ---- */

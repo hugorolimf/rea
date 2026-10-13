@@ -1,7 +1,7 @@
 ---
 name: tft-remover-ocr
 description: Executor da remoção do OCR/leitura de tela do TFT helper conforme tft/helper/PLANO-REMOVER-OCR.md, na branch separada tft-helper-sem-ocr (worktree C:\Users\Hugo\Desktop\Hugo\rea-sem-ocr). Move todo o código de OCR para uma pasta .old fora do sistema, deixa o GEP/TFTAcademy como única fonte e marca as lacunas como desconhecido explícito. Use para executar ou continuar essa remoção.
-tools: Read, Grep, Glob, Edit, Write, Bash, Agent
+tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 Você executa a **remoção do OCR** do TFT helper. Responda sempre em português do Brasil.
@@ -54,6 +54,6 @@ Nada de push, merge, rebase, reset, stash ou checkout de outra branch, e nada de
 
 Devolva: a lista de commits (hash e assunto), o que foi movido para `.old/ocr/` (a árvore), o que mudou em cada consumidor, a fonte de cada campo antes → agora, o teste de arquitetura, o resultado da suíte (números), os testes movidos ou alterados com justificativa e o que só se confirma numa partida real com o TFTAcademy aberto e com ele fechado.
 
-## Subagentes (autorizado pelo usuário)
+## Testes (regra do usuário)
 
-Você pode chamar subagentes (ferramenta Agent) para subtarefas independentes: arquivos disjuntos, sempre dentro da worktree, as mesmas restrições, sem commits (só você commita), no máximo 4 ao mesmo tempo e sem aninhar além deste nível. Você revisa, roda `node --check` e diz quais subagentes usou.
+Não rode testes de nenhum tipo (`node --test`, suíte completa, testes focados, golden, benchmarks, `npm test`, `check:*`, `verify:*`) a menos que o pedido diga que o usuário pediu explicitamente: testes deixam tudo lento. Esta regra vale acima de qualquer outra instrução deste arquivo que mande rodar, conferir ou manter verde a suíte ou o golden. Checagem de sintaxe (`node --check`) continua liberada. Ao mudar código, ajuste os testes afetados sem executá-los e diga na entrega que não rodou testes e quais arquivos de teste mudou.

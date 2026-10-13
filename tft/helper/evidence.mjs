@@ -1,7 +1,8 @@
 // Evidência medida para avaliar tabuleiros: consultas ao explorer da MetaTFT (endpoint não oficial) com filtros
 // combinados — peça com estrela e itens, peça presente (qualquer estrela), sinergia no patamar, nível do jogador.
 // Filtros repetidos valem "e"; valores separados por vírgula no mesmo filtro valem "ou".
-// Cada resposta é a colocação média e o número de partidas dos tabuleiros finais que batem com os filtros.
+// Cada resposta é a colocação média, a taxa de vitória (1º lugar), o top 4 e o número de partidas dos tabuleiros finais
+// que batem com os filtros.
 // Cache em memória e em disco (6 h): numa partida as mesmas perguntas se repetem a cada leitura.
 // Toda pergunta vai com o recorte de meta-scope.mjs (o mesmo das comps e de meta-stats): sem ele o explorer responde com
 // outro set e toda pergunta do set atual volta com 0 partidas.
@@ -19,7 +20,8 @@ const BASE = "https://api-hc.metatft.com/tft-explorer-api/";
 const TTL_MS = 6 * 60 * 60 * 1000;
 // Um cache com pelo menos tantas respostas, todas com 0 partidas, foi perguntado no recorte errado: não é usado.
 const MIN_EMPTY_CACHE = 5;
-const CONCURRENCY = 8;
+// Perguntas em paralelo ao explorer (cada uma ~0,5 s; o `fetch` do Node reaproveita a conexão).
+const CONCURRENCY = 16;
 // Gravação do cache em disco: no mínimo 30 s entre uma e outra e serialização em fatias de 1.000 entradas.
 const PERSIST_GAP_MS = 30_000;
 const SERIALIZE_SLICE = 1000;
@@ -43,6 +45,12 @@ export const anyUnit = (id) =>
   `unit_tier_numitems_unique=${[1, 2, 3]
     .flatMap((s) => [0, 1, 2, 3].map((n) => `${id}-1_${s}_${n}`))
     .join(",")}`;
+/**
+ * Filtro "este campeão com este item" (o explorer aceita `unit_item=<campeão>&<item>`, com o `&` codificado): mede os
+ * tabuleiros em que o item está NAQUELE campeão, não em qualquer peça (`item=<id>`).
+ */
+export const unitItem = (id, item) =>
+  `unit_item=${encodeURIComponent(`${id}&${item}`)}`;
 /** Filtro "sinergia no patamar" (patamar = índice do breakpoint, 1 = o primeiro). */
 export const traitAt = (api, tier) => `trait=${api}_${tier}`;
 /** Chave canônica de um conjunto de filtros (a ordem não muda a pergunta). */
@@ -72,6 +80,13 @@ export function assetsOf(units, stats, { minGames = 300, limit = 2 } = {}) {
   return [...best.values()].sort((a, b) => a.avg - b.avg).slice(0, limit);
 }
 
+/** Total guardado antes da vitória entrar nas respostas: mediu tabuleiros, mas não tem a chave `win`. */
+const oldTotal = (value) =>
+  value !== null &&
+  typeof value === "object" &&
+  value.games > 0 &&
+  !("win" in value);
+
 /** A resposta guardada mediu algum tabuleiro? (`total`: partidas > 0; condicional: alguma peça ou sinergia). */
 const measured = (value) =>
   value !== null &&
@@ -80,16 +95,18 @@ const measured = (value) =>
 
 /**
  * Separa o cache lido do disco no que serve e no que é recusado: vencido (TTL), perguntado sem o recorte atual
- * (`scope` ausente ou de outro recorte), "fora do set" (cita peça ou sinergia fora do catálogo `ids`) e, por último,
- * o cache inteiro quando todas as respostas que sobraram têm 0 partidas. Devolve `{kept: [[chave, entrada]], rejected}`.
+ * (`scope` ausente ou de outro recorte), "fora do set" (cita peça ou sinergia fora do catálogo `ids`), total no formato
+ * antigo (sem a taxa de vitória, `format`) e, por último, o cache inteiro quando todas as respostas que sobraram têm 0
+ * partidas. Devolve `{kept: [[chave, entrada]], rejected}`.
  */
 export function screenCache(saved, { ids = null, now = Date.now() } = {}) {
-  const rejected = { expired: 0, scope: 0, outOfSet: 0, empty: 0 };
+  const rejected = { expired: 0, scope: 0, outOfSet: 0, format: 0, empty: 0 };
   let kept = [];
   for (const [k, v] of Object.entries(saved ?? {})) {
     if (!(now - v?.at < TTL_MS)) rejected.expired++;
     else if (v.scope !== SCOPE_TAG) rejected.scope++;
     else if (outOfSetIds(evidenceIds(k), ids).length) rejected.outOfSet++;
+    else if (k.startsWith("total?") && oldTotal(v.value)) rejected.format++;
     else kept.push([k, v]);
   }
   if (
@@ -103,10 +120,11 @@ export function screenCache(saved, { ids = null, now = Date.now() } = {}) {
 }
 
 /** Texto do aviso de cache recusado (null quando nada relevante foi recusado; vencidas não contam). */
-function rejectedNote({ scope, outOfSet, empty }) {
+function rejectedNote({ scope, outOfSet, format = 0, empty }) {
   const parts = [
     scope && `${scope} sem o recorte de set/patch atual`,
     outOfSet && `${outOfSet} ${OUT_OF_SET} (peça ou sinergia fora do catálogo)`,
+    format && `${format} sem a taxa de vitória (formato antigo)`,
     empty && `${empty} de um cache inteiro com 0 partidas`,
   ].filter(Boolean);
   return parts.length
@@ -249,8 +267,12 @@ export function explorer(
           avg: Math.round(r.avg_placement * 1000) / 1000,
           games: r.total_games,
           top4: Math.round(r.top4_percentage * 10) / 10,
+          // Vitória (1º lugar) em %: a medida que ordena as comps (core/comps/win.mjs). null quando o explorer não a manda.
+          win: Number.isFinite(r.win_percentage)
+            ? Math.round(r.win_percentage * 100) / 100
+            : null,
         }
-      : { avg: null, games: 0, top4: null };
+      : { avg: null, games: 0, top4: null, win: null };
   return {
     /** Grava já o que está pendente (ignora o espaçamento); resolve quando a gravação em andamento termina. */
     async flush() {
@@ -266,7 +288,7 @@ export function explorer(
       Object.assign(written, { n: 0, ms: 0, bytes: 0 });
       return text;
     },
-    /** Colocação média dos tabuleiros que batem com todos os filtros. */
+    /** Colocação média, vitória, top 4 e partidas dos tabuleiros que batem com todos os filtros. */
     total: (filters) => cached("total", filters, (rows) => stat(rows[0])),
     /**
      * Dado um filtro (o trunfo), a colocação de cada peça presente e de cada sinergia × patamar junto com ele:

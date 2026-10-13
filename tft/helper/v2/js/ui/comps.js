@@ -312,11 +312,15 @@ function card(
         )
         .join(" · ")}</small></p>`
     : "";
-  // O critério: a colocação esperada (E, a medida que ordena as comps) e, quando o motor manda, a linha do porquê.
+  // O critério: a vitória esperada (W, a medida que ordena as comps), a colocação esperada ao lado e, quando o motor
+  // manda, a linha do porquê.
   const fit = f
     ? [
+        Number.isFinite(f.win)
+          ? `<span class="chance" title="Chance de terminar em 1º com esta comp, para você agora: a vitória medida na MetaTFT da comp com as suas peças, a estrela que você alcança na peça-chave e os seus itens nos campeões certos, pesada pela chance de montá-la no prazo. Maior é melhor; é ela que ordena as comps."><b>${String(Math.round(f.win * 10) / 10).replace(".", ",")}%</b> de vitória</span>`
+          : "",
         Number.isFinite(f.expected)
-          ? `<span class="chance" title="Colocação esperada para você com esta comp: a força dela, a chance de montá-la no prazo e o que você já tem dela (campo, reserva e estrelas). Menor é melhor; é ela que ordena as comps."><b>${String(Math.round(f.expected * 10) / 10).replace(".", ",")}º</b> esperado</span>`
+          ? `<span title="Colocação esperada para você com esta comp (a mesma conta, em colocação média). Menor é melhor; é informação, não ordena."><b>${String(Math.round(f.expected * 10) / 10).replace(".", ",")}º</b> esperado</span>`
           : sc?.chance != null
             ? `<span class="chance" title="Chance de achar as peças principais que faltam com o seu nível${sc.level ? " " + sc.level : ""} e as lojas ao alcance">chance de montar <b>${sc.chance}%</b></span>`
             : "",

@@ -35,7 +35,9 @@ export function threadWorker({
     }),
     supersede: false,
     timeoutMs,
-    startTimeoutMs: 45_000,
+    // Com a máquina paginando (RAM esgotada no late game), a thread só está congelada: recriá-la recarrega o motor, gasta
+    // mais memória e entra em ciclo (não fica pronta, é recriada de novo). Prazo longo: ela termina quando a máquina respirar.
+    startTimeoutMs: 150_000,
     onEvent: (e) => {
       if (["crash", "timeout", "restart", "failed"].includes(e.type)) {
         const { type, at: _at, ...rest } = e;

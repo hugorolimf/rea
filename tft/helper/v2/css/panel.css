@@ -1,22 +1,13 @@
 /*
- * Painel de decisão (ui/panel.js): Nível, Roll, Loja e "Por que esta decisão". O cartão em si (borda, fundo, grude,
- * rolagem própria) é da casca (shell.css); aqui fica só o interior: ritmo vertical e tipografia dos blocos.
- * Largura de projeto: de 300 a 420 px (coluna ao lado do jogo) e até 560 px quando ocupa a largura de uma tela estreita.
- * O painel é um contêiner (`panel`): os ajustes por largura olham para ele, não para a janela.
+ * Widget de Roll da Formação (ui/panel.js): veredito, orçamento, juros, peças na loja, achar rolando, wisps e "Por que
+ * esta decisão"; e as linhas da seção "Rolagem por peça" embaixo da Formação. O cartão em si (borda, fundo) é da casca
+ * (shell.css); aqui fica só o interior: ritmo vertical e tipografia dos blocos.
+ * O widget é um contêiner (`panel`): os ajustes por largura olham para ele, não para a janela.
  */
 @layer components {
   .panel {
     container: panel / inline-size;
     gap: 0;
-    &[data-empty="1"] {
-      visibility: hidden; /* mantém o lugar do cartão: sem pulo de layout quando a leitura chega */
-    }
-  }
-  /* Tela estreita (coluna única): o painel não estica além do que a leitura aguenta. */
-  @container stage (max-width: 759px) {
-    .panel {
-      max-inline-size: 560px;
-    }
   }
 
   /* ============================================================ Blocos e cabeçalhos */
@@ -81,133 +72,6 @@
     50% {
       box-shadow: 0 0 0 4px color-mix(in oklab, var(--go), transparent 78%);
     }
-  }
-
-  /* ============================================================ Nível: nós ligados por elos */
-  /* O elo que sai do nível atual é a barra de XP; o custo fica sob o próximo nível. */
-  .lv-track {
-    display: flex;
-    align-items: center;
-    padding: 20px var(--sp-1) 24px;
-  }
-  .lv-node {
-    position: relative;
-    display: grid;
-    flex: none;
-    place-items: center;
-    inline-size: 28px;
-    block-size: 28px;
-    & b {
-      display: grid;
-      place-items: center;
-      inline-size: 100%;
-      block-size: 100%;
-      border: 1.5px solid var(--line);
-      border-radius: 50%;
-      background: var(--surface);
-      color: var(--muted);
-      font-size: var(--fs-sm);
-      font-weight: 700;
-      transition:
-        scale var(--spring-ms) var(--spring-ease),
-        background var(--dur-3),
-        border-color var(--dur-3);
-    }
-    & i {
-      position: absolute;
-      bottom: calc(100% + 3px);
-      display: grid;
-      color: var(--gold);
-      & .i {
-        inline-size: 12px;
-        block-size: 12px;
-      }
-    }
-    &[data-roll="1"] i {
-      color: var(--amber);
-    }
-    & em {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 50%;
-      translate: -50% 0;
-      color: var(--amber);
-      font-size: var(--fs-xs);
-      font-style: normal;
-      font-weight: 800;
-      white-space: nowrap;
-      &:empty {
-        display: none;
-      }
-      &[data-passive="1"] {
-        color: var(--go);
-      }
-    }
-    &[data-state="past"] b {
-      border-color: color-mix(in oklab, var(--go), transparent 35%);
-      background: color-mix(in oklab, var(--go), transparent 84%);
-      color: var(--go);
-    }
-    &[data-state="now"] b {
-      border-color: var(--go-fill);
-      background: var(--go-fill);
-      color: var(--on-fill);
-      scale: 1.15;
-      box-shadow: 0 0 0 4px color-mix(in oklab, var(--go), transparent 82%);
-    }
-    &[data-next="1"] b {
-      border-color: var(--go);
-      color: var(--go);
-      @media (prefers-reduced-motion: no-preference) {
-        animation: lv-ping 1.8s ease-out infinite;
-      }
-    }
-  }
-  @keyframes lv-ping {
-    0% {
-      box-shadow: 0 0 0 0 color-mix(in oklab, var(--go), transparent 40%);
-    }
-    80%,
-    100% {
-      box-shadow: 0 0 0 7px transparent;
-    }
-  }
-  .lv-link {
-    position: relative;
-    flex: 1;
-    block-size: 3px;
-    margin-inline: var(--sp-1);
-    border-radius: 2px;
-    background: var(--line-soft);
-    & b {
-      display: block;
-      block-size: 100%;
-      border-radius: inherit;
-      background: var(--go);
-      transform: scaleX(var(--p));
-      transform-origin: left;
-      transition: transform var(--settle-ms) var(--settle-ease);
-    }
-    & small {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      translate: -50% 0;
-      color: var(--muted);
-      font-size: var(--fs-xs);
-      font-weight: 600;
-      white-space: nowrap;
-      &:empty {
-        display: none;
-      }
-    }
-    &[data-state="current"] {
-      block-size: 6px;
-      background: color-mix(in oklab, var(--go), transparent 85%);
-    }
-  }
-  .lv-track[data-unknown="1"] .lv-link[data-state="current"] {
-    opacity: 0.5;
   }
 
   /* ============================================================ Roll: veredito, orçamento, peças */
@@ -275,73 +139,12 @@
     }
   }
 
-  /* Faixas de chips: "Na loja" (o que comprar) e "Achar rolando" (chance de ver uma cópia). */
-  .shop-hits,
-  .finds {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-1) var(--sp-2);
-    font-size: var(--fs-sm);
-    & .lbl {
-      inline-size: 100%;
-      color: var(--faint);
-      font-size: var(--fs-2xs);
-      font-weight: 700;
-      letter-spacing: var(--tracking-caps);
-      text-transform: uppercase;
-      & small {
-        font-weight: 600;
-        letter-spacing: 0;
-        text-transform: none;
-      }
-    }
-  }
-  .hit,
-  .find {
-    padding: 2px 9px 2px 3px;
-    font-variant-numeric: tabular-nums;
-  }
-  .hit {
-    /* Loja lida da tela (não do GEP): só provável, borda tracejada e "?" */
-    &[data-conf="provavel"] {
-      border-style: dashed;
-    }
-    & .conf {
-      color: var(--amber);
-      font-style: normal;
-      font-weight: 800;
-    }
-  }
-  .find {
-    &[data-mine="1"] {
-      border-color: color-mix(in oklab, var(--amber), transparent 55%);
-    }
-    & .dot {
-      inline-size: 7px;
-      block-size: 7px;
-      border-radius: 50%;
-      background: var(--line);
-    }
-    &[data-go="1"] .dot {
-      background: var(--go);
-      box-shadow: 0 0 0 3px color-mix(in oklab, var(--go), transparent 78%);
-    }
-    & .lv {
-      font-size: var(--fs-sm);
-      &[data-dir="up"] {
-        color: var(--go);
-      }
-      &[data-dir="down"] {
-        color: var(--danger);
-      }
-    }
-  }
-
-  /* Uma linha por peça do time: retrato, nome e estrelas; embaixo, as chances. */
+  /* Uma lista só, uma linha por peça do time: retrato, nome e estrelas; embaixo, a chance por loja, a de fechar com o
+     orçamento, as cópias com rivais, a peça na loja agora e a chance de achar rolando. */
   .targets {
     display: grid;
     gap: 2px;
+    margin-top: var(--sp-1);
   }
   .tg {
     display: grid;
@@ -430,6 +233,41 @@
       align-items: center;
       gap: 2px;
       color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      /* Loja só provável (fonte parada): "?" âmbar. */
+      & .conf {
+        color: var(--amber);
+        font-style: normal;
+        font-weight: 800;
+      }
+    }
+    /* Achar rolando: ponto verde com 50% ou mais; ↑ subir de nível leva ao verde, ↓ tira. */
+    & .seek {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text);
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      & .dot {
+        inline-size: 7px;
+        block-size: 7px;
+        border-radius: 50%;
+        background: var(--line);
+      }
+      &[data-go="1"] .dot {
+        background: var(--go);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--go), transparent 78%);
+      }
+      & .lv {
+        font-size: var(--fs-sm);
+        &[data-dir="up"] {
+          color: var(--go);
+        }
+        &[data-dir="down"] {
+          color: var(--danger);
+        }
+      }
     }
     & .bad {
       color: var(--danger);
@@ -442,6 +280,11 @@
     /* Distante (3★ longe) e inviável ficam apagadas; a peça que a loja oferece e o plano manda comprar acende. */
     &[data-status="longe"] {
       opacity: 0.72;
+    }
+    /* Peça só com o "achar rolando" (fora das linhas de evolução): o rótulo diz de quem é. */
+    &[data-status="find"] .name small {
+      color: var(--faint);
+      font-weight: 600;
     }
     &[data-status="inviavel"] {
       opacity: 0.85;
@@ -457,185 +300,6 @@
       }
     }
   }
-  .more {
-    color: var(--faint);
-    font-size: var(--fs-xs);
-  }
-
-  /* ============================================================ Curva ouro × chance */
-  .curve-box {
-    display: grid;
-    gap: var(--sp-1);
-  }
-  .curve-cap {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 var(--sp-3);
-    color: var(--muted);
-    font-size: var(--fs-xs);
-    & b {
-      color: var(--text);
-      font-weight: 700;
-    }
-    & .facts {
-      color: var(--amber);
-      font-weight: 700;
-    }
-  }
-  .curve {
-    display: block;
-    inline-size: 100%;
-    max-inline-size: 440px;
-    block-size: auto;
-    overflow: visible;
-    & .g {
-      stroke: var(--line-soft);
-      stroke-dasharray: 2 4;
-    }
-    & .ax {
-      fill: var(--muted);
-      font-size: 9px;
-    }
-    & .st-a,
-    & .st-b {
-      stop-color: var(--amber);
-    }
-    & .st-a {
-      stop-opacity: 0.32;
-    }
-    & .st-b {
-      stop-opacity: 0;
-    }
-    & .st-c,
-    & .st-d {
-      stop-color: var(--go);
-    }
-    & .st-c {
-      stop-opacity: 0.45;
-    }
-    & .st-d {
-      stop-opacity: 0.04;
-    }
-    & .area {
-      fill: url(#curve-fill);
-    }
-    & .lit {
-      fill: url(#curve-lit-fill);
-    }
-    & .line {
-      fill: none;
-      stroke: var(--amber);
-      stroke-width: 2.2;
-      stroke-linecap: round;
-    }
-    & .q {
-      fill: var(--surface);
-      stroke: var(--amber);
-      stroke-width: 2;
-    }
-    & .ql {
-      fill: var(--amber);
-      font-size: 10px;
-      font-weight: 700;
-    }
-    & .plan {
-      stroke: var(--go);
-      stroke-width: 1.4;
-    }
-    & .pl {
-      fill: var(--go);
-      stroke: var(--surface);
-      stroke-width: 2;
-    }
-    & .pll {
-      fill: var(--go);
-      font-size: 11px;
-      font-weight: 800;
-    }
-    & .cap {
-      stroke: var(--muted);
-      stroke-dasharray: 1 3;
-    }
-    & .capl {
-      fill: var(--muted);
-      font-size: 9px;
-    }
-  }
-
-  /* ============================================================ Loja: odds do nível */
-  .odds-bar {
-    display: flex;
-    gap: 2px;
-    block-size: 28px;
-    padding: 2px;
-    border-radius: var(--r-sm);
-    background: var(--bg-sunken);
-    box-shadow: inset 0 0 0 1px var(--line-soft);
-  }
-  .odds-seg {
-    display: grid;
-    flex: var(--w) 1 0;
-    place-items: center;
-    min-inline-size: 0;
-    overflow: hidden;
-    border-radius: var(--r-xs);
-    background: color-mix(in oklab, var(--c), var(--bg-sunken) 55%);
-    color: var(--text);
-    font-size: var(--fs-xs);
-    font-weight: 800;
-    transition: flex-grow var(--settle-ms) var(--settle-ease);
-    &[data-zero="1"] {
-      display: none;
-    }
-    &[data-small="1"] {
-      background: var(--c); /* sem rótulo: cor cheia para não parecer vazio */
-    }
-    &[data-carry="1"] {
-      background: var(--c);
-      color: var(--on-fill);
-    }
-  }
-  /* Legenda: custo, chance por slot e qual é o custo do carry (a cor sozinha não basta). */
-  .odds-key {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-1) var(--sp-3);
-    color: var(--muted);
-    font-size: var(--fs-xs);
-    & li {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--sp-1);
-      &[data-zero="1"] {
-        opacity: 0.6;
-      }
-      &[data-carry="1"] {
-        color: var(--text);
-        font-weight: 700;
-      }
-    }
-    & i {
-      inline-size: 8px;
-      block-size: 8px;
-      border-radius: 50%;
-      background: var(--c);
-    }
-    & b {
-      font-weight: 700;
-    }
-    & small {
-      color: var(--gold);
-      font-size: var(--fs-2xs);
-      font-weight: 800;
-      letter-spacing: var(--tracking-caps);
-      text-transform: uppercase;
-      &:empty {
-        display: none;
-      }
-    }
-  }
-
   /* Wisps (fogos-fátuos) da loja: marca, recomendação e motivo; o detalhe fica na dica. */
   .wisp-hits {
     display: grid;
@@ -759,13 +423,6 @@
   @media (pointer: coarse) {
     .why-box > summary {
       min-block-size: 40px;
-    }
-  }
-  /* Painel estreito (≈ 300 px): o rótulo da faixa de chips divide a linha com os chips só quando há espaço. */
-  @container panel (min-width: 420px) {
-    .shop-hits .lbl,
-    .finds .lbl {
-      inline-size: auto;
     }
   }
 }

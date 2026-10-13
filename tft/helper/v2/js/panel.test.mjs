@@ -1,6 +1,7 @@
 // Rodar com: node --test tft/helper/v2/js/
 // O painel é desenhado com DOM; aqui um DOM mínimo (só o que dom.js e panel.js usam) confere o Roll que o
-// jogador vê: veredito, orçamento, nota de juros, peças na loja e uma linha por peça do time.
+// jogador vê ao lado do tabuleiro: veredito, orçamento, nota de juros e, numa lista só, uma linha por peça do time com
+// a chance por loja, a peça na loja agora e a chance de achar rolando.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -113,16 +114,21 @@ const panelFor = (opts, tweak) => {
   rec.metadata.actionable = true;
   rec.self.health = s.analysis.self.health;
   rec.recommendations[0].strategy = strategy(s.plan, s.analysis, s.options);
-  const root = new FakeNode("div"),
+  const root = new FakeNode("aside"),
     panel = mountPanel(root);
   panel.update(buildModel({ state, rec }).plan.panel);
-  const section = (cls) => root.kids.find((k) => k.attrs.class?.includes(cls));
-  return { root, roll: section("roll") };
+  const section = (cls) => root.kids.find((k) => k.attrs.class?.includes(cls)),
+    roll = section("roll");
+  return {
+    root,
+    roll,
+    targets: roll.kids.find((k) => k.attrs.class === "targets"),
+  };
 };
 const part = (roll, cls) => roll.kids.find((k) => k.attrs.class === cls);
 
 test("painel Roll: veredito, orçamento e uma linha por peça do time, com a evolução e a chance", () => {
-  const { roll } = panelFor({ extra: { Aphelios: 1 } }, (s) => {
+  const { roll, targets } = panelFor({ extra: { Aphelios: 1 } }, (s) => {
     s.plan.meta.builds = { TFT_Amumu: [] };
   });
   const head = roll.kids[0].kids.find((k) => k.tag === "b");
@@ -135,7 +141,7 @@ test("painel Roll: veredito, orçamento e uma linha por peça do time, com a evo
   assert.equal(spend.hidden, false);
   assert.match(spend.innerHTML, /<b>\d+g<\/b>/);
   assert.match(spend.innerHTML, /pare em 50g/);
-  const rows = part(roll, "targets").children;
+  const rows = targets.children;
   assert.ok(rows.length >= 4 && rows.length <= 6, `${rows.length} linhas`);
   const aph = rows.find((r) => r.innerHTML.includes("Aphelios"));
   assert.match(aph.innerHTML, /2→3|1→2★/);
@@ -158,18 +164,23 @@ test("painel Roll: veredito, orçamento e uma linha por peça do time, com a evo
 test("painel Roll: guardar mostra o motivo, esconde o orçamento e mantém a lista", () => {
   // 54g com vida 58 (piso de 30g): a árvore manda guardar e a regra dos 50% confirma. Com 75g no nível final (Fast 8)
   // os 25g acima dos juros seriam ouro parado e a decisão da rodada os rolaria (decisao-da-rodada.md).
-  const { roll } = panelFor({ gold: 54, hp: 58 });
+  const { roll, targets } = panelFor({ gold: 54, hp: 58 });
   assert.equal(
     roll.kids[0].kids.find((k) => k.tag === "b").textContent,
     "não rolar",
   );
   assert.match(part(roll, "call").innerHTML, /Só \d+% de evoluir alguma peça/);
   assert.equal(part(roll, "spend").hidden, true);
-  assert.ok(part(roll, "targets").children.length >= 4);
+  assert.ok(targets.children.length >= 4);
+  assert.equal(
+    targets.hidden,
+    false,
+    "a lista por peça aparece mesmo sem rolar",
+  );
 });
 
 test("painel Roll: inviável marcada com o substituto, peça na loja acesa e nota de juros", () => {
-  const { roll } = panelFor(
+  const { roll, targets } = panelFor(
     {
       gold: 53,
       hp: 25,
@@ -202,7 +213,7 @@ test("painel Roll: inviável marcada com o substituto, peça na loja acesa e not
     roll.kids[0].kids.find((k) => k.tag === "b").dataset.tone,
     "danger",
   );
-  const rows = part(roll, "targets").children,
+  const rows = targets.children,
     rakan = rows.find((r) => r.innerHTML.includes("Rakan")),
     sentinel = rows.find((r) => r.innerHTML.includes("Sentinel"));
   // O substituto é um chip de campeão (imagem; sem catálogo carregado aqui, o marcador com o nome em texto).
@@ -212,14 +223,35 @@ test("painel Roll: inviável marcada com o substituto, peça na loja acesa e not
   );
   assert.equal(rakan.dataset.status, "inviavel");
   assert.equal(sentinel.dataset.shop, "buy");
-  assert.match(sentinel.innerHTML, /in-shop/);
-  const hits = part(roll, "shop-hits");
-  assert.equal(hits.hidden, false);
+  // A peça na loja agora fica na própria linha (sem a faixa "Na loja" à parte): o que comprar e o preço.
   assert.match(
-    hits.innerHTML,
-    /data-kind="champion"[^>]*>(<[^>]+>)*Sentinel<\/span><\/span> ×1 · 2g/,
+    sentinel.innerHTML,
+    /class="in-shop" data-go="1"[^>]*>.*×1 · 2g/,
   );
+  assert.equal(part(roll, "shop-hits"), undefined);
   const note = part(roll, "roll-note");
   assert.equal(note.hidden, false);
   assert.match(note.innerHTML, /derruba os juros de \+5 para \+\d/);
+});
+
+test("widget de Roll: uma lista só, com o achar rolando em cada linha; sem Nível, curva, odds nem faixas à parte", () => {
+  const { root, roll, targets } = panelFor({ extra: { Aphelios: 1 } });
+  const classes = root.kids.map((k) => k.attrs.class);
+  assert.deepEqual(classes, ["blk roll", "blk shop", "why-box"]);
+  for (const gone of ["finds", "shop-hits", "more", "curve-box"])
+    assert.equal(part(roll, gone), undefined, `sem a faixa ${gone}`);
+  assert.equal(root.kids[1].hidden, true, "sem wisps, sem o bloco da loja");
+  assert.equal(root.hidden, false);
+  assert.ok(targets.children.length >= 1);
+  assert.ok(
+    targets.children.some((r) => /class="seek"/.test(r.innerHTML)),
+    "o achar rolando vai na linha da peça",
+  );
+});
+
+test("sem análise: widget escondido", () => {
+  const root = new FakeNode("aside"),
+    panel = mountPanel(root);
+  panel.update(null);
+  assert.equal(root.hidden, true);
 });

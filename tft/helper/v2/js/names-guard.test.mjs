@@ -143,16 +143,6 @@ const EXCEPTIONS = [
     snippet: "<span>${esc(i.name)}</span>",
     why: "legenda da linha da matriz de atributos, ao lado do ícone",
   },
-  {
-    file: "ui/panel.js",
-    snippet: "curve.name",
-    why: "rótulo de acessibilidade do gráfico",
-  },
-  {
-    file: "ui/panel.js",
-    snippet: "r.curve.name",
-    why: "dica (tooltip) do gráfico",
-  },
   { file: "main.js", snippet: "a.name", why: "nome de aprimoramento" },
   {
     file: "main.js",

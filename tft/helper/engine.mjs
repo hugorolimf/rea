@@ -8,6 +8,7 @@ import {
   filterKey,
   starUnit,
   traitAt,
+  unitItem,
   unitUpTo,
 } from "./evidence.mjs";
 import { TIER_PLACE } from "./augment-stats.mjs";
@@ -16,6 +17,7 @@ import {
   buildHolders,
   compBuild,
   compBuildMap,
+  compItemOptions,
   compSpendOrder,
 } from "./core/items/builds.mjs";
 import { HOLD_VALUE, holdValue, resolveHoldings } from "./item-holdings.mjs";
@@ -29,6 +31,8 @@ import { takeOne } from "./core/items/stock.mjs";
 import { buildItemPlan, planPoints } from "./item-plan.mjs";
 import { isPlanItem, itemValueTable } from "./item-value.mjs";
 import { compScore } from "./comp-score.mjs";
+import { levelFitSwaps } from "./core/comps/level-fit.mjs";
+import { digestString } from "./core/graph/stable-key.mjs";
 import {
   REACH,
   compReach,
@@ -38,16 +42,31 @@ import {
 } from "./core/comps/reach.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
 import {
+  winFit,
+  winOf,
+  winOfAvg,
+  winOfPlacementDelta,
+  winSe,
+} from "./core/comps/win.mjs";
+import {
+  baseItemId,
   componentFamily,
   holderRole,
   isComponent,
+  isConsumable,
   isEmblemItem,
   isEmblemTool,
   itemRole,
   recipeMap,
   recipeOf,
 } from "./core/catalog/items.mjs";
-import { championRole, isAvatar, poolName } from "./core/catalog/champions.mjs";
+import {
+  championRole,
+  isAvatar,
+  poolName,
+  slotsUsed,
+  unitSlots,
+} from "./core/catalog/champions.mjs";
 import {
   freeByCost,
   freeCopies,
@@ -107,6 +126,10 @@ function memoFor(objects) {
 }
 const NO_OBJECT = {},
   MEMO_LEAF = {};
+// Comps crescidas até o nível (`extend`), guardadas entre análises pela chave das entradas (ver `extendCtx`).
+const EXTEND_MEMO = new Map(),
+  EXTEND_MEMO_MAX = 4000;
+
 export function analyze(snapshot, catalog, options) {
   const level = options.level;
   const boardLevel = options.targetLevel ?? level;
@@ -291,10 +314,17 @@ export function analyze(snapshot, catalog, options) {
   const thresholdsOf = book.thresholds;
   const emblemRecipes = book.recipes;
   // A peça do tabuleiro com os itens que a gente tem nela, no formato que o livro de sinergias conta.
-  const traitUnit = (c) => ({
-    traits: c.traits,
-    items: own.get(key(c))?.items,
-  });
+  // Os itens das suas peças não mudam dentro de uma análise: a peça no formato de contagem é guardada por campeão.
+  const traitUnitMemo = new WeakMap();
+  const traitUnit = (c) => {
+    let u = traitUnitMemo.get(c);
+    if (!u)
+      traitUnitMemo.set(
+        c,
+        (u = { traits: c.traits, items: own.get(key(c))?.items }),
+      );
+    return u;
+  };
   function traitsOf(c) {
     return book.of(c.traits, own.get(key(c))?.items).traits;
   }
@@ -307,9 +337,27 @@ export function analyze(snapshot, catalog, options) {
     const c = byId.get(u.championName);
     return c ? traitsFor(c, u.itemNames) : { traits: [], emblemTraits: [] };
   };
-  const legal = (board) => book.legal(board.map(traitUnit));
+  // Sinergias e legalidade de um tabuleiro: as mesmas contas se repetem milhares de vezes por análise (crescer comps,
+  // trocas, emblemas); guardadas pelo conjunto de peças (a ordem não muda a contagem). Leitura apenas: não mutar.
+  const boardKey = (board) =>
+      board
+        .map((c) => c.apiName)
+        .sort()
+        .join(","),
+    traitsMemo = new Map(),
+    legalMemo = new Map();
+  const legal = (board) => {
+    const k = boardKey(board);
+    let v = legalMemo.get(k);
+    if (v === undefined)
+      legalMemo.set(k, (v = book.legal(board.map(traitUnit))));
+    return v;
+  };
   function traits(board) {
-    return book.summary(board.map(traitUnit));
+    const k = boardKey(board);
+    let v = traitsMemo.get(k);
+    if (!v) traitsMemo.set(k, (v = book.summary(board.map(traitUnit))));
+    return v;
   }
   // Emblemas: Espátula/Frigideira + componente (ou emblema pronto no banco) dão a sinergia do nome a uma peça.
   // Para cada comp, o melhor emblema ao alcance: fechar o próximo patamar de uma sinergia vale muito; reforçar
@@ -586,17 +634,36 @@ export function analyze(snapshot, catalog, options) {
           input.bankRead,
           options.baseAvg ?? null,
           published,
+          comp?.id ?? null,
         ]);
       plan = planMemo.get(memoKey);
       if (!plan) {
         plan = buildItemPlan({
           ...input,
           recipes: planRecipes,
-          valueOf: valueTable.valueOf,
+          // A mesma régua da recomendação de itens (core/items/item-priority.mjs): o ganho do item no campeão NESTA comp
+          // (MetaTFT `comp_builds`); sem esse dado, o valor medido geral (item-value.mjs).
+          valueOf: (u, id) => {
+            const o = compItemOptions(comp, u).find(
+              (x) => x.id === baseItemId(id),
+            );
+            return o
+              ? {
+                  value: o.gain,
+                  confidence: Number.isFinite(o.n) ? o.n / (o.n + 400) : null,
+                  samples: o.n ?? null,
+                  source: "comp",
+                }
+              : valueTable.valueOf(u, id);
+          },
           rankedOf: valueTable.rankedOf,
           wantsOf: valueTable.wantsOf,
           nameOf: (id) => itemCatalog.get(id)?.name ?? id,
-          buildOf: (id) => published[id] ?? null,
+          // Itens bons do campeão nesta comp (core/items/item-priority.mjs); sem eles, a build publicada.
+          buildOf: (id) => {
+            const best = compItemOptions(comp, id).map((o) => o.id);
+            return best.length ? best : (published[id] ?? null);
+          },
         });
         if (planMemo.size >= 600) planMemo.clear();
         planMemo.set(memoKey, plan);
@@ -669,39 +736,71 @@ export function analyze(snapshot, catalog, options) {
   // Crescer a comp: quando seu nível passa do tamanho dela, cada vaga extra recebe a unidade que mais soma —
   // novo patamar de sinergia primeiro, depois custo, unidade que já é sua e pouca disputa. Só entra o que a
   // loja do seu nível oferece (>=10% por slot) ou o que você já tem.
+  //
+  // Conta incremental (mesmo resultado de recontar o tabuleiro com cada candidato): o tabuleiro é contado uma vez por
+  // vaga e cada candidato só soma as sinergias dele; o patamar novo e a regra da sinergia solo só podem mudar nelas.
+  // O resultado é guardado entre análises pela chave de tudo o que a conta lê (`extendCtx`): as passadas de evidência
+  // e as leituras em que nível, peças suas, pool e rivais não mudaram reaproveitam.
   function extend(base, size) {
+    const memoKey = `${extendCtx()}|${size}|${base.map((c) => c.apiName).join(",")}`,
+      hit = EXTEND_MEMO.get(memoKey);
+    if (hit)
+      return {
+        board: hit.board.map((id) => byId.get(id)),
+        added: hit.added.map((a) => ({ ...a, gained: [...a.gained] })),
+      };
     const out = [...base],
       added = [];
-    while (out.length < size) {
-      const before = traits(out);
-      const pick = candidates
-        .filter(
-          (c) =>
-            !out.includes(c) &&
-            legal([...out, c]) &&
-            (own.has(key(c)) ||
-              (upper(key(c)) > 0 && isBuyable(level, c.cost))),
+    // Vagas, não peças: o Elder Dragon ocupa 2 (core/catalog/champions.mjs).
+    for (let used = slotsUsed(out); used < size; used = slotsUsed(out)) {
+      const inBoard = new Set(out),
+        units = out.map(traitUnit),
+        { counts } = book.tally(units),
+        beforeTier = new Map(traits(out).map((t) => [t.name, t.tier])),
+        order = new Map([...counts.keys()].map((n, i) => [n, i])),
+        present = new Map();
+      for (const u of units)
+        for (const n of new Set(book.of(u.traits, u.items).traits))
+          present.set(n, (present.get(n) ?? 0) + 1);
+      // Sinergias que o candidato liga (patamar novo, sem as solo), na ordem da contagem do tabuleiro com ele; null se
+      // ele repete uma sinergia solo do tabuleiro (tabuleiro ilegal).
+      const gainedOf = (c) => {
+        const u = traitUnit(c),
+          list = book.of(u.traits, u.items).traits;
+        for (const n of new Set(list))
+          if (book.solo.has(n) && (present.get(n) ?? 0) >= 1) return null;
+        const inc = new Map();
+        for (const n of list) inc.set(n, (inc.get(n) ?? 0) + 1);
+        const gained = [];
+        for (const [n, k] of inc) {
+          const total = (counts.get(n) ?? 0) + k;
+          if (book.solo.has(n) && total >= 2) continue;
+          const st = book.status(n, total);
+          if (!st.solo && st.tier > (beforeTier.get(n) ?? 0)) gained.push(n);
+        }
+        return gained.sort(
+          (a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity),
+        );
+      };
+      let pick = null;
+      for (const c of candidates) {
+        if (
+          inBoard.has(c) ||
+          used + unitSlots(c) > size ||
+          !(own.has(key(c)) || (upper(key(c)) > 0 && isBuyable(level, c.cost)))
         )
-        .map((c) => {
-          const gained = traits([...out, c])
-              .filter(
-                (t) =>
-                  !t.solo &&
-                  t.tier > (before.find((b) => b.name === t.name)?.tier ?? 0),
-              )
-              .map((t) => t.name),
-            u = own.get(key(c));
-          return {
-            c,
-            gained,
-            value:
-              gained.length * 8 +
-              c.cost * 1.5 +
-              (u ? 4 + u.stars : 0) -
-              (contestOf(key(c)) / POOL[c.cost]) * 6,
-          };
-        })
-        .sort((a, b) => b.value - a.value)[0];
+          continue;
+        const gained = gainedOf(c);
+        if (!gained) continue;
+        const u = own.get(key(c)),
+          value =
+            gained.length * 8 +
+            c.cost * 1.5 +
+            (u ? 4 + u.stars : 0) -
+            (contestOf(key(c)) / POOL[c.cost]) * 6;
+        // Primeiro de maior valor (o `sort` estável de antes ficava com o primeiro em caso de empate).
+        if (!pick || value > pick.value) pick = { c, gained, value };
+      }
       if (!pick) break;
       out.push(pick.c);
       added.push({
@@ -713,7 +812,30 @@ export function analyze(snapshot, catalog, options) {
         owned: own.has(key(pick.c)),
       });
     }
+    if (EXTEND_MEMO.size >= EXTEND_MEMO_MAX) EXTEND_MEMO.clear();
+    EXTEND_MEMO.set(memoKey, {
+      board: out.map((c) => c.apiName),
+      added: added.map((a) => ({ ...a, gained: [...a.gained] })),
+    });
     return { board: out, added };
+  }
+  // Chave de tudo o que `extend` lê além da comp: nível, aprimoramentos (sinergia solo liberada), suas peças (estrela e
+  // itens: emblemas), cópias vistas e disputa de cada campeão. Calculada uma vez por análise.
+  let extendKey = null;
+  function extendCtx() {
+    if (extendKey === null)
+      extendKey = digestString(
+        JSON.stringify([
+          level,
+          [...(options.augmentTraits ?? [])].sort(),
+          [...own]
+            .map(([k, u]) => [k, u.stars, [...u.items].sort()])
+            .sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+          candidates.map((c) => [upper(key(c)), contestOf(key(c))]),
+          catalog.champions.length,
+        ]),
+      );
+    return extendKey;
   }
   const growTo = Math.min(10, Math.max(level, boardLevel));
   const selected = [];
@@ -728,7 +850,7 @@ export function analyze(snapshot, catalog, options) {
           .filter((c) => c && !isAvatar(c));
         if (core.length < 5 || !legal(core)) return null;
         const grown =
-            core.length < growTo
+            slotsUsed(core) < growTo
               ? extend(core, growTo)
               : { board: core, added: [] },
           board = grown.board;
@@ -802,6 +924,9 @@ export function analyze(snapshot, catalog, options) {
   // MetaTFT diz quais peças e sinergias rendem mais junto com ela (options.conditional); o tabuleiro é montado
   // com as que mais melhoram a colocação esperada, pesadas pela chance de você conseguir cada peça.
   const baseAvg = options.baseAvg ?? 4.466;
+  // Reta medida vitória × colocação das comps de meta (core/comps/win.mjs): converte em vitória só o que ainda chega em
+  // colocações (custo de trocar, tier de aprimoramento, ganho publicado de build); a vitória das comps é a medida.
+  const fit = winFit(options.metaComps);
   // Lojas ao alcance: o ouro de agora mais a renda das próximas rodadas (base + juros), guardando uma reserva; a conta e a
   // suposição para ouro não lido (D14) são de core/economy (shopsAhead, POLICY.shopsAhead). O grafo de fatos entrega o
   // número já pronto em `options.shopsAhead` (fato `economy.shopsAhead`, app/recommend-facts.mjs): a base declara a
@@ -920,6 +1045,10 @@ export function analyze(snapshot, catalog, options) {
   for (const a of assets)
     if (!options.conditional?.has(a.filter)) conditionalRequests.add(a.filter);
   const advantage = [];
+  // Estrela de cada peça sua por campeão (a regra do nível não troca a sua peça 2★/3★).
+  const ownedStars = new Map(
+    [...own.values()].map((u) => [u.champion.apiName, u.stars]),
+  );
   for (const asset of assets) {
     const cond = options.conditional?.get(asset.filter);
     if (!cond) continue;
@@ -974,18 +1103,47 @@ export function analyze(snapshot, catalog, options) {
           .sort((x, y) => y.gain - x.gain);
       const count = () =>
         board.filter((c) => name && traitsOf(c).includes(name)).length;
+      // Vagas, não peças: o Elder Dragon ocupa 2.
+      const fits = (c) => slotsUsed(board) + unitSlots(c) <= growTo;
       for (const r of order) {
-        if (board.length >= growTo) break;
+        if (slotsUsed(board) >= growTo) break;
         if (board.includes(r.c)) continue; // peça ligada ao aprimoramento já está no tabuleiro
+        if (!fits(r.c)) continue;
         if (name && count() < need && !r.hasTrait) continue;
         if (!legal([...board, r.c])) continue;
         board.push(r.c);
       }
       for (const r of order) {
-        if (board.length >= growTo) break;
-        if (!board.includes(r.c) && legal([...board, r.c])) board.push(r.c);
+        if (slotsUsed(board) >= growTo) break;
+        if (!board.includes(r.c) && fits(r.c) && legal([...board, r.c]))
+          board.push(r.c);
       }
       if (variant && count() < need) continue;
+      // Peça barata para o nível (core/comps/level-fit.mjs, regra reserva): dá lugar à alternativa comprável mais cara,
+      // da mesma sinergia e de média geral melhor; a sinergia mirada não cai de patamar e as suas peças 2★/3★ ficam.
+      for (const sw of levelFitSwaps(
+        {
+          units: board.map((c) => c.apiName),
+          carry: asset.champion.apiName,
+          key: variant ? [variant.api] : [],
+          options: null,
+        },
+        {
+          level,
+          owned: ownedStars,
+          byId,
+          book,
+          traitName: traitByApi,
+          unitStats: options.stats?.unit ?? null,
+        },
+      )) {
+        const at = board.findIndex((c) => c.apiName === sw.out),
+          c = byId.get(sw.in);
+        if (at >= 0 && c && !board.includes(c)) {
+          const next = board.map((x, i) => (i === at ? c : x));
+          if (legal(next)) board.splice(0, board.length, ...next);
+        }
+      }
       const component = score(board, null);
       component.fit =
         component.preservation +
@@ -1198,16 +1356,51 @@ export function analyze(snapshot, catalog, options) {
     }
     return best;
   }
+  // Seus itens no campeão certo desta comp (plano de itens, item-plan.mjs): até ITEMS_ASKED atribuições, da de maior valor
+  // medido para a menor, como "este campeão com este item" (unit_item). Cada filtro a mais mede tabuleiros mais parecidos
+  // com o seu; a pergunta mais longa com amostra (MIN_GAMES) é a que vale, então os itens entram até onde a MetaTFT tem
+  // partidas. Radiante pergunta pelo item base (a MetaTFT junta os dois).
+  const ITEMS_ASKED = 3;
+  function itemFiltersOf(r) {
+    r.component.itemPlan ??= planFor(r.board, r.meta ?? null);
+    const plan = r.component.itemPlan,
+      here = new Set(r.board.map((c) => c.apiName)),
+      seen = new Set();
+    if (!plan?.active) return null;
+    const out = [];
+    for (const a of plan.assignments ?? []) {
+      if (out.length >= ITEMS_ASKED) break;
+      const id = baseItemId(a.item.id),
+        k = `${a.champion.id}|${id}`;
+      if (!(a.value > 0) || !here.has(a.champion.id) || seen.has(k)) continue;
+      seen.add(k);
+      out.push({
+        filter: unitItem(a.champion.id, id),
+        champion: a.champion,
+        item: { id, name: a.item.name },
+        value: a.value,
+      });
+    }
+    return out;
+  }
   function questions(r) {
     const asset = assetIn(r),
       start = asset ? [asset.filter] : [],
       core = coreOf(r).filter((c) => c !== asset?.champion),
       emblem = emblemFor(r.board),
-      mine = myItemsFor(r.board),
+      placed = itemFiltersOf(r),
+      // Com o plano de itens, os itens do banco entram pelo campeão (placed); os emblemas que um aprimoramento deu
+      // continuam como "no tabuleiro" (não estão no banco lido).
+      mine = placed
+        ? [...new Set(options.augmentEmblems ?? [])].slice(0, 2)
+        : myItemsFor(r.board),
       extras = [
-        ...mine,
-        ...(emblem && !mine.includes(emblem.id) ? [emblem.id] : []),
-      ].map((id) => `item=${id}`),
+        ...(placed ?? []).map((x) => x.filter),
+        ...[
+          ...mine,
+          ...(emblem && !mine.includes(emblem.id) ? [emblem.id] : []),
+        ].map((id) => `item=${id}`),
+      ],
       // Aprimoramento escolhido que mexe numa sinergia (Aminimigos → Rival com as duas peças): a pergunta exige a
       // sinergia no patamar deste tabuleiro, então a medição é de tabuleiros com o mesmo efeito do aprimoramento.
       augmented = traits(r.board)
@@ -1239,6 +1432,7 @@ export function analyze(snapshot, catalog, options) {
       core: coreQ,
       emblem,
       extras,
+      placed: placed ?? [],
       augmented,
       merged,
       sets: out.filter((f) => f.length),
@@ -1265,10 +1459,86 @@ export function analyze(snapshot, catalog, options) {
     return best;
   };
   const augmentTraitIds = (id) => options.augmentTraitsById?.[id] ?? [];
+  // Resposta medida de um conjunto de filtros: a guardada (com amostra) ou null, pedindo a que falta. A resposta antiga, sem
+  // a vitória, é descartada pelo cache de evidência ao carregar (evidence.mjs screenCache) e volta a ser perguntada.
+  const answerOf = (f) => {
+    const k = filterKey(f);
+    if (!evidence?.has(k)) {
+      requests.set(k, f);
+      return null;
+    }
+    const e = evidence.get(k);
+    return e && e.games >= MIN_GAMES && e.avg != null ? e : null;
+  };
+  // Peça-chave da estrela (a mesma regra da estrela-alvo do alcance, reachOf): a 3★ principal da comp de reroll ou o carry
+  // 2★ (custo até REACH.carryTwoStarMaxCost). A vitória medida muda muito com a estrela dela (Cassiopeia com 3 itens:
+  // 7,6% em 2★ e 19,2% em 3★), então a pergunta da comp é refeita com ela em cada estrela.
+  function starPieceOf(r) {
+    const threes = r.meta?.rerollLevel ? (r.meta.stars3 ?? []) : [];
+    if (threes.length) {
+      const c = byId.get(
+        threes.includes(r.carry?.apiName) ? r.carry.apiName : threes[0],
+      );
+      return c && r.board.includes(c) ? { c, goal: 3 } : null;
+    }
+    return r.carry &&
+      r.board.includes(r.carry) &&
+      r.carry.cost <= REACH.carryTwoStarMaxCost
+      ? { c: r.carry, goal: 2 }
+      : null;
+  }
+  // Vitória da comp montada, por estrela da peça-chave: a pergunta escolhida (`f`) com a peça na estrela-alvo e na de baixo,
+  // pesadas pela chance de você chegar à estrela-alvo (reachOf com a estrela da comp: as cópias que faltam, as livres depois
+  // do que os rivais seguram, o ouro das próximas rodadas, as odds do seu nível e o prazo pela vida). Sem as duas respostas
+  // com amostra, null (vale a pergunta sem a estrela).
+  function starSplit(r, f) {
+    const piece = starPieceOf(r);
+    if (!piece) return null;
+    const { c, goal } = piece,
+      mine = own.get(key(c)),
+      at = f.findIndex(
+        (x) =>
+          typeof x === "string" &&
+          x.startsWith("unit_tier_numitems_unique=") &&
+          x.includes(`${c.apiName}-1_`),
+      ),
+      ask = (st) => {
+        const g = [...f];
+        if (at < 0) g.push(starUnit(c.apiName, st));
+        else g[at] = starUnit(c.apiName, st);
+        return answerOf(g);
+      };
+    // Peça sua já na estrela-alvo: a comp é medida com ela nessa estrela (chance 1).
+    const pGoal =
+      mine && mine.stars >= goal
+        ? 1
+        : (reachOf(r, [c], { goals: true }).chance ?? 0);
+    const high = ask(goal),
+      low = pGoal >= 1 ? null : ask(goal - 1);
+    if (winOf(high) == null) return null;
+    if (pGoal < 1 && winOf(low) == null) return null;
+    const wHigh = winOf(high),
+      wLow = pGoal < 1 ? winOf(low) : wHigh;
+    return {
+      id: c.apiName,
+      name: c.name,
+      goal,
+      p: Math.round(pGoal * 1000) / 1000,
+      high: { stars: goal, win: high.win, avg: high.avg, games: high.games },
+      low:
+        pGoal < 1
+          ? { stars: goal - 1, win: low.win, avg: low.avg, games: low.games }
+          : null,
+      win: pGoal * wHigh + (1 - pGoal) * wLow,
+      avg: pGoal * high.avg + (1 - pGoal) * (low?.avg ?? high.avg),
+      games: Math.min(high.games, low?.games ?? high.games),
+    };
+  }
   function measure(r) {
-    const { asset, core, emblem, extras, augmented, merged, sets } =
+    const { asset, core, emblem, extras, placed, augmented, merged, sets } =
       questions(r);
     let best = null,
+      bestSet = null,
       depth = 0,
       starved = false;
     sets.forEach((f, i) => {
@@ -1282,6 +1552,7 @@ export function analyze(snapshot, catalog, options) {
       if (e && e.games < MIN_GAMES) starved = true;
       if (e?.avg != null && e.games >= MIN_GAMES) {
         best = e;
+        bestSet = f;
         depth = i;
       }
     });
@@ -1323,11 +1594,32 @@ export function analyze(snapshot, catalog, options) {
       p * best.avg + (1 - p) * fallback + augAdj.reduce((n, x) => n + x.adj, 0);
     // Incerteza da colocação esperada: erro da média medida, pesado pela chance de montar.
     const se = Math.max(p, 0.2) * (PLACEMENT_SD / Math.sqrt(best.games));
+    // Vitória da comp montada: a pergunta escolhida dividida pela estrela da peça-chave (starSplit); sem essa divisão
+    // medida, a vitória da própria pergunta.
+    const star = starSplit(r, bestSet),
+      win = star ? star.win : winOf(best),
+      winGames = star ? star.games : best.games;
+    const itemLabel = (f) => {
+      const x = placed.find((y) => y.filter === f);
+      return x
+        ? `${x.item.name} em ${x.champion.name}`
+        : (itemCat.get(f.slice(5))?.name ?? f.slice(5));
+    };
     return {
       expected: Math.round(expected * 100) / 100,
       measured: best.avg,
       games: best.games,
       top4: best.top4,
+      // Vitória medida (fração) da comp montada, com a estrela da peça-chave e os seus itens nos campeões certos.
+      win,
+      winQuestion: winOf(best),
+      winSe:
+        win == null
+          ? null
+          : Math.round(Math.max(p, 0.2) * winSe(win, winGames) * 10000) / 10000,
+      star,
+      // Filtros de item que entraram na pergunta escolhida (os seus itens já medidos nesta comp).
+      itemsMeasured: itemsUsed,
       chance: Math.round(p * 100) / 100,
       se: Math.round(se * 1000) / 1000,
       basis: [
@@ -1341,7 +1633,12 @@ export function analyze(snapshot, catalog, options) {
         ...augUsed.map((f) => `${traitLabel(f)} (aprimoramento)`),
         ...coreSteps.filter((c) => typeof c === "string").map(traitLabel),
         ...used.map((c) => c.name),
-        ...itemsUsed.map((f) => itemCat.get(f.slice(5))?.name ?? f.slice(5)),
+        ...itemsUsed.map(itemLabel),
+        ...(star
+          ? [
+              `${star.name} ${star.goal}★ com ${Math.round(star.p * 100)}% de chance`,
+            ]
+          : []),
       ],
       emblem: emblem
         ? { id: emblem.id, name: emblem.name, trait: emblem.trait }
@@ -1455,7 +1752,12 @@ export function analyze(snapshot, catalog, options) {
   }
   const currentEv = current ? measure(current) : null,
     currentMeasured = currentEv?.measured ?? null,
-    currentTop4 = currentEv?.top4 ?? null;
+    currentTop4 = currentEv?.top4 ?? null,
+    // Vitória do seu tabuleiro atual (a reserva de W): a medida ou, se a resposta veio sem ela, a da colocação medida pela
+    // reta (assim, sem vitória em nenhuma resposta, W ordena exatamente como E).
+    currentWin =
+      currentEv?.win ??
+      (currentMeasured != null ? winOfAvg(currentMeasured, fit) : null);
   for (const r of [...ranked, ...advantage]) {
     r.component.itemPlan ??= planFor(r.board, r.meta ?? null);
     const ev = measure(r);
@@ -1467,16 +1769,17 @@ export function analyze(snapshot, catalog, options) {
       r.component.total +=
         EVIDENCE_ITEM_SHARE * planPoints(r.component.itemPlan.total);
   }
-  // COLOCAÇÃO ESPERADA (E): a medida única das comps. Ordena as sugeridas, decide a troca do plano em andamento e é o que
-  // a tela mostra (o score 0–100 é só E numa régua: comp-score.mjs, scoreFromExpected). Mesma conta com e sem evidência:
-  //   E = p · (média + aprimoramentos − itens do plano + descarte do aprimoramento) + (1 − p) · reserva
+  // COLOCAÇÃO ESPERADA (E): informação da tela ("N,Nº esperado"). A medida que ordena as comps, decide a troca do plano e
+  // vira o score é a VITÓRIA ESPERADA (W, winExpectedOf, abaixo), que tem a mesma forma. Mesma conta com e sem evidência:
+  //   E = p · (média + aprimoramentos − itens fora da pergunta + descarte do aprimoramento) + (1 − p) · reserva
   // - p: chance de ter a comp no prazo, pelo alcance (reachOf: o que você tem em campo e na reserva, as estrelas, prazo,
   //   ouro, nível, vida, pool e rivais): com evidência, a menor entre a presença das peças medidas e a parte esperada da
   //   comp; sem ela, a parte esperada. O risco de não montar está em p e na reserva;
-  // - média: a medida (evidence.mjs) ou, sem ela, a média publicada ajustada aos seus itens (item-edge.mjs);
+  // - média: a medida (evidence.mjs: a pergunta leva os seus itens NOS CAMPEÕES do plano de itens, unit_item) ou, sem ela,
+  //   a média publicada ajustada aos seus itens (item-edge.mjs);
   // - reserva: o seu tabuleiro atual medido (ou NOT_BUILT, política): é onde você fica se não montar;
-  // - aprimoramentos: o tier de cada aprimoramento escolhido nesta comp (augAdjOf); itens do plano: a mesma parte do plano
-  //   de itens que a pontuação medida somava (EVIDENCE_ITEM_SHARE × planPoints, convertida em colocações);
+  // - aprimoramentos: o tier de cada aprimoramento escolhido nesta comp (augAdjOf); itens fora da pergunta: o valor medido
+  //   dos seus itens que a pergunta não levou (residualItemsOf), pela curva do plano de itens, inteiro (sem a fatia de 30%);
   // - descarte: tabuleiro que joga fora a sinergia de um aprimoramento escolhido soma AUGMENT_DROP (política). Antes
   //   isso e a "aposta" (p < 50%) eram degraus da ordem; agora entram em E, sem salto em p = 0,49 contra 0,50.
   const usesAugment = (r) =>
@@ -1516,7 +1819,9 @@ export function analyze(snapshot, catalog, options) {
   };
   // A linha do porquê de cada comp: o que você tem dela (estrelas que decidem), a colocação esperada e, se ela não está
   // garantida, a chance de montar e onde você fica sem ela.
-  const whyOf = (r, e) => {
+  const pctOf = (w) =>
+    `${String(Math.round(w * 1000) / 10).replace(".", ",")}%`;
+  const whyOf = (r, e, w) => {
     const mine = r.board.filter((c) => own.has(key(c))),
       twos = mine.filter((c) => own.get(key(c)).stars === 2).length,
       threes = mine
@@ -1527,8 +1832,35 @@ export function analyze(snapshot, catalog, options) {
         threes.length ? threes.join(", ") : null,
       ].filter(Boolean),
       pos = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
-    return `você tem ${r.component.reach?.have ?? mine.length}/${r.board.length}${stars.length ? ` com ${stars.join(" e ")}` : ""}: ${pos(e.value)}º esperado${r.current || e.p >= 0.995 ? "" : e.p < 0.05 ? " (sem prazo para montá-la: vale o que você já tem dela)" : ` (${Math.round(e.p * 100)}% de ter a comp; sem ela, ${pos(e.fallback)}º)`}`;
+    return `você tem ${r.component.reach?.have ?? mine.length}/${r.board.length}${stars.length ? ` com ${stars.join(" e ")}` : ""}: ${pctOf(w.value)} de vitória · ${pos(e.value)}º esperado${w.star ? ` · ${w.star.name} ${w.star.goal}★ com ${Math.round(w.star.p * 100)}% de chance (${pctOf(w.star.high)} de vitória em ${w.star.goal}★${w.star.low != null ? `, ${pctOf(w.star.low)} em ${w.star.goal - 1}★` : ""})` : ""}${r.current || e.p >= 0.995 ? "" : e.p < 0.05 ? " (sem prazo para montá-la: vale o que você já tem dela)" : ` (${Math.round(e.p * 100)}% de ter a comp; sem ela, ${pctOf(w.fallback)} de vitória)`}`;
   };
+  // Valor medido (MetaTFT, campeão × item: item-value.mjs) dos seus itens que o plano de itens põe nesta comp e que a
+  // pergunta medida NÃO levou (os da pergunta já estão na vitória e na colocação medidas), em colocações. Entra em E e W
+  // pela curva de retorno decrescente do plano (planPoints): itens se sobrepõem e o valor isolado tem viés de "partida rica".
+  function residualItemsOf(r) {
+    const c = r.component,
+      plan = c.itemPlan?.active ? c.itemPlan : null;
+    if (!plan) return 0;
+    const asked = new Set(c.evidence?.itemsMeasured ?? []),
+      here = new Set(r.board.map((x) => x.apiName));
+    return (plan.assignments ?? [])
+      .filter(
+        (a) =>
+          a.value > 0 &&
+          here.has(a.champion.id) &&
+          !asked.has(unitItem(a.champion.id, baseItemId(a.item.id))),
+      )
+      .reduce((n, a) => n + a.value, 0);
+  }
+  // Ganho medido das trocas por nível (core/comps/level-fit.mjs) da comp, em colocações: a força publicada e a pergunta
+  // medida são dos tabuleiros originais; a comp ajustada ao nível rende isto a mais (com teto, POLICY.levelFit.maxGain).
+  const levelGainOf = (r) =>
+    Math.min(
+      POLICY.levelFit.maxGain,
+      (r.meta?.appliedSwaps ?? [])
+        .filter((x) => x.by === "nivel" && Number.isFinite(x.gain))
+        .reduce((n, x) => n + x.gain, 0),
+    );
   function expectedOf(r) {
     const c = r.component,
       ev = c.evidence ?? null;
@@ -1561,12 +1893,10 @@ export function analyze(snapshot, catalog, options) {
     }
     // O que é desta comp (aprimoramentos nela, itens do plano nos campeões dela, descarte da sinergia) só vale se ela
     // for montada: entra junto da média, pesado por p. Sem montar, você fica na reserva.
-    const items = c.itemPlan?.active
-        ? (EVIDENCE_ITEM_SHARE * planPoints(c.itemPlan.total)) /
-          PLACEMENT_POINTS
-        : 0,
+    const items = planPoints(residualItemsOf(r)) / PLACEMENT_POINTS,
       drop = usesAugment(r) ? 0 : AUGMENT_DROP,
-      built = avg + aug - items + drop;
+      levelGain = levelGainOf(r),
+      built = avg + aug - items + drop - levelGain;
     return (c.expected = {
       value: round2(p * built + (1 - p) * fallback),
       top4:
@@ -1581,11 +1911,88 @@ export function analyze(snapshot, catalog, options) {
       items: round2(items),
       augments: round2(aug),
       dropAugment: drop,
+      levelGain: round2(levelGain),
       measured: !!ev,
     });
   }
 
-  // Score de cada comp (comp-score.mjs): E na régua de 0 a 100, com as partes (itens, o que você tem, força, alcance,
+  // VITÓRIA ESPERADA (W): a medida que ordena as comps (aba Comps e recomendado), decide a troca do plano e vira o score.
+  // Mesma forma de E, com a vitória (1º lugar) medida no lugar da colocação:
+  //   W = p · (vitória montada + itens fora da pergunta + aprimoramentos − descarte) + (1 − p) · vitória da reserva
+  // - p: a mesma de E (o alcance: as suas peças, a pool livre depois dos rivais, o ouro, o nível, o prazo pela vida);
+  // - vitória montada: a medida (measure: a pergunta da comp com a peça-chave em cada estrela, pesada pela chance de
+  //   chegar à estrela, e os seus itens nos campeões certos) ou, sem ela, a vitória publicada da comp corrigida pelo
+  //   ganho publicado das builds que você tem (item-edge, em colocações);
+  // - itens fora da pergunta: o valor medido (MetaTFT, campeão × item) dos seus itens que o plano põe nesta comp e que a
+  //   pergunta não mediu, com o retorno decrescente do plano de itens (planPoints) — sem a fatia de 30% de antes;
+  // - aprimoramentos (tier na comp) e o descarte da sinergia de um aprimoramento: os mesmos de E;
+  // - reserva: a vitória medida do seu tabuleiro atual (ou a da colocação NOT_BUILT), menos o que você desmonta indo
+  //   para a comp sem montá-la (o mesmo `lost` de E).
+  // O que chega em colocações vira vitória pela reta medida nas comps de meta (core/comps/win.mjs, `fit`).
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  function winExpectedOf(r) {
+    const c = r.component;
+    if (c.win) return c.win;
+    const ev = c.evidence ?? null,
+      e = expectedOf(r),
+      residual = residualItemsOf(r),
+      publishedAvg = r.meta?.avg ?? baseAvg,
+      measuredWin = ev?.win ?? null,
+      base =
+        measuredWin ??
+        (ev
+          ? winOfAvg(ev.measured, fit)
+          : (winOf(r.meta) ?? winOfAvg(publishedAvg, fit)) +
+            winOfPlacementDelta(
+              (c.edge?.adjustedAvg ?? publishedAvg) - publishedAvg,
+              fit,
+            )),
+      items = winOfPlacementDelta(
+        -planPoints(residual) / PLACEMENT_POINTS,
+        fit,
+      ),
+      augments = winOfPlacementDelta(e.augments, fit),
+      drop = winOfPlacementDelta(e.dropAugment, fit),
+      levelFit = winOfPlacementDelta(-e.levelGain, fit),
+      built = clamp01(base + items + augments + drop + levelFit),
+      fallback = r.current
+        ? built
+        : clamp01(
+            (currentWin ?? winOfAvg(NOT_BUILT, fit)) +
+              winOfPlacementDelta(
+                (SWITCH_COST[Math.min(5, Math.max(1, stageNow))] ?? 0.8) *
+                  e.lost,
+                fit,
+              ),
+          ),
+      r4 = (x) => Math.round(x * 10000) / 10000;
+    return (c.win = {
+      value: r4(e.p * built + (1 - e.p) * fallback),
+      p: e.p,
+      built: r4(built),
+      base: r4(base),
+      fallback: r4(fallback),
+      items: r4(items),
+      residualItems: Math.round(residual * 1000) / 1000,
+      augments: r4(augments),
+      drop: r4(drop),
+      levelFit: r4(levelFit),
+      measured: measuredWin != null,
+      star: ev?.star
+        ? {
+            id: ev.star.id,
+            name: ev.star.name,
+            goal: ev.star.goal,
+            p: ev.star.p,
+            high: (ev.star.high?.win ?? 0) / 100,
+            low: ev.star.low ? ev.star.low.win / 100 : null,
+          }
+        : null,
+      se: ev?.winSe ?? null,
+    });
+  }
+
+  // Score de cada comp (comp-score.mjs): W na régua de 0 a 100, com as partes (itens, o que você tem, força, alcance,
   // loja, disputa) só como informação.
   const shopIds = new Set((options.shop ?? []).filter(Boolean));
   // O que você já tem da comp, de 0 a 1, ponderado pelo custo (um custo 4 pesa mais que um custo 1): 1★ vale 0,35, 2★ 0,65
@@ -1616,14 +2023,17 @@ export function analyze(snapshot, catalog, options) {
   };
   for (const r of [...ranked, ...advantage]) {
     const c = r.component,
-      e = expectedOf(r);
+      e = expectedOf(r),
+      w = winExpectedOf(r);
     // Uma medida só na tela: a evidência passa a mostrar E (a conta da pergunta medida fica em `questionExpected`). Antes a
     // lista "medidos" mostrava a colocação da pergunta (4,09 contra 3,92) e a ordem seguia E (3,82 contra 3,82).
     if (c.evidence) {
       c.evidence.questionExpected = c.evidence.expected;
       c.evidence.expected = e.value;
+      c.evidence.winExpected = w.value;
     }
     c.compScore = compScore({
+      win: w.value,
       expected: e.value,
       top4: e.top4,
       itemGain: c.edge?.gain ?? 0,
@@ -1639,10 +2049,12 @@ export function analyze(snapshot, catalog, options) {
       dispute: (c.disputeNeeded = disputeOf(r)),
     });
   }
-  // Ordem: E (menor é melhor). Empate: a mais garantida (p maior: o seu tabuleiro atual ganha de uma comp que vale o
-  // mesmo só porque não vai ser montada); depois a pontuação antiga (`total`).
+  // Ordem: W (maior é melhor). Empate: E (menor é melhor), a mais garantida (p maior: o seu tabuleiro atual ganha de uma
+  // comp que vale o mesmo só porque não vai ser montada); depois a pontuação antiga (`total`).
   const expectedValue = (r) => r.component.expected?.value ?? baseAvg,
+    winValue = (r) => r.component.win?.value ?? winOfAvg(expectedValue(r), fit),
     byExpected = (a, b) =>
+      winValue(b) - winValue(a) ||
       expectedValue(a) - expectedValue(b) ||
       (b.component.expected?.p ?? 0) - (a.component.expected?.p ?? 0) ||
       // Mesmo E e mesma chance (fim de jogo, p ≈ 0): a parte esperada da comp no prazo e, depois, a força dela montada.
@@ -1664,8 +2076,9 @@ export function analyze(snapshot, catalog, options) {
   const contenders = (
     anyMeasured ? [...ranked, ...advantage].filter(measured) : ranked
   ).sort(byExpected);
-  // Troca de plano (regra aprovada): o melhor agora substitui o plano em andamento quando
-  //   E_mantido − E_desafiante > custo de trocar + HYSTERESIS
+  // Troca de plano: o melhor agora substitui o plano em andamento quando
+  //   W_desafiante − W_mantido > custo de trocar + HYSTERESIS
+  // com o custo e a histerese (em colocações, política) convertidos em vitória pela reta medida (core/comps/win.mjs).
   // A incerteza das médias já entra pelo encolhimento delas (shrinkTo, MIN_GAMES): não há mais o termo Z95·se aqui (o `se`
   // segue só como informação). O custo é o que se perde de fato (switchCost). A confirmação (plan-state.mjs) pede que o
   // desafiante lidere de novo depois de um FATO NOVO: `options.holdPlan` é `true` (segura), `false` (sem plano) ou
@@ -1712,9 +2125,11 @@ export function analyze(snapshot, catalog, options) {
     const top = contenders[0],
       kept = contenders[keptAt],
       topId = top.meta?.id ?? top.freeId ?? null,
-      gain = expectedValue(kept) - expectedValue(top),
+      gain = winValue(top) - winValue(kept),
       cost = switchCost(kept, top),
-      wins = gain > cost.value + HYSTERESIS,
+      costWin = -winOfPlacementDelta(cost.value, fit),
+      hysteresisWin = -winOfPlacementDelta(HYSTERESIS, fit),
+      wins = gain > costWin + hysteresisWin,
       hold =
         options.holdPlan === true ||
         (options.holdPlan?.release != null &&
@@ -1728,15 +2143,17 @@ export function analyze(snapshot, catalog, options) {
       toId: topId,
       from: kept.meta?.title ?? kept.title ?? kept.carry.name,
       to: top.meta?.title ?? top.title ?? top.carry.name,
-      // Em colocações: E do mantido e do desafiante, a vantagem, o custo de trocar e a histerese.
+      // Em vitória (fração): W do mantido e do desafiante, a vantagem, o custo de trocar e a histerese; E fica junto.
+      winFrom: winValue(kept),
+      winTo: winValue(top),
       expectedFrom: expectedValue(kept),
       expectedTo: expectedValue(top),
-      gain: round2(gain),
-      cost: round2(cost.value),
-      hysteresis: HYSTERESIS,
+      gain: Math.round(gain * 10000) / 10000,
+      cost: Math.round(costWin * 10000) / 10000,
+      hysteresis: Math.round(hysteresisWin * 10000) / 10000,
       costParts: cost,
       stage,
-      unit: "placement",
+      unit: "win",
     };
     if (keep) contenders.unshift(...contenders.splice(keptAt, 1));
   }
@@ -1748,9 +2165,12 @@ export function analyze(snapshot, catalog, options) {
   ) {
     const a = contenders[0].component.evidence,
       b = contenders[1].component.evidence,
-      z =
-        (b.expected - a.expected) /
-        Math.max(0.01, Math.hypot(a.se ?? 0, b.se ?? 0));
+      byWin = a.winSe != null && b.winSe != null,
+      z = byWin
+        ? (winValue(contenders[0]) - winValue(contenders[1])) /
+          Math.max(0.0001, Math.hypot(a.winSe, b.winSe))
+        : (b.expected - a.expected) /
+          Math.max(0.01, Math.hypot(a.se ?? 0, b.se ?? 0));
     a.confidence = {
       z: Math.round(z * 100) / 100,
       level: z >= Z95 ? "alta" : z >= 0.5 ? "média" : "baixa",
@@ -1761,6 +2181,16 @@ export function analyze(snapshot, catalog, options) {
       margin: Math.round((b.expected - a.expected) * 100) / 100,
       // Mesma incerteza (95%) usada no nível e na troca de plano, para a tela não refazer a conta.
       noise: Math.round(Z95 * Math.hypot(a.se ?? 0, b.se ?? 0) * 100) / 100,
+      // A medida do z: a vitória (diferença e incerteza de 95% em fração) quando as duas a têm; senão, a colocação.
+      unit: byWin ? "win" : "placement",
+      winMargin: byWin
+        ? Math.round(
+            (winValue(contenders[0]) - winValue(contenders[1])) * 10000,
+          ) / 10000
+        : null,
+      winNoise: byWin
+        ? Math.round(Z95 * Math.hypot(a.winSe, b.winSe) * 10000) / 10000
+        : null,
     };
     if (switchNote) a.switch = switchNote;
   } else if (switchNote && contenders[0].component.evidence)
@@ -1796,6 +2226,12 @@ export function analyze(snapshot, catalog, options) {
         total: round(r.component.total),
         // Colocação esperada E (a medida única), top 4 da mesma conta e o score (E na régua 0-100, comp-score.mjs);
         // "best" = a melhor comp para você agora pela medida (antes da histerese da troca de plano).
+        // Vitória esperada W (a medida: ordena e vira o score), em %, e a conta dela.
+        win:
+          r.component.win?.value != null
+            ? Math.round(r.component.win.value * 1000) / 10
+            : null,
+        winParts: r.component.win ?? null,
         expected: r.component.expected?.value ?? null,
         top4: r.component.expected?.top4 ?? null,
         // A conta de E: p, a colocação montada (média + aprimoramentos − itens + descarte) e a reserva.
@@ -1815,7 +2251,10 @@ export function analyze(snapshot, catalog, options) {
         size: r.board.length,
         // Disputa só das peças que faltam (disputeOf); `why`: a linha do critério para o cartão da comp.
         dispute: round(r.component.disputeNeeded ?? r.component.dispute),
-        why: r.component.expected ? whyOf(r, r.component.expected) : null,
+        why:
+          r.component.expected && r.component.win
+            ? whyOf(r, r.component.expected, r.component.win)
+            : null,
         carryItems: r.component.buildFit.carryHits,
         carryWanted: r.component.buildFit.carryWanted,
         // Onde estão os itens da build desta comp (no lugar, banco, mover de quem sai, montar, falta): item-holdings.mjs.
@@ -2021,6 +2460,8 @@ export function analyze(snapshot, catalog, options) {
             builds: r.meta.builds,
             // Variação e partidas de cada build publicada: o plano e a Formação mostram o mesmo que a aba Comps.
             buildStats: r.meta.buildStats ?? {},
+            // Ganho de cada item em cada campeão da comp (core/items/item-priority.mjs).
+            itemPicks: r.meta.itemPicks ?? null,
           }
         : null,
       // Tabuleiro de vantagem (sem comp de meta): id estável pelo carry, para a continuidade entre leituras.
@@ -2113,6 +2554,95 @@ export function analyze(snapshot, catalog, options) {
       ],
     };
   });
+  // BLOQUEAR O RIVAL: para cada rival vivo, as peças dele perto da próxima estrela que de fato mudam o jogo (a colocação
+  // média publicada dos tabuleiros com ela nessa estrela é boa e bem melhor que na de agora: Xayah 3★ 4,35 não entra,
+  // Fiddlesticks 3★ 3,07 entra). Para cada uma, a chance de ele juntar as cópias que faltam nas próximas lojas dele (nível
+  // estimado pelas vagas em campo, pool livre de agora) e a chance depois da sua compra (as cópias da sua loja saem da
+  // pool). Valor = (colocação que ele ganha × peso dos itens na peça × vida dele) × queda da chance. Política: POLICY.deny.
+  function denialsOf() {
+    const D = POLICY.deny,
+      unitStats = options.stats?.unit ?? null,
+      shopIds = options.shop ?? [],
+      out = [];
+    if (!unitStats) return out;
+    for (const p of alive) {
+      if (p === self || !(p.health > 0)) continue;
+      const name = p.riotIdGameName ?? p.summonerName ?? "rival",
+        pieces = new Map();
+      let slots = 0;
+      for (const u of p.boardPieces ?? []) {
+        const c = byId.get(u.championName);
+        if (!c || isAvatar(c)) continue;
+        slots += unitSlots(c);
+        const e = pieces.get(c.apiName) ?? { c, copies: 0, stars: 0, items: 0 };
+        e.copies += starCopies(u.starLevel) * (u.quantity ?? 1);
+        e.stars = Math.max(e.stars, u.starLevel ?? 1);
+        e.items = Math.max(
+          e.items,
+          (u.itemNames ?? []).filter(
+            (id) => !isComponent(id) && !isConsumable(id),
+          ).length,
+        );
+        pieces.set(c.apiName, e);
+      }
+      const level = Math.min(10, Math.max(3, slots));
+      for (const { c, copies, stars, items } of pieces.values()) {
+        if (stars >= 3) continue;
+        const to = stars + 1,
+          need = starCopies(to) - copies,
+          now = unitStats[`${c.apiName}|${stars}`],
+          next = unitStats[`${c.apiName}|${to}`];
+        if (need <= 0 || !Array.isArray(now) || !Array.isArray(next)) continue;
+        const lift = now[0] - next[0];
+        if (next[1] < D.minGames || next[0] > D.maxAvg || lift < D.minLift)
+          continue;
+        const k = key(c),
+          freeNow = free(k),
+          denom = denomByCost[c.cost] ?? 0;
+        if (freeNow < need) continue; // já não fecha: não há o que bloquear
+        const inShop = shopIds.filter((id) => id === c.apiName).length,
+          take = Math.max(1, inShop),
+          chance = (f, d) =>
+            chanceAtLeast(
+              slotsIn(D.shops),
+              slotChance(level, c.cost, Math.max(0, f), Math.max(0, d)),
+              need,
+            ),
+          before = chance(freeNow, denom),
+          after = chance(freeNow - take, denom - take);
+        const threat =
+            lift *
+            (items >= 2 ? 1 : items === 1 ? 0.75 : 0.5) *
+            (0.5 + Math.min(100, p.health) / 200),
+          value = threat * (before - after);
+        if (before < D.minChance || value < D.minValue) continue;
+        out.push({
+          id: c.apiName,
+          name: c.name,
+          cost: c.cost,
+          rival: { id: String(p.playerId), name, health: p.health },
+          stars,
+          toStars: to,
+          need,
+          free: Math.round(freeNow * 10) / 10,
+          items,
+          avgNow: now[0],
+          avgNext: next[0],
+          chance: Math.round(before * 1000) / 1000,
+          chanceAfter: Math.round(after * 1000) / 1000,
+          inShop,
+          take,
+          mine: own.has(k),
+          value: Math.round(value * 1000) / 1000,
+          reason:
+            `${name} está a ${need} ${need === 1 ? "cópia" : "cópias"} de ${c.name} ${to}★ ` +
+            `(tabuleiros com ela em ${to}★: ${now[0].toFixed(2).replace(".", ",")} → ${next[0].toFixed(2).replace(".", ",")} de colocação): ` +
+            `comprar ${take === 1 ? "uma cópia" : `${take} cópias`} baixa a chance dele de ${Math.round(before * 100)}% para ${Math.round(after * 100)}% nas próximas ${D.shops} lojas.`,
+        });
+      }
+    }
+    return out.sort((a, b) => b.value - a.value).slice(0, D.limit);
+  }
   const opponents = alive
     .filter((p) => p !== self)
     .map((p) => {
@@ -2229,6 +2759,8 @@ export function analyze(snapshot, catalog, options) {
     recommendations,
     pool: pool.sort((a, b) => b.enemy / b.total - a.enemy / a.total),
     opponents,
+    // Bloquear o rival: as peças fortes que um rival está perto de fechar e quanto comprar uma cópia tira dele.
+    denials: denialsOf(),
     counters,
     itemProfile,
     itemContext: {

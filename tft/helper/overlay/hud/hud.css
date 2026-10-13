@@ -101,17 +101,40 @@
   html[data-dim="1"] :is(.roll, .items, .builds, .plan, .hints, .carousel, .augments) {
     opacity: 0.62;
   }
+  /* Painel com altura escolhida no modo de edição (layout `h`): o corpo ocupa a altura e rola dentro. */
+  .el[data-fixed="1"] > .el-in {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .el[data-fixed="1"] .el-body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+  }
+  /* Painéis com mais conteúdo que a altura: rolam com a roda do mouse (o painel que sobra vira região quente, hud.mjs
+     `markScrollable`: com o cursor sobre ele a janela recebe a roda; fora dele o mouse volta ao jogo). */
+  .items,
+  .builds,
+  .plan {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+  }
   .items {
     max-height: 240px;
-    overflow: hidden;
   }
   .builds {
     max-height: 200px;
-    overflow: hidden;
   }
   .plan {
     max-height: 340px;
-    overflow: hidden;
   }
 
   /* Faixa superior */

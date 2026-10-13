@@ -62,6 +62,29 @@ export function stageTimer() {
 }
 
 /**
+ * Peças do seu tabuleiro pelo GEP no formato do TFTEoGStats.json (`championName`, `starLevel`, `itemNames`), ou null sem
+ * tabuleiro do GEP ativo (`seen.sources.board` diferente de "gep"). A Luva de Ladrão fica sozinha, como no arquivo.
+ */
+function gepBoardPieces(seen) {
+  if (seen?.sources?.board !== "gep" || !Array.isArray(seen.gepBoard))
+    return null;
+  const pieces = seen.gepBoard
+    .filter((u) => u?.id && Number.isFinite(u.stars))
+    .map((u) => {
+      const items = [...(u.items ?? [])];
+      return {
+        championName: u.id,
+        starLevel: u.stars,
+        itemNames: items.some(isThiefsGloves)
+          ? items.filter(isThiefsGloves)
+          : items,
+        source: "gep",
+      };
+    });
+  return pieces.length ? pieces : null;
+}
+
+/**
  * Cria o pipeline. `deps`: dados fixos (`heroId`, `catalog`, `itemIds`, `plannerCatalog`, `localNames`, `augmentById`,
  * `traitRules`, `capturesFile`, `planLog`, `budgetMs`), estado/efeitos do servidor (`current`, `replayState`, `seenState`,
  * `gepContext`, `matches`, `planState`, `streaks`, `gameFiles`, `evidenceClient`, `overlay`, `results`) e as cópias de meta
@@ -272,10 +295,10 @@ export function createRecommender(deps) {
    */
   async function run(input, { source = "ui", stages = stageTimer() } = {}) {
     const metaComps = deps.metaComps;
-    const options = validate(input),
-      { snapshot, metadata } = options.replayGameId
-        ? await replayState(options.replayGameId)
-        : await current();
+    const options = validate(input);
+    let { snapshot, metadata } = options.replayGameId
+      ? await replayState(options.replayGameId)
+      : await current();
     if (options.replayGameId) options.level = metadata.estimatedLevel;
     stages.lap("estado");
     // A chave de análise do cliente só descreve pedidos "simples" (sem adversário visto, plano de campeões, nível de destino
@@ -345,6 +368,22 @@ export function createRecommender(deps) {
     const seen = options.replayGameId
       ? {}
       : seenState(metadata.gameId, gepContext(metadata, snapshot));
+    // Suas peças em campo pelo GEP (estrela e itens ao vivo): o TFTEoGStats.json só é regravado no combate, então um item
+    // montado ou uma estrela fechada no planejamento só apareceriam no combate seguinte. Sem tabuleiro do GEP ativo, vale
+    // o arquivo. Os rivais seguem do arquivo (o GEP só vê o seu tabuleiro). Cópia rasa: o retrato lido não é alterado.
+    const liveBoard = gepBoardPieces(seen);
+    if (liveBoard)
+      snapshot = {
+        ...snapshot,
+        statsBlock: {
+          ...snapshot.statsBlock,
+          players: snapshot.statsBlock.players.map((p) =>
+            String(p.playerId) === HERO_ID
+              ? { ...p, boardPieces: liveBoard }
+              : p,
+          ),
+        },
+      };
     // Reserva: só com origem GEP fresca (a entrada manual saiu e o cliente não a define). Sem GEP fica vazia.
     options.bench = gepBenchUnits(seen, HERO_ID);
     // Banco de itens: o do servidor (GEP, sem consumíveis) manda; o do cliente só vale numa partida revista.
@@ -353,6 +392,10 @@ export function createRecommender(deps) {
       seen,
       (id) => itemIds.has(id),
     );
+    // Bigornas: ficam na reserva de campeões (o GEP as lê lá), mas são estoque de itens: entram no banco que a análise
+    // lê, onde a regra de itens as trata como um carrossel de montagem (carousel.mjs `anvilPicks`).
+    if (!options.replayGameId && Array.isArray(seen.gepAnvils))
+      options.inventory = [...options.inventory, ...seen.gepAnvils];
     // Banco observado pelo GEP (ou enviado pelo cliente): sem ele o plano de itens não atribui nada, só lista desejos.
     options.bankRead =
       !options.replayGameId &&

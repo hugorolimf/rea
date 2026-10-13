@@ -1,9 +1,13 @@
-# Inicia tudo do TFT Helper de uma vez: servidor (se ainda não estiver no ar), overlay (se ainda não estiver aberto)
+﻿# Inicia tudo do TFT Helper de uma vez: servidor (se ainda não estiver no ar), overlay (se ainda não estiver aberto)
 # e a interface no navegador. Não reinicia nada que já esteja rodando: se o servidor já está na porta, só o aproveita.
-# Uso: powershell -NoProfile -File start-all.ps1 [-SemNavegador] [-SemOverlay]
+# Uso: powershell -NoProfile -File start-all.ps1 [-SemNavegador] [-SemOverlay] [-SemMeta] [-ForcarMeta]
+# -SemMeta pula a sincronização da meta antes de subir (reinício rápido; o servidor renova sozinho em segundo plano).
+# -ForcarMeta baixa a meta de novo mesmo com a cópia local recente (dados novos depois de mudar o código: restart.ps1).
 param(
   [switch]$SemNavegador,
-  [switch]$SemOverlay
+  [switch]$SemOverlay,
+  [switch]$SemMeta,
+  [switch]$ForcarMeta
 )
 $ErrorActionPreference = 'Stop'
 $port = 3218
@@ -15,13 +19,17 @@ $feito = @()
 # 0. Meta offline (extensão MetaTFT): sincroniza as cópias locais ANTES de subir o servidor, com teto curto. Nunca bloqueia
 # nem impede o início: sem rede, o servidor segue com a cópia local (ou com o snapshot do repositório). Com o servidor já no
 # ar, ele mesmo renova em segundo plano e a sincronização do atalho é dispensada.
-if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
+if ($SemMeta) {
+  $feito += 'meta: sincronização do atalho pulada (o servidor renova sozinho em segundo plano)'
+} elseif (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
   $feito += 'meta: servidor já no ar renova sozinho em segundo plano (sincronização do atalho dispensada)'
 } else {
   $saida = Join-Path ([IO.Path]::GetTempPath()) "tft-meta-sync-$PID.txt"
   try {
-    $sync = Start-Process node.exe -ArgumentList 'scripts/meta-sync.mjs', '--timeout=12000' -WorkingDirectory $helper -WindowStyle Hidden -PassThru -RedirectStandardOutput $saida
-    if ($sync.WaitForExit(18000)) {
+    $syncArgs = @('scripts/meta-sync.mjs', '--timeout=12000')
+    if ($ForcarMeta) { $syncArgs = @('scripts/meta-sync.mjs', '--timeout=15000', '--force') }
+    $sync = Start-Process node.exe -ArgumentList $syncArgs -WorkingDirectory $helper -WindowStyle Hidden -PassThru -RedirectStandardOutput $saida
+    if ($sync.WaitForExit(21000)) {
       $linha = Get-Content $saida -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ } | Select-Object -Last 1
       if (-not $linha) { $linha = 'meta sem resposta da sincronização: segue com a cópia local' }
     } else {
@@ -43,8 +51,8 @@ if ($listening) {
 } else {
   # Pelo supervisor (supervisor.ps1): se o servidor cair, ele sobe de novo sozinho. stop.ps1 encerra os dois.
   Start-Process -WindowStyle Hidden powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $helper 'supervisor.ps1'), '-Port', $port -WorkingDirectory $helper
-  foreach ($attempt in 1..60) {
-    Start-Sleep -Milliseconds 250
+  foreach ($attempt in 1..150) {
+    Start-Sleep -Milliseconds 100
     if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { break }
   }
   if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { $feito += "servidor iniciado na porta $port" }

@@ -410,7 +410,8 @@ export function mouseIgnore({ interactive, hotCapture }) {
 }
 
 /** No máximo tantas regiões quentes por página, cada uma com no máximo este tamanho (px CSS). */
-export const HOT_LIMITS = Object.freeze({ count: 4, width: 640, height: 200 });
+// Inclui os painéis que rolam (hud.mjs `markScrollable`): itens, builds e plano inteiros.
+export const HOT_LIMITS = Object.freeze({ count: 8, width: 900, height: 1200 });
 
 /**
  * Regiões quentes declaradas pela página (`[{x,y,width,height}]` em px CSS da janela): só as válidas, no máximo

@@ -58,6 +58,12 @@ const op = (t) => `<span class="op" aria-hidden="true">${t}</span>`;
  * (no banco, já equipado na peça ou faltando). Radiante mostra o item base e a receita do base; item sem receita
  * (artefato, emblema fixo) não tem componentes.
  */
+/** Ganho do item no campeão nesta comp ("+0,29"), quando há medida. */
+const gainChip = (r) =>
+  Number.isFinite(r.gain) && r.gain > 0
+    ? `<small class="nx-gain" title="Quanto a colocação de ${esc(r.unit.name)} melhora com este item nesta comp (MetaTFT)">+${r.gain.toFixed(2).replace(".", ",")}</small>`
+    : "";
+
 export function nextRow(r) {
   const rec = nextItemRecipe(r.item, getCatalog().items, {
       bank: r.bank ?? null,
@@ -72,7 +78,7 @@ export function nextRow(r) {
     ring: dashed ? "is-dashed" : "",
   });
   if (!parts.length)
-    return `${mini(r.unit.id, r.unit.name, r.unit.stars)}${main}`;
+    return `${mini(r.unit.id, r.unit.name, r.unit.stars)}${main}${gainChip(r)}`;
   const base = rec.base
       ? `${itemPortrait(rec.base, { size: 26 })}${op("=")}`
       : "",
@@ -82,8 +88,20 @@ export function nextRow(r) {
         return `<span class="nx-part" data-state="${p.state}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${itemPortrait({ id: p.id, name: p.name }, { size: 26, hidden: true })}<i class="nx-mark">${glyph(PART_MARK[p.state] ?? "clock")}</i></span>`;
       })
       .join(op("+"));
-  const note = rec.complete ? "monta" : miss ? `falta ${miss}` : "";
-  return `${mini(r.unit.id, r.unit.name, r.unit.stars)}<span class="nx-item" data-complete="${rec.complete ? 1 : 0}">${main}</span>${op("=")}${base}<span class="nx-recipe" role="group" aria-label="Receita de ${esc(rec.item.name)}">${recipe}</span>${note ? `<small class="nx-note" data-tone="${rec.complete ? "go" : "amber"}">${note}</small>` : ""}`;
+  // Peça da comp que ainda não está em campo: o item é montado e fica guardado (ou num temporário) até ela chegar.
+  // Componente numa peça fora da comp: o item é montado nela e vai para o titular quando ela sair.
+  const note = r.anvil
+    ? `pegue ${r.anvil} na bigorna de componente`
+    : r.holder
+      ? `${rec.complete ? "monte" : `falta ${miss},`} em ${r.holder.name}, depois vai para ${r.unit.name}`
+      : rec.complete
+        ? r.later
+          ? "monte e guarde"
+          : "monta"
+        : miss
+          ? `falta ${miss}`
+          : "";
+  return `${mini(r.unit.id, r.unit.name, r.unit.stars)}<span class="nx-item" data-complete="${rec.complete ? 1 : 0}">${main}</span>${op("=")}${base}<span class="nx-recipe" role="group" aria-label="Receita de ${esc(rec.item.name)}">${recipe}</span>${note ? `<small class="nx-note" data-tone="${rec.complete ? "go" : "amber"}">${note}</small>` : ""}${gainChip(r)}`;
 }
 
 /** Tom de `.nx-part` (rich.css) de cada situação de um item recomendado: feito, ao alcance ou faltando. */
@@ -155,6 +173,13 @@ Chance por loja: ${pct(r.chance)}`
   });
 }
 
+/** Dica de um passe de item: o ganho dele em quem recebe e em quem o carrega (a vantagem que justifica a troca). */
+const gainText = (g) => `+${Number(g).toFixed(2).replace(".", ",")}`;
+const moveTip = (m, from) =>
+  Number.isFinite(m.gain) && m.gain > 0
+    ? ` title="${esc(`${m.item?.name ?? "item"}: ganho em ${m.to.name} ${gainText(m.gain)}${Number.isFinite(m.gainFrom) && m.gainFrom > 0 ? ` · em ${from?.name ?? ""} ${gainText(m.gainFrom)}` : ""}`)}"`
+    : "";
+
 /** HTML de cada linha por tipo; textos longos ficam em `title`. */
 const BUILD = {
   // Trocar: quem sai, seta, quem entra. Itens a preservar viram aviso em texto (não só um número no ícone).
@@ -171,8 +196,11 @@ const BUILD = {
     `${mini(r.exit.id, r.exit.name, r.exitStars)}${flow("hold")}${mini(r.enter.id, r.enter.name, r.enterStars)}${r.need ? `${pips(r.have, r.need, "amber")}<small class="frac">${r.have}/${r.need}</small>` : `<i class="no" title="não troque">${glyph("x")}não troque</i>`}`,
   // Passar itens: "agora" e "planejar" são rótulos visíveis (o ponto e o relógio sozinhos dependem de dica).
   moves: (r) =>
-    `${mini(r.from.id, r.from.name, r.from.stars)}${flow(r.now ? "go" : "")}${r.moves.map((m) => `<span class="mv">${itemPortrait(m.item, { size: 24 })}${flow()}${mini(m.to.id, m.to.name)}</span>`).join("")}${r.now ? '<i class="now-tag" title="agora"><span class="now-dot" aria-hidden="true"></span>agora</i>' : `<i class="wait" title="planejar">${glyph("clock")}planejar</i>`}`,
+    `${mini(r.from.id, r.from.name, r.from.stars)}${flow(r.now ? "go" : "")}${r.moves.map((m) => `<span class="mv"${moveTip(m, r.from)}>${itemPortrait(m.item, { size: 24 })}${flow()}${mini(m.to.id, m.to.name)}</span>`).join("")}${r.now ? '<i class="now-tag" title="agora"><span class="now-dot" aria-hidden="true"></span>agora</i>' : `<i class="wait" title="planejar">${glyph("clock")}planejar</i>`}`,
   next: (r) => nextRow(r),
+  // Bloquear rival: a peça, a estrela que o rival busca, a chance dele antes → depois da sua compra e se está na sua loja.
+  deny: (r) =>
+    `<span class="deny" title="${esc(r.reason)}">${mini(r.unit.id, r.unit.name)}<small>${esc(r.toStars)}★ de ${esc(r.rival)}</small><small class="nx-gain">${Math.round(r.chance * 100)}% → ${Math.round(r.chanceAfter * 100)}%</small>${r.inShop ? `<em class="now-tag">na loja</em>` : ""}</span>`,
   builds: (r) => buildsRow(r),
   shop: (r) => {
     const [tone, g] = SHOP_GLYPH[r.action] ?? ["", "x"];
@@ -186,6 +214,12 @@ const BUILD = {
     `<span class="car" title="${esc(r.reason)}">${r.rank != null ? `<b class="rank">${esc(r.rank)}</b>` : ""}${r.slotChampion ? portrait(r.slotChampion.id, r.slotChampion.name ?? champName(r.slotChampion.id), { size: 30 }) : ""}${itemPortrait(r.item)}${r.target ? `${flow(r.completes ? "go" : "hold")}<span class="car-target${r.completes ? " is-close" : ""}">${itemPortrait(r.target, { size: 30 })}</span>${r.championId ? portrait(r.championId, r.champion, { size: 24 }) : ""}` : ""}</span>`,
 };
 const CLASS = { buy: "row-tile", shop: "row-tile" };
+
+/**
+ * Carta da faixa "Loja" embaixo do tabuleiro: cada carta da loja de agora com o que fazer (`kind: "shop"`) ou uma
+ * compra cuja peça não tem casa na Formação (`kind: "buy"`). Os mesmos retratos e selos da lista Comprar.
+ */
+export const shopCardHtml = (r) => BUILD[r.kind]?.(r) ?? "";
 
 const stepNode = (step) =>
   el(

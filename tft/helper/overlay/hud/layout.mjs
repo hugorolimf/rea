@@ -112,6 +112,8 @@ const flagsOf = (src, fallback) => {
 
 /** Largura permitida (fração do palco). */
 export const W_RANGE = Object.freeze({ min: 0.08, max: 0.5 });
+/** Altura escolhida no modo de edição (fração do palco); sem ela (`h` ausente) a altura é a do conteúdo. */
+export const H_RANGE = Object.freeze({ min: 0.06, max: 0.92 });
 
 /** Margem mínima até a borda do palco (fração), como o TFTAcademy. */
 export const EDGE_MARGIN = 0.0075;
@@ -126,12 +128,18 @@ const clampNum = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 /** Limita x, y e w de um elemento (frações) à largura permitida e à margem; `hFrac` = altura do conteúdo (fração do palco). */
 function clampFraction(el, hFrac) {
   const w = clampNum(el.w, W_RANGE.min, W_RANGE.max);
+  // Altura escolhida (modo de edição): vale no lugar da medida para caber no palco; sem ela, a do conteúdo.
+  const fixed = isNum(el.h) ? clampNum(el.h, H_RANGE.min, H_RANGE.max) : null;
   const maxX = Math.max(EDGE_MARGIN, 1 - EDGE_MARGIN - w);
-  const maxY = Math.max(EDGE_MARGIN, 1 - EDGE_MARGIN - hFrac);
+  const maxY = Math.max(EDGE_MARGIN, 1 - EDGE_MARGIN - (fixed ?? hFrac));
+  const y = clampNum(el.y, EDGE_MARGIN, maxY);
   return {
     x: r4(clampNum(el.x, EDGE_MARGIN, maxX)),
-    y: r4(clampNum(el.y, EDGE_MARGIN, maxY)),
+    y: r4(y),
     w: r4(w),
+    ...(fixed !== null
+      ? { h: r4(Math.max(H_RANGE.min, Math.min(fixed, 1 - EDGE_MARGIN - y))) }
+      : {}),
     hidden: el.hidden === true,
     // Só os elementos que se recolhem (a legenda `keys`) têm `folded`/`seen`; nos outros os campos não existem.
     ...flagsOf(el, null),
@@ -156,6 +164,7 @@ export function parseLayout(raw) {
         x: isNum(e.x) ? e.x : d.x,
         y: isNum(e.y) ? e.y : d.y,
         w: isNum(e.w) ? e.w : d.w,
+        ...(isNum(e.h) ? { h: e.h } : {}),
         hidden: typeof e.hidden === "boolean" ? e.hidden : d.hidden,
         ...flagsOf(e, d),
       },
@@ -174,6 +183,7 @@ const asElement = (el) => ({
   x: isNum(el?.x) ? el.x : EDGE_MARGIN,
   y: isNum(el?.y) ? el.y : EDGE_MARGIN,
   w: isNum(el?.w) ? el.w : W_RANGE.min,
+  ...(isNum(el?.h) ? { h: el.h } : {}),
   hidden: el?.hidden === true,
   // Mover ou redimensionar não desfaz o recolhimento.
   ...flagsOf(el, null),
@@ -199,14 +209,29 @@ export function moveElement(el, dxPx, dyPx, stage, heightPx = 0) {
   return clampElement({ ...e, x: e.x + dx, y: e.y + dy }, stage, heightPx);
 }
 
-/** Altera a largura pela alça direita (o canto esquerdo fica parado): limita à faixa e à borda direita do palco. */
-export function resizeElement(el, dxPx, stage) {
+/**
+ * Altera largura e altura pela alça do canto (o canto superior esquerdo fica parado): limita às faixas e às bordas do
+ * palco. `dyPx` = arrasto vertical; `heightPx` = altura medida no início do gesto (base quando ainda não há altura
+ * escolhida). Sem arrasto vertical a altura continua como estava (automática ou escolhida).
+ */
+export function resizeElement(el, dxPx, stage, dyPx = 0, heightPx = 0) {
   const e = asElement(el);
   const sw = isNum(stage?.width) && stage.width > 0 ? stage.width : 0;
+  const sh = isNum(stage?.height) && stage.height > 0 ? stage.height : 0;
   const dw = isNum(dxPx) && sw ? dxPx / sw : 0;
   const room = Math.max(W_RANGE.min, 1 - EDGE_MARGIN - e.x);
   const w = Math.min(clampNum(e.w + dw, W_RANGE.min, W_RANGE.max), room);
-  return clampElement({ ...e, w }, stage, 0);
+  const dh = isNum(dyPx) && sh ? dyPx / sh : 0;
+  if (!dh) return clampElement({ ...e, w }, stage, 0);
+  const base = isNum(e.h) ? e.h : heightFraction(heightPx, stage);
+  return clampElement({ ...e, w, h: base + dh }, stage, 0);
+}
+
+/** Layout novo sem a altura escolhida de `id` (volta à altura do conteúdo). */
+export function autoHeight(layout, id) {
+  const next = parseLayout(layout);
+  if (next[id]) delete next[id].h;
+  return next;
 }
 
 /** Layout novo com a visibilidade de `id` alterada (id desconhecido: só devolve o layout normalizado). */

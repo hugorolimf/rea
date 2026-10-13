@@ -13,15 +13,16 @@ import {
   stageForPressure,
   tierFloor,
 } from "./economy.mjs";
-import { compBuild, wantedItems } from "./core/items/builds.mjs";
+import { compBuild, compItemGain, wantedItems } from "./core/items/builds.mjs";
 import { bankItemTargets } from "./core/items/scenarios.mjs";
 import {
+  anvilKind,
   baseItemId,
   isComponent,
   isConsumable,
   itemRole,
 } from "./core/catalog/items.mjs";
-import { isAvatar } from "./core/catalog/champions.mjs";
+import { isAvatar, slotsUsed, unitSlots } from "./core/catalog/champions.mjs";
 import { movedInto } from "./core/items/moves.mjs";
 import { traitBook } from "./core/catalog/traits.mjs";
 import {
@@ -101,6 +102,9 @@ export function stagePlan(plan, analysis, catalog, options) {
             : [],
       ...analysisInput(analysis, ictx),
       benchKnown: options.benchKnown === true,
+      // Bigornas ocupam vaga da reserva (o GEP as lê lá; no estoque de itens elas entram para a escolha).
+      benchTaken: (options.inventory ?? []).filter((id) => anvilKind(id))
+        .length,
       level,
       gold,
       band: pressure.band,
@@ -166,7 +170,8 @@ export function stagePlan(plan, analysis, catalog, options) {
     );
   // 3) Sobrou vaga sem peça da meta para ela: pontes compráveis que ativam sinergias da meta.
   const board0 = boardOf(draft);
-  let open = level - board0.length - wanted.length;
+  // Vagas, não peças: o Elder Dragon ocupa 2 (core/catalog/champions.mjs).
+  let open = level - slotsUsed(board0) - slotsUsed(wanted);
   const bridges = [];
   if (open > 0) {
     const taken = new Set([...board0.map((u) => u.id), ...goalIds]);
@@ -195,7 +200,9 @@ export function stagePlan(plan, analysis, catalog, options) {
       .filter((b) => b.shared > 0)
       .sort((a, b) => b.score - a.score);
     for (const b of candidates) {
-      if (open-- <= 0) break;
+      if (open <= 0) break;
+      if (unitSlots(b.c) > open) continue;
+      open -= unitSlots(b.c);
       bridges.push({
         id: b.c.apiName,
         name: b.c.name,
@@ -416,28 +423,58 @@ export function stagePlan(plan, analysis, catalog, options) {
   // Item que já existe em outra peça (a que sai, por exemplo) e a comp passa para esta ("Passar itens"):
   // não falta, não se monta de novo e já ocupa o slot de quem o recebe.
   const movedIn = movedInto(plan.itemMoves);
+  // Regra de prioridade de itens (core/items/item-priority.mjs, via tactics.mjs): `ready` já gasta o banco na ordem do
+  // ganho; item COMPLETO do banco fica com `bankItems` (abaixo), aqui só o que se MONTA.
+  const whole = (r) =>
+      (r.required ?? []).length === 1 &&
+      baseItemId(r.required[0]) === r.item.id,
+    nameOfItem = (id) =>
+      catalog.items.find((i) => i.apiName === id)?.name ?? id;
   for (const u of board) {
-    const ready = (advice?.ready ?? [])
-      .filter((r) => r.championId === u.id)
-      .map((r) => ({
-        id: r.item.id,
-        name: r.item.name,
-        usesHeld: r.item.usesHeld ?? null,
-      }));
+    const mine = (list) =>
+      (list ?? []).filter(
+        (r) =>
+          r.championId === u.id &&
+          !movedIn.get(u.id)?.has(baseItemId(r.item.id)),
+      );
+    const crafts = mine(advice?.ready).filter((r) => !whole(r));
+    const ready = crafts.map((r) => ({
+      id: r.item.id,
+      name: r.item.name,
+      usesHeld: r.item.usesHeld ?? null,
+      gain: r.gain ?? null,
+    }));
     const build = (advice?.builds ?? []).find((b) => b.championId === u.id);
-    const next = (build?.additions ?? [])
-      .filter((i) => !ready.some((r) => r.id === i.id))
-      .filter((i) => !movedIn.get(u.id)?.has(baseItemId(i.id)))
-      .slice(0, 1)
-      .map((i) => ({
-        id: i.id,
-        name: i.name,
-        missing: (i.missing ?? []).map((m) => m.name),
-        // Receita e situação de cada peça para a interface desenhar os componentes (só apresentação).
-        components: i.components ?? [],
-        missingIds: (i.missing ?? []).map((m) => m.id),
-        usesHeld: i.usesHeld ?? null,
-      }));
+    // Próximo item: o que você monta agora para esta peça (maior ganho) ou o que está a um componente; sem o conselho da
+    // análise, o próximo da build.
+    const pick = crafts[0] ?? mine(advice?.near)[0] ?? null;
+    const next = pick
+      ? [
+          {
+            id: pick.item.id,
+            name: pick.item.name,
+            gain: pick.gain ?? null,
+            missing: (pick.missing ?? []).map(nameOfItem),
+            components: pick.item.components ?? [],
+            missingIds: pick.missing ?? [],
+            usesHeld: pick.item.usesHeld ?? null,
+            anvil: pick.anvil
+              ? { kind: pick.anvil.kind, text: pick.anvil.text }
+              : null,
+          },
+        ]
+      : (build?.additions ?? [])
+          .filter((i) => !movedIn.get(u.id)?.has(baseItemId(i.id)))
+          .slice(0, 1)
+          .map((i) => ({
+            id: i.id,
+            name: i.name,
+            missing: (i.missing ?? []).map((m) => m.name),
+            // Receita e situação de cada peça para a interface desenhar os componentes (só apresentação).
+            components: i.components ?? [],
+            missingIds: (i.missing ?? []).map((m) => m.id),
+            usesHeld: i.usesHeld ?? null,
+          }));
     const stays = u.status === "meta";
     u.equipNow = stays ? ready : [];
     u.nextItem = stays ? (next[0] ?? null) : null;
@@ -495,6 +532,8 @@ export function stagePlan(plan, analysis, catalog, options) {
         for: { id: s.unit.id, name: s.unit.name },
       })),
     wish: wishOf,
+    // Quem ganha mais com o item recebe primeiro (core/items/item-priority.mjs).
+    gainOf: (unitId, itemId) => compItemGain(plan.meta, unitId, itemId),
     fromComp: (id) => !!compBuild(plan.meta, id),
     roleOf: kind,
     carry: plan.carry,

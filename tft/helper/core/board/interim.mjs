@@ -18,7 +18,7 @@ import { interestOf } from "../economy/gold.mjs";
 import { starCopies, starsForCopies } from "../pool/copies.mjs";
 import { chanceAtLeast, slotsIn } from "../pool/shop.mjs";
 import { isComponent, isConsumable } from "../catalog/items.mjs";
-import { poolName } from "../catalog/champions.mjs";
+import { poolName, slotsUsed, unitSlots } from "../catalog/champions.mjs";
 
 /** Contexto da régua: catálogo por apiName e o livro de sinergias (`traitBook`). */
 export const interimContext = (catalog, book) => ({
@@ -103,6 +103,42 @@ function tiersOf(units, ctx) {
   return n;
 }
 
+/** Multiplicador de vida e dano por estrela (regra do jogo: 2★ = 1,8×, 3★ = 3,24×). */
+const STAR_STATS = [0, 1, 1.8, 3.24];
+
+/**
+ * Atributos do campeão na estrela: raiz de (vida efetiva × dano por segundo). Vida efetiva = vida × (1 + (armadura +
+ * resistência mágica) / 200); dano por segundo = dano × velocidade de ataque × (1 + chance de crítico × (multiplicador − 1)).
+ * 0 sem atributos no catálogo.
+ */
+export function attrPower(c, stars) {
+  const s = c?.stats ?? {},
+    m = STAR_STATS[clampStars(stars)] ?? 1,
+    ehp = (s.hp ?? 0) * m * (1 + ((s.armor ?? 0) + (s.magicResist ?? 0)) / 200),
+    dps =
+      (s.damage ?? 0) *
+      m *
+      (s.attackSpeed ?? 0) *
+      (1 + (s.critChance ?? 0) * ((s.critMultiplier ?? 1) - 1));
+  return Math.sqrt(Math.max(0, ehp * dps));
+}
+
+// Régua dos atributos: a mediana dos campeões de custo 1 em 1★ vale 1 (a mesma escala de antes, custo × estrela).
+const attrRefMemo = new WeakMap();
+function attrRef(byId) {
+  let ref = attrRefMemo.get(byId);
+  if (ref === undefined) {
+    const ones = [...byId.values()]
+      .filter((c) => c.cost === 1)
+      .map((c) => attrPower(c, 1))
+      .filter((v) => v > 0)
+      .sort((a, b) => a - b);
+    ref = ones.length ? ones[Math.floor(ones.length / 2)] : 0;
+    attrRefMemo.set(byId, ref);
+  }
+  return ref;
+}
+
 /**
  * Força da peça `u` (`{ id, stars, items, cost? }`) no tabuleiro `board` (as peças em campo; `u` entra se não estiver),
  * numa vaga de frente (`slotFront` true), de trás (false) ou sem papel (null). `ctx`: `{ byId, book, level }`.
@@ -126,7 +162,11 @@ export function slotStrength(u, board, ctx, slotFront = null) {
       ruler: "politica",
     };
   }
-  const body = c.cost * I.star[stars],
+  // Corpo: os atributos do campeão na estrela (vida, resistências, dano), na régua do custo 1 1★; sem atributos no
+  // catálogo, custo × estrela.
+  const ref = attrRef(ctx.byId),
+    power = attrPower(c, stars),
+    body = ref > 0 && power > 0 ? power / ref : c.cost * I.star[stars],
     gear = I.item * items,
     others = board.filter((b) => b.id !== u.id),
     synergy =
@@ -236,7 +276,8 @@ export function interimSlots(input, ctx) {
   const I = POLICY.interim,
     band = input.band ?? null,
     danger = band === "danger" || band === "critical",
-    margin = danger ? 0 : I.margin,
+    // Quem entra precisa render mais que quem está (atributos na estrela, sinergia e itens); empate fica com o atual.
+    margin = I.margin,
     level = Number.isFinite(input.level) ? input.level : null,
     sctx = { ...ctx, level },
     nameOf = (id) => input.names?.get?.(id) ?? ctx.byId.get(id)?.name ?? id,
@@ -247,7 +288,7 @@ export function interimSlots(input, ctx) {
     swapOut = new Map(
       (input.swaps ?? [])
         .filter((x) => goalIds.has(x.in))
-        .map((x) => [x.in, x.out]),
+        .map((x) => [x.in, x]),
     ),
     fieldBy = bestById(input.field),
     reserveBy = bestById(input.reserve),
@@ -286,10 +327,14 @@ export function interimSlots(input, ctx) {
   const playing = new Map(), // id da peça do plano (ou "extra:n") → peça que joga
     decided = new Map(), // id da peça do plano → { why, delta, replaces }
     buys = [];
-  let free = Math.max(0, cap - fieldBy.size);
+  // Vagas livres no nível: o Elder Dragon ocupa 2 (core/catalog/champions.mjs).
+  let free = Math.max(0, cap - slotsUsed(fieldBy.values()));
   // Reserva: vagas ocupadas e as que as compras para a reserva vão ocupando.
   const benchKnown = input.benchKnown === true;
-  let benchUsed = benchKnown ? (input.reserve ?? []).length : 0;
+  // Vagas da reserva: as peças lidas e o que ocupa vaga sem ser campeão (bigornas: `benchTaken`).
+  let benchUsed = benchKnown
+    ? (input.reserve ?? []).length + (input.benchTaken ?? 0)
+    : 0;
   const sold = new Set();
 
   // 1) Titulares já em campo jogam na vaga deles.
@@ -352,8 +397,8 @@ export function interimSlots(input, ctx) {
 
   // 2) Vaga livre no nível: o titular entra sem tirar ninguém.
   for (const a of [...avail]) {
-    if (free <= 0) break;
-    free--;
+    if (free < unitSlots(a.unit)) continue;
+    free -= unitSlots(a.unit);
     enter(
       a,
       null,
@@ -364,30 +409,27 @@ export function interimSlots(input, ctx) {
     );
   }
 
-  // 3) Titular × substituto em campo: o par de maior vantagem do titular primeiro. S só fica se superar T por mais que a
-  // margem; o carry entra em 1★ quando S já segura `carryItems` itens completos (os itens rendem nele).
+  // 3) Titular × substituto em campo: o par de maior vantagem do titular primeiro. T só entra (e recebe os itens de S) se
+  // render mais que S (atributos na estrela, sinergia que liga e itens); senão S fica e a troca espera a estrela de T.
   let subs = [...fieldBy.values()].filter((u) => !goalIds.has(u.id));
   for (;;) {
     let best = null;
     for (const a of avail)
       for (const s of subs) {
-        const delta = swapDelta(a.unit, s, board, sctx),
-          forced = carryOf(a.goal) && completedItems(s.items) >= I.carryItems,
-          score = forced ? Infinity : delta;
-        if (!best || score > best.score) best = { a, s, delta, forced, score };
+        // O titular que ocupa mais vagas que o substituto (Elder Dragon) só entra com a vaga que falta livre.
+        if (unitSlots(a.unit) - unitSlots(s) > free) continue;
+        const delta = swapDelta(a.unit, s, board, sctx);
+        if (!best || delta > best.delta) best = { a, s, delta };
       }
-    if (!best || !(best.score >= -margin)) break;
-    const { a, s, delta, forced } = best,
+    if (!best || !(best.delta > margin)) break;
+    const { a, s, delta } = best,
       sName = s.name ?? nameOf(s.id);
+    free -= unitSlots(a.unit) - unitSlots(s);
     enter(
       a,
       { ...s, name: sName },
       round1(delta),
-      forced
-        ? `Carry: ${sName} já segura ${completedItems(s.items)} itens completos; eles rendem mais em ${a.unit.name}`
-        : delta > margin
-          ? `${a.unit.name} ${a.unit.stars}★ já rende mais que ${sName} ${clampStars(s.stars)}★ (+${round1(delta)}); passe os itens`
-          : `${sName} ${clampStars(s.stars)}★ não supera ${a.unit.name} ${a.unit.stars}★ pela margem (${round1(delta)}): fica o titular`,
+      `${a.unit.name} ${a.unit.stars}★ já rende mais que ${sName} ${clampStars(s.stars)}★ (+${round1(delta)}, atributos, sinergia e itens): troque e passe os itens`,
     );
     subs = subs.filter((x) => x !== s);
   }
@@ -403,8 +445,8 @@ export function interimSlots(input, ctx) {
       }))
       .sort((a, b) => b.gain - a.gain);
     for (const r of reserveSubs) {
-      if (free <= 0) break;
-      free--;
+      if (free < unitSlots(r.u)) continue;
+      free -= unitSlots(r.u);
       fills.push({
         ...r.u,
         why: "Vaga livre: a peça mais forte da reserva joga até a comp chegar",
@@ -435,10 +477,10 @@ export function interimSlots(input, ctx) {
       .sort((a, b) => b.gain - a.gain);
     const seen = new Set();
     for (const x of shopSubs) {
-      if (free <= 0) break;
+      if (free < unitSlots(x.c.id)) continue;
       if (seen.has(x.c.id)) continue;
       seen.add(x.c.id);
-      free--;
+      free -= unitSlots(x.c.id);
       const u = unitOf({ id: x.c.id, name: x.c.name }, "loja");
       fills.push({
         ...u,
@@ -498,7 +540,7 @@ export function interimSlots(input, ctx) {
     for (let k = start; k <= 3; k++) {
       if (k === start && reserveBy.has(t.id)) continue; // a estrela que ele já tem não vence (senão teria entrado)
       const d = swapDelta({ ...tUnit, stars: k }, s, board, sctx, k);
-      if (d < -margin) continue;
+      if (!(d > margin)) continue;
       const need = Math.max(0, starCopies(k) - have),
         perSlot = input.pool?.get?.(t.id)?.chancePerSlot ?? null,
         chance =
@@ -534,19 +576,13 @@ export function interimSlots(input, ctx) {
     if (level !== null && level < I.synergy.lateLevel) {
       const late = { ...sctx, level: I.synergy.lateLevel },
         d = swapDelta({ ...tUnit, stars: start }, s, board, late, start);
-      if (d >= -margin)
+      if (d > margin)
         return {
           kind: "nivel",
           level: I.synergy.lateLevel,
           text: `volta no nível ${I.synergy.lateLevel} (as sinergias da comp passam a pesar mais)`,
         };
     }
-    if (carryOf(t))
-      return {
-        kind: "itens",
-        items: I.carryItems,
-        text: `volta quando ${sName} segurar ${I.carryItems} itens completos do carry (eles passam para ${tName})`,
-      };
     return {
       kind: "nenhum",
       text: `${sName} segue mais forte mesmo com ${tName} 3★: sem previsão de volta`,
@@ -603,10 +639,14 @@ export function interimSlots(input, ctx) {
   // 7) As vagas, na ordem do plano, e as vagas extras (substituto sem vaga do plano livre).
   let freeForBuy = Math.max(
     0,
-    cap - [...playing.values()].length - holder.size - players.length,
+    cap -
+      slotsUsed([...playing.values()]) -
+      slotsUsed(holder.values()) -
+      slotsUsed(players),
   );
   const slots = goal.map((u, i) => {
-    const out = swapOut.get(u.id) ?? null,
+    const swap = swapOut.get(u.id) ?? null,
+      out = swap?.out ?? null,
       orig = out
         ? { id: out, name: nameOf(out), cost: costOf(out) }
         : {
@@ -670,7 +710,7 @@ export function interimSlots(input, ctx) {
         why:
           d?.why ??
           (out
-            ? `troca da comp: ${p.name} no lugar de ${orig.name}`
+            ? (swap.why ?? `troca da comp: ${p.name} no lugar de ${orig.name}`)
             : "em campo"),
         until: null,
         replaces: d?.replaces ?? null,
@@ -691,7 +731,7 @@ export function interimSlots(input, ctx) {
           1,
         );
         ifBought =
-          d1 >= -margin
+          d1 > margin
             ? { place: "troca", replaces: refOf(h) }
             : { place: "banco", replaces: null };
       } else if (freeForBuy > 0) {
@@ -733,11 +773,13 @@ export function interimSlots(input, ctx) {
       playing: null,
       kind: out ? "troca-da-comp" : "titular",
       why:
-        have === "reserva"
-          ? `sem vaga no nível ${cap}: guarde na reserva`
-          : ifBought?.place === "vaga"
-            ? "vaga livre: compre quando aparecer"
-            : "falta: compre quando aparecer",
+        out && swap.by === "nivel" && have === "falta"
+          ? `${swap.why}: compre quando aparecer`
+          : have === "reserva"
+            ? `sem vaga no nível ${cap}: guarde na reserva`
+            : ifBought?.place === "vaga"
+              ? "vaga livre: compre quando aparecer"
+              : "falta: compre quando aparecer",
       until: null,
       replaces: null,
       delta: null,

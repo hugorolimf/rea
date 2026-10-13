@@ -6,7 +6,14 @@
  */
 
 /** O Avatar (Lux) é o campeão-jogador: não é comprado na loja e entra na pool como a Lux. */
-export const isAvatar = (champion) => !!champion?.traits?.includes("Avatar");
+const avatarMemo = new WeakMap();
+export const isAvatar = (champion) => {
+  if (!champion || typeof champion !== "object") return false;
+  let v = avatarMemo.get(champion);
+  if (v === undefined)
+    avatarMemo.set(champion, (v = !!champion.traits?.includes("Avatar")));
+  return v;
+};
 
 /** Nome sob o qual a pool conta o campeão (o Avatar divide as cópias da Lux). */
 export const poolName = (champion) =>
@@ -31,3 +38,21 @@ export function championRole(champion, metaRoles = null) {
     ? "ad"
     : "ap";
 }
+
+/**
+ * Vagas do tabuleiro que o campeão ocupa (regra do jogo): o Elder Dragon ocupa 2; os demais, 1. Aceita o campeão do
+ * catálogo, uma peça (`{ id }`/`{ championName }`) ou o id.
+ */
+const DOUBLE_SLOT = /ElderDragon/,
+  slotsMemo = new Map();
+export const unitSlots = (u) => {
+  const id =
+    typeof u === "string" ? u : (u?.apiName ?? u?.id ?? u?.championName ?? "");
+  let v = slotsMemo.get(id);
+  if (v === undefined) slotsMemo.set(id, (v = DOUBLE_SLOT.test(id) ? 2 : 1));
+  return v;
+};
+
+/** Vagas que uma lista de campeões/peças ocupa no tabuleiro. */
+export const slotsUsed = (list = []) =>
+  [...list].reduce((n, u) => n + unitSlots(u), 0);

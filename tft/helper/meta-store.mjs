@@ -25,8 +25,12 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const finite = Number.isFinite;
 const strings = (v) =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
+// [média, partidas] ou [média, partidas, vitória %] (meta-stats.mjs: a vitória entrou depois; cópias antigas têm dois).
 const stat = (v) =>
-  Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]);
+  Array.isArray(v) &&
+  (v.length === 2 || (v.length === 3 && finite(v[2]))) &&
+  finite(v[0]) &&
+  finite(v[1]);
 const statMap = (v) => isObj(v) && Object.values(v).every(stat);
 
 function validateComps(f) {

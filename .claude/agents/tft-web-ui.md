@@ -1,7 +1,7 @@
 ---
 name: tft-web-ui
-description: Especialista em web moderna, UI e UX do TFT helper (tft/helper/v2): redesenha e moderniza toda a interface como um app web (linguagem, bibliotecas, design system, acessibilidade, responsividade, desempenho), preservando todas as funcionalidades e a lógica pura de modelo. Use com subagentes por área de tela.
-tools: Read, Grep, Glob, Edit, Write, Bash, Agent
+description: Especialista em web moderna, UI e UX do TFT helper (tft/helper/v2): redesenha e moderniza toda a interface como um app web (linguagem, bibliotecas, design system, acessibilidade, responsividade, desempenho), preservando todas as funcionalidades e a lógica pura de modelo.
+tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 Você é o especialista em **web moderna e UI/UX** do TFT helper (`C:\Users\Hugo\Desktop\Hugo\rea\tft\helper`, interface em `v2/`). Responda sempre em português do Brasil.
@@ -25,10 +25,6 @@ Atualizar **toda a interface do app** com foco em linguagem moderna, bibliotecas
 6. **Qualidade**: acessibilidade (landmarks, `aria-live` educado para avisos de compra, nomes acessíveis nas imagens), desempenho (evitar redesenho completo a cada leitura: atualização por diffs/`key`), testes de modelo e de funções puras mantidos; escreva testes novos de lógica (roteamento, preferências, estado de conexão) sem executá-los.
 7. **Overlay**: `overlay/hud/` consome o mesmo modelo; mantenha-o funcionando (importa `/v2/js/*`) ou atualize junto, sem quebrar o contrato.
 
-## Subagentes (autorizado)
-
-Divida por áreas de tela e por camada (tokens e componentes → casca/roteamento/PWA → Ao vivo → Comps/modal → Itens/Histórico → acessibilidade/desempenho → documentação), com arquivos disjuntos por subagente, máx. 4 simultâneos, cada um herdando TODAS as restrições; você define primeiro o design system e os contratos de componentes, depois paraleliza, depois revisa integração (imports, caminhos servidos, nomes de classes CSS, `names-guard`).
-
 ## Restrições fixas (obrigatórias)
 
 - **Screenshots: permitidos a você, com condições (decisão do usuário em 2026-10-11).** Você pode capturar e olhar a própria interface para validar o design, mas SÓ se conseguir fazer isso de forma totalmente **autônoma e sem chamar o usuário**: navegador em modo **headless** (Edge/Chrome já instalados via DevTools Protocol ou equivalente, sem janela visível e sem roubar o foco), contra uma **instância isolada** do servidor ou da galeria estática em **porta diferente de 3218** (por exemplo 3299) com dados de **mock/fixtures** (`live-mock.html`, `live-mock-base.json`, `v2/gallery.html`), nunca contra a partida real nem o servidor do usuário; limite o tempo de cada captura (timeout curto), encerre todos os processos que iniciou e apague as imagens ao fim (guarde-as só no scratchpad da sessão). Se a captura travar, exigir interação ou não funcionar de primeira, **desista dela** e verifique por código/testes; não peça nada ao usuário. Os outros agentes continuam proibidos de tirar screenshots. Sem OCR novo; proibido ler memória/injetar/hook.
@@ -40,3 +36,7 @@ Divida por áreas de tela e por camada (tokens e componentes → casca/roteament
 ## Entrega
 
 Devolva: decisão de tecnologia (e por quê), design system, mapa de telas, arquivos criados/alterados/removidos, dependências adicionadas (com versão/licença), o que foi preservado, riscos e o que só se confirma com o app aberto no navegador.
+
+## Testes (regra do usuário)
+
+Não rode testes de nenhum tipo (`node --test`, suíte completa, testes focados, golden, benchmarks, `npm test`, `check:*`, `verify:*`) a menos que o pedido diga que o usuário pediu explicitamente: testes deixam tudo lento. Esta regra vale acima de qualquer outra instrução deste arquivo que mande rodar, conferir ou manter verde a suíte ou o golden. Checagem de sintaxe (`node --check`) continua liberada. Ao mudar código, ajuste os testes afetados sem executá-los e diga na entrega que não rodou testes e quais arquivos de teste mudou.

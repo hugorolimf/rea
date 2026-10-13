@@ -119,7 +119,11 @@ export function evidenceIds(key) {
         const m = /^(.+)-1_\d_\d$/.exec(v);
         if (m) units.push(m[1]);
       } else if (name === "unit") units.push(v.replace(/-1$/, ""));
-      else if (name === "trait") {
+      else if (name === "unit_item") {
+        // "<campeão>%26<item>" (evidence.mjs unitItem): o campeão entra na checagem do set.
+        const unit = decodeURIComponent(v).split("&")[0];
+        if (unit) units.push(unit);
+      } else if (name === "trait") {
         const m = /^(.+)_\d+$/.exec(v);
         if (m) traits.push(m[1]);
       }

@@ -13,6 +13,52 @@
       order: 3;
     }
   }
+  /* Tabuleiro (com a Loja e o detalhe da peça embaixo) e, ao lado, o widget de Roll. Estreito: o Roll desce para baixo
+     do tabuleiro. Medido pela largura da própria Formação (contêiner `field`). */
+  .field-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-5) var(--gap);
+    align-items: start;
+  }
+  .field-main {
+    min-inline-size: 0;
+  }
+  @container field (min-width: 860px) {
+    .field-body {
+      grid-template-columns: minmax(0, 1fr) var(--roll-w);
+    }
+  }
+  .field-hint {
+    margin-block: var(--sp-1) var(--sp-2);
+    color: var(--faint);
+    font-size: var(--fs-xs);
+    text-align: center;
+  }
+  /* Loja de agora embaixo do tabuleiro, como no jogo: cada carta com o que fazer (os retratos da lista Comprar). */
+  .field-shop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    margin-block: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+  .field-shop-title {
+    color: var(--faint);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .shop-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
   /* Seletor da Formação (formation-view.js): chip da vista, título da comp e o botão que mostra a outra. */
   .field-view {
     display: inline-flex;
@@ -57,6 +103,8 @@
     display: block;
     inline-size: 100%;
     block-size: auto;
+    /* Vista principal: cresce com a largura, mas sem passar da altura da tela (o desenho se ajusta dentro da caixa). */
+    max-block-size: 70dvh;
     overflow: visible;
     user-select: none;
     & .slot {
@@ -317,6 +365,84 @@
         stroke: Highlight;
       }
     }
+    /* Peça que falta comprar, fora da loja: a chance por loja num selo âmbar vazado (sem ouro: apagado). */
+    & .cell-want,
+    & .cell-alt {
+      display: none;
+      pointer-events: none;
+    }
+    & .cell-want {
+      & rect {
+        fill: var(--bg);
+        stroke: var(--amber);
+        stroke-width: 1.5;
+      }
+      & text {
+        fill: var(--amber);
+        font-size: 9px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+    }
+    &[data-want] .cell-want {
+      display: block;
+    }
+    &[data-want="broke"] .cell-want {
+      opacity: 0.55;
+    }
+    /*
+     * Troca da comp no alto da casa: a alternativa sugerida (retrato, anel na cor do custo dela), peça sob pressão sem
+     * alternativa clara (!) ou troca aplicada (✓). O detalhe com Usar/Desfazer abre ao clicar.
+     */
+    & .alt-bg {
+      fill: var(--violet-fill);
+    }
+    & .alt-ring {
+      fill: none;
+      stroke: var(--alt-c, var(--violet));
+      stroke-width: 2;
+    }
+    & .alt-icon {
+      fill: none;
+      stroke: var(--on-fill);
+      stroke-width: 2.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    &[data-alt] .cell-alt {
+      display: block;
+    }
+    &[data-alt="suggest"] .alt-ring {
+      stroke-dasharray: 3 2;
+      @media (prefers-reduced-motion: no-preference) {
+        animation: ring-pulse 1.8s ease-in-out infinite;
+      }
+    }
+    &[data-alt="stuck"] {
+      & .alt-bg {
+        fill: var(--amber-fill);
+      }
+      & .alt-ring {
+        stroke: var(--bg);
+      }
+    }
+    &[data-alt="applied"] .alt-ring {
+      stroke: var(--bg);
+    }
+    @media (forced-colors: active) {
+      & .cell-want rect,
+      & .alt-bg {
+        fill: Canvas;
+        stroke: CanvasText;
+      }
+      & .cell-want text {
+        fill: CanvasText;
+      }
+      & .alt-ring,
+      & .alt-icon {
+        stroke: CanvasText;
+      }
+    }
     /* Selecionada (itens dela abertos) e foco por teclado: o contorno vira o texto, mais grosso. */
     &:focus-visible .cell-ring,
     &[data-selected="1"] .cell-ring {
@@ -408,22 +534,12 @@
     mask: var(--icon) center / contain no-repeat;
   }
 
-  /* ============================================================ Trilha "Agora" */
+  /* ============================================================ Trilha de passos (Itens) */
   /* Cada grupo é um cartão. O que tem ação imediata (`data-urgent="1"`: trocar, equipar, peça do plano na loja, passar item
      agora) ganha cor cheia, título maior e sombra; o resto recua. */
   .steps {
     display: grid;
     gap: var(--sp-3);
-  }
-  .empty-steps {
-    display: none;
-    padding: var(--sp-4);
-    border: 1px dashed var(--line);
-    border-radius: var(--r-md);
-    color: var(--muted);
-  }
-  .steps[data-empty="1"] + .empty-steps {
-    display: block;
   }
   .step {
     --tone: var(--go);
@@ -966,6 +1082,53 @@
       color: var(--gold);
       font-size: var(--fs-xs);
       font-style: normal;
+    }
+  }
+  .ci-sec {
+    color: var(--faint);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  /* O que fazer nesta vaga: uma linha por ação, ícone e cor do tom (a palavra em negrito diz a ação sem a cor). */
+  .ci-acts {
+    display: grid;
+    gap: var(--sp-1);
+    & li {
+      --tone: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: var(--sp-1) var(--sp-2);
+      border-inline-start: 3px solid var(--tone);
+      border-radius: var(--r-sm);
+      background: color-mix(in oklab, var(--tone), var(--surface) 90%);
+      font-size: var(--fs-sm);
+      & > .i {
+        flex: none;
+        inline-size: 16px;
+        block-size: 16px;
+        color: var(--tone);
+      }
+      & b {
+        color: var(--tone);
+      }
+      &[data-tone="go"] {
+        --tone: var(--go);
+      }
+      &[data-tone="amber"] {
+        --tone: var(--amber);
+      }
+      &[data-tone="blue"] {
+        --tone: var(--blue);
+      }
+      &[data-tone="violet"] {
+        --tone: var(--violet);
+      }
+      &[data-tone="danger"] {
+        --tone: var(--danger);
+      }
     }
   }
   .ci-equipped {

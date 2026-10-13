@@ -12,6 +12,7 @@ import { isConsumable, kindOf } from "./core/catalog/items.mjs";
 import { compsAreStale } from "./meta-comps.mjs";
 import { gameLog } from "./game-log.mjs";
 import { gepReader, wispCatalog } from "./gep-reader.mjs";
+import { recordingsCleanup } from "./app/recordings-cleanup.mjs";
 import { createStateHub, gepContextFor } from "./app/state.mjs";
 import { readLcuData } from "./app/lcu.mjs";
 import { createOverlayFeed } from "./app/overlay-feed.mjs";
@@ -28,6 +29,7 @@ import {
 } from "./app/supervision.mjs";
 import { threadWorker } from "./app/analysis-runner.mjs";
 import { carouselFeed } from "./app/carousel-view.mjs";
+import { itemsNowFeed } from "./app/items-now.mjs";
 import { createRecommender, stageTimer } from "./app/recommend.mjs";
 import { createAutoRefresh, createRecentResults } from "./app/auto-refresh.mjs";
 import { installDiagnostics } from "./diagnostics.mjs";
@@ -192,7 +194,7 @@ const evidenceClient = new Proxy(
 );
 // Teto de espera de rede (explorer) por análise nova; passado ele a análise segue com o que já chegou e o resto
 // entra no cache para a leitura seguinte (app/live-load.mjs). `TFT_EVIDENCE_BUDGET_MS` muda o teto; valor enorme = sem teto.
-const EVIDENCE_BUDGET_MS = Number(process.env.TFT_EVIDENCE_BUDGET_MS) || 15_000;
+const EVIDENCE_BUDGET_MS = Number(process.env.TFT_EVIDENCE_BUDGET_MS) || 1_500;
 let metaComps = (await metaStore.load("comps", { catalog })).value;
 const updateComps = () =>
   renewed("comps", { catalog })
@@ -322,6 +324,8 @@ const seenState = stateHub.seen;
 const overlay = createOverlayFeed();
 // O carrossel do estado (app/carousel-view.mjs): detecção, peças lidas e o que pegar, sobre a última análise do feed.
 const carousel = carouselFeed({ overlay, emblems: traitRules.emblems });
+// Recomendação de itens ao vivo (banco e peças de agora, sobre o último plano): não espera a análise das comps.
+const itemsLive = itemsNowFeed({ overlay });
 // Início e fim de partida: zera o que pertence à partida anterior e avisa as telas pelo SSE.
 // Tabuleiros finais dos 8 jogadores com a colocação oficial (validação do modelo de tabuleiro).
 const lobbies = lobbyRecorder(path.join(root, "../data/lobby-boards.jsonl"));
@@ -468,11 +472,22 @@ async function current() {
     lcu(),
   ]);
   const age = Math.max(0, (Date.now() - stat.mtimeMs) / 1000);
-  const sameGame = session?.gameId === read.gameId;
+  // O cliente do League que não responde (fechado, reiniciando ou travado: em 2026-10-12 ele recusava conexões depois de
+  // reiniciar no meio da sessão) não diz qual é a partida. Sem o id dele, "mesmo jogo" é desconhecido (null), nunca "outro
+  // jogo"; quem decide se a leitura vale ao vivo é o rastreador de partidas (partida viva e o tabuleiro lido é dela).
+  const clientGameId = session?.gameId ?? null,
+    sameGame =
+      clientGameId == null
+        ? null
+        : String(clientGameId) === String(read.gameId);
   const local = read.statsBlock.players.find(
     (p) => String(p.playerId) === HERO_ID,
   );
-  const match = matches.observe(read, stat, session, gameSignals());
+  const match = matches.observe(read, stat, session, gameSignals()),
+    inGame =
+      clientGameId == null
+        ? match?.status === "live" && match?.boardReady === true
+        : sameGame && session.phase === "InProgress";
   // Partida de treino (sem rivais): o arquivo traz vida -99/1 e colocação 1 com o jogo rodando. O rastreador de partidas
   // já leu o arquivo cru acima; a análise recebe a vida do Hero normalizada e o valor lido fica em `practice.rawHealth`.
   const practice = practiceOf(read, HERO_ID, { forced: PRACTICE_FORCED }),
@@ -488,13 +503,10 @@ async function current() {
       signature: snapshotSignature(snapshot),
       ageSeconds: Math.round(age),
       phase: session?.phase ?? null,
-      sameGame: session ? sameGame : null,
+      sameGame,
       // Treino: o arquivo do tabuleiro só é regravado de tempos em tempos (capturas de 50 a 80 s entre si, sem rodada
       // de rival); a idade dele sozinha não diz que a partida parou.
-      actionable:
-        sameGame &&
-        session.phase === "InProgress" &&
-        (age < 120 || practice.active),
+      actionable: inGame && (age < 120 || practice.active),
       practice,
       localPlayerId: local ? String(local.playerId) : null,
       // Peças em campo: ESTIMATIVA de último recurso, não leitura (jogar abaixo do nível, slot extra e invocações a
@@ -578,6 +590,7 @@ async function buildStateBody() {
     ),
     streak: streaks.current(),
     carousel: carousel(seenNow, metadata.gameId),
+    itemsNow: itemsLive(seenNow, metadata.gameId),
   };
   lastState = { at: Date.now(), body };
   return body;
@@ -596,7 +609,7 @@ const analysisWorker =
         evidenceFile,
         budgetMs: EVIDENCE_BUDGET_MS,
         heroId: HERO_ID,
-        timeoutMs: Number(process.env.TFT_ANALYSIS_TIMEOUT_MS) || 60_000,
+        timeoutMs: Number(process.env.TFT_ANALYSIS_TIMEOUT_MS) || 150_000,
         log: (level, text) => diag.write(level, text),
       });
 recommender = createRecommender({
@@ -788,6 +801,7 @@ handle = async (req, res) => {
           stars3: c.stars3,
           builds: c.builds,
           buildStats: c.buildStats ?? {},
+          itemPicks: c.itemPicks ?? null,
           games: c.games,
           avg: c.avg,
           top4: c.top4,
@@ -927,3 +941,7 @@ if (process.env.TFT_AUTO_REFRESH === "0")
     "laço automático desligado (TFT_AUTO_REFRESH=0): a análise só se renova com a interface aberta",
   );
 else auto.start();
+// Gravações de vídeo do TFTAcademy: ficam só as 2 mais recentes (a da partida atual e a da última), varridas ao subir e a
+// cada minuto (app/recordings-cleanup.mjs). `TFT_RECORDINGS_CLEANUP=0` desliga.
+if (process.env.TFT_RECORDINGS_CLEANUP !== "0")
+  recordingsCleanup({ log: (level, text) => diag.write(level, text) }).start();

@@ -9,18 +9,21 @@ const SIZE = 36,
   GAP = 4.5,
   R = SIZE - GAP,
   BADGE = 11,
+  ALT = 8.5,
   PAD = 12;
 const { width: W, height: H } = boardSize(COLS, ROWS, SIZE);
 const COST_VAR = (c) => `var(--cost-${Math.min(5, Math.max(1, c))})`;
 
 /**
- * Formação alvo em hexágonos. Só mostra estado: peça em campo (sólida), a comprar (tracejada) e,
- * no canto da casa que recebe a peça, um selo com quem sai. Na vaga com substituto (`cell.sub`, board-look.js) o
- * retrato é de quem joga, com o original pequeno no canto e o selo ⇄; a peça da loja ganha o selo de compra.
- * Detalhes ficam em tooltip e na trilha "Agora".
+ * Formação alvo em hexágonos, com as decisões da rodada nas próprias casas: peça em campo (sólida), a comprar
+ * (tracejada) e, no canto da casa que recebe a peça, um selo com quem sai (trocar, segure, vaga livre). Na vaga com
+ * substituto (`cell.sub`, board-look.js) o retrato é de quem joga, com o original pequeno no canto e o selo ⇄; a peça
+ * na loja agora ganha o selo de compra e a que falta comprar, a chance por loja. No alto, o selo da troca sugerida
+ * (retrato da alternativa) ou aplicada. O detalhe (o que fazer, as trocas e os itens) abre ao clicar na casa.
  */
 export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
-  let selected = null;
+  let selected = null,
+    marks = new Map();
   const defs = svg(
     "defs",
     {},
@@ -30,6 +33,7 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       svg("polygon", { points: hexPoints(0, 0, R - 1) }),
     ),
     svg("clipPath", { id: "clip-badge" }, svg("circle", { r: BADGE })),
+    svg("clipPath", { id: "clip-alt" }, svg("circle", { r: ALT })),
   );
   const grid = svg("g", { class: "grid" }),
     cellsLayer = svg("g", { class: "cells" }),
@@ -161,6 +165,43 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       svg("text", { "text-anchor": "middle", x: 4.5, y: 3.4 }),
     );
     buy.setAttribute("transform", `translate(${R * 0.58} ${R * 0.58})`);
+    // Chance por loja da peça que falta comprar (fora da loja): no mesmo canto do selo de compra.
+    const want = svg(
+      "g",
+      { class: "cell-want" },
+      svg("rect", { x: -14, y: -7, width: 28, height: 14, rx: 7 }),
+      svg("text", { "text-anchor": "middle", y: 3.4 }),
+    );
+    want.setAttribute("transform", `translate(${R * 0.55} ${R * 0.58})`);
+    // Troca sugerida (retrato da alternativa), peça sob pressão sem alternativa (!) ou troca aplicada (✓), no alto.
+    const alt = svg(
+      "g",
+      { class: "cell-alt" },
+      svg("circle", { class: "alt-bg", r: ALT + 1.5 }),
+      svg("image", {
+        class: "alt-img",
+        x: -ALT,
+        y: -ALT,
+        width: ALT * 2,
+        height: ALT * 2,
+        "clip-path": "url(#clip-alt)",
+        preserveAspectRatio: "xMidYMid slice",
+      }),
+      svg(
+        "svg",
+        {
+          class: "alt-icon",
+          viewBox: "0 0 24 24",
+          width: 11,
+          height: 11,
+          x: -5.5,
+          y: -5.5,
+        },
+        svg("use", { href: "#i-swap" }),
+      ),
+      svg("circle", { class: "alt-ring", r: ALT + 1.5 }),
+    );
+    alt.setAttribute("transform", `translate(0 ${-R * 0.76})`);
     return svg(
       "g",
       { class: "cell", tabindex: 0, role: "button" },
@@ -187,6 +228,8 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       orig,
       subMark,
       buy,
+      want,
+      alt,
       svg("text", {
         class: "swap-frac",
         x: -R * 0.58 + BADGE + 4,
@@ -201,7 +244,7 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
     g.dataset.status = c.status;
     mark(g, c.id === selected);
     g.dataset.carry = c.carry ? "1" : "0";
-    const look = cellLook(c);
+    const look = cellLook(c, marks.get(c.id) ?? null);
     const src = champIcon(look.image);
     if (src) g.querySelector(".cell-img").setAttribute("href", src);
     g.querySelector(".cell-stars").textContent = "★".repeat(look.stars);
@@ -225,6 +268,30 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       g.dataset.buy = "1";
       g.querySelector(".cell-buy text").textContent = look.buy.cost;
     } else delete g.dataset.buy;
+    if (look.want) {
+      g.dataset.want = look.want.broke ? "broke" : "1";
+      g.querySelector(".cell-want text").textContent = look.want.text;
+    } else delete g.dataset.want;
+    if (look.alt) {
+      g.dataset.alt = look.alt.kind;
+      const img = g.querySelector(".alt-img"),
+        asrc = look.alt.kind === "suggest" ? champIcon(look.alt.id) : null;
+      if (asrc) img.setAttribute("href", asrc);
+      else img.removeAttribute("href");
+      img.style.display = asrc ? "" : "none";
+      g.querySelector(".alt-icon use").setAttribute(
+        "href",
+        look.alt.kind === "applied"
+          ? "#i-check"
+          : look.alt.kind === "stuck"
+            ? "#i-warn"
+            : "#i-swap",
+      );
+      g.querySelector(".alt-icon").style.display = asrc ? "none" : "";
+      setVars(g.querySelector(".cell-alt"), {
+        "--alt-c": look.alt.cost ? COST_VAR(look.alt.cost) : "var(--violet)",
+      });
+    } else delete g.dataset.alt;
     const s = c.swap;
     if (s) g.dataset.swap = s.kind;
     else delete g.dataset.swap;
@@ -282,8 +349,10 @@ export function mountBoard(root, traitsRoot, { onSelect = () => {} } = {}) {
       selected = null;
       for (const n of cellsLayer.children) mark(n, false);
     },
+    /** `plan`: `{ cells, traits, marks }`; `marks` (board-look.js `cellMarks`) põe compra e troca nas casas. */
     update(plan) {
       const cells = plan?.cells ?? [];
+      marks = plan?.marks ?? new Map();
       if (selected && !cells.some((c) => c.id === selected)) {
         selected = null;
         onSelect(null);

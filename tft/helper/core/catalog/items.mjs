@@ -17,8 +17,22 @@
  * Poções, Boosters, Melhoria do Mestre-Artesão, Baú da Sorte): ficam fora de toda análise de itens.
  */
 export const CONSUMABLE =
-  /Consumable_|Reforger|Potion|Booster|Masterwork|LuckyItemChest/;
+  /Consumable_|Reforger|Potion|Booster|Masterwork|LuckyItemChest|Anvil/;
 export const isConsumable = (id) => CONSUMABLE.test(id ?? "");
+
+/**
+ * Bigorna no banco (GEP: `DA_AnvilComponent`, `DA_AnvilCompletedItems`, `DA_AnvilArtifact`, `DA_Peddler18_*Anvil`): abre
+ * uma escolha de componente (`"component"`), de item completo (`"completed"`) ou de artefato (`"artifact"`); null se não é
+ * bigorna. Fica fora das análises comuns de item (é consumível acima); só a prioridade de itens a usa
+ * (core/items/item-priority.mjs).
+ */
+export function anvilKind(id) {
+  const s = String(id ?? "");
+  if (!/Anvil/.test(s)) return null;
+  if (/Artifact|Ornn/.test(s)) return "artifact";
+  if (/Component/.test(s)) return "component";
+  return "completed";
+}
 
 const COMPONENT_PREFIX = "DA_Component_";
 
@@ -59,7 +73,9 @@ export const isManaItem = (id) => /BlueBuff|SpearOfShojin/.test(id ?? "");
  */
 export const isPlanItem = (id) =>
   /^DA_/.test(id ?? "") &&
-  !/Component|Emblem|Artifact|Consumable|Spatula|FryingPan|Upgrade/.test(id);
+  !/Component|Emblem|Artifact|Consumable|Spatula|FryingPan|Upgrade|Anvil/.test(
+    id,
+  );
 
 /**
  * Tipo do item pelo id do set atual e pela receita (`from` = ids dos componentes): componente, radiante, artefato,

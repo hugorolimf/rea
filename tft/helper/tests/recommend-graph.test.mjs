@@ -338,12 +338,14 @@ test("T6 ouro +1 sem mudar as lojas ao alcance nem o nível-alvo: a base e a tá
   hasNone(set, ["comps.base", "tactics.analysis"], "ouro +1");
 });
 
-test("T6 subir de nível: nível-alvo, base, leitura e tática recalculam; lojas ao alcance, sinergias e trocas não", () => {
+test("T6 subir de nível: nível-alvo, trocas pelo nível, base, leitura e tática recalculam; lojas ao alcance e sinergias não", () => {
   const set = recomputedBy((values) => ({ level: values.level + 1 }));
   hasAll(
     set,
     [
       "level.target",
+      // A comp ajustada ao nível (core/comps/level-fit.mjs) troca a vaga de apoio pelo nível.
+      "comps.swapped",
       "comps.base",
       "comps.readingId",
       "tactics.analysis",
@@ -354,13 +356,7 @@ test("T6 subir de nível: nível-alvo, base, leitura e tática recalculam; lojas
   );
   hasNone(
     set,
-    [
-      "economy.shopsAhead",
-      "clock.stage",
-      "catalog.traits",
-      "traits.grants",
-      "comps.swapped",
-    ],
+    ["economy.shopsAhead", "clock.stage", "catalog.traits", "traits.grants"],
     "nível",
   );
 });

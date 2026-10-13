@@ -432,17 +432,19 @@ export function buildItemPlan({
   const wishOf = (u) => {
     const published = buildOf(u.id);
     if (published?.length)
-      return pendingItems(published, owned).map((id) => {
-        const m = valueOf?.(u.id, id) ?? null;
-        return {
-          item: { id, name: nameOf(id) },
-          value: m?.value ?? null,
-          confidence: m?.confidence ?? null,
-          samples: m?.samples ?? null,
-          source: "build-comp",
-          componentsNeeded: recipes.get(id) ?? [],
-        };
-      });
+      return pendingItems(published, owned)
+        .slice(0, wishLimit)
+        .map((id) => {
+          const m = valueOf?.(u.id, id) ?? null;
+          return {
+            item: { id, name: nameOf(id) },
+            value: m?.value ?? null,
+            confidence: m?.confidence ?? null,
+            samples: m?.samples ?? null,
+            source: "build-comp",
+            componentsNeeded: recipes.get(id) ?? [],
+          };
+        });
     // Reserva: a mesma regra da Luva de Ladrão do motor de builds (core/items/builds.mjs `glovesBuild`) — ela ocupa os
     // 3 espaços, então só entra quando é o melhor item do campeão, e aí sozinha; senão fica de fora.
     const ranked = rankedOf(u.id).filter((x) => isPlanItem(x.id)),

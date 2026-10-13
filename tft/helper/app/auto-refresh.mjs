@@ -127,6 +127,10 @@ export function createAutoRefresh({
   let active = false,
     gameId = null,
     lastRunAt = -Infinity,
+    // Duração da última análise: com a máquina sem folga (jogo pesado), análises de 10–40 s seguidas disputam a CPU com o
+    // jogo; o próximo início espera 1,5× a duração da anterior (até 60 s). Os itens ao vivo (app/items-now.mjs) não
+    // dependem disso.
+    lastTookMs = 0,
     failures = 0,
     rejectedKey = null,
     running = false,
@@ -184,9 +188,10 @@ export function createAutoRefresh({
       counters.same++;
       return { action: "same", key };
     }
-    const gap = failures
-      ? Math.min(maxBackoffMs, minGapMs * 2 ** failures)
-      : minGapMs;
+    const gap = Math.max(
+      failures ? Math.min(maxBackoffMs, minGapMs * 2 ** failures) : minGapMs,
+      Math.min(60_000, lastTookMs * 1.5),
+    );
     if (now() - lastRunAt < gap) {
       counters.waits++;
       return { action: "wait", reason: "intervalo", key };
@@ -201,7 +206,8 @@ export function createAutoRefresh({
       counters.errors++;
       throw e;
     }
-    report("AUTO analise", now() - t0);
+    lastTookMs = now() - t0;
+    report("AUTO analise", lastTookMs);
     failures = 0;
     if (done?.status === 200) {
       counters.runs++;

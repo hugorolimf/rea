@@ -118,7 +118,7 @@ test("evidência: toda pergunta vai com o recorte e a resposta guardada leva a e
     const again = explorer(file, { ids });
     assert.deepEqual(again.health(), {
       kept: 1,
-      rejected: { expired: 0, scope: 0, outOfSet: 0, empty: 0 },
+      rejected: { expired: 0, scope: 0, outOfSet: 0, format: 0, empty: 0 },
     });
     await again.total([filter]);
     assert.equal(net.urls.length, 1);
@@ -149,7 +149,7 @@ test("evidência: o cache contaminado (sem recorte, 0 partidas) não é usado e 
   const [ex, said] = quietly(() => explorer(file, { ids }));
   assert.deepEqual(ex.health(), {
     kept: 0,
-    rejected: { expired: 0, scope: 6, outOfSet: 0, empty: 0 },
+    rejected: { expired: 0, scope: 6, outOfSet: 0, format: 0, empty: 0 },
   });
   assert.match(said.join("\n"), /6 sem o recorte de set\/patch atual/);
   const net = withRows(() => [
@@ -173,18 +173,26 @@ test("evidência: o cache contaminado (sem recorte, 0 partidas) não é usado e 
     expired: 0,
     scope: 0,
     outOfSet: 0,
+    format: 0,
     empty: 6,
   });
   // Basta uma resposta com partidas para o cache valer (0 partidas numa combinação rara é legítimo).
   const mixed = Object.fromEntries(asked.map((k) => [k, tagged(zero)]));
-  mixed[asked[0]] = tagged({ avg: 4.2, games: 300, top4: 55 });
+  mixed[asked[0]] = tagged({ avg: 4.2, games: 300, top4: 55, win: 14 });
   assert.equal(screenCache(mixed, { ids }).kept.length, 6);
+  // Total com partidas mas sem a taxa de vitória (formato antigo): descartado para ser perguntado de novo.
+  const old = {
+    ...mixed,
+    [asked[0]]: tagged({ avg: 4.2, games: 300, top4: 55 }),
+  };
+  const screened = screenCache(old, { ids });
+  assert.equal(screened.rejected.format, 1);
 });
 
 test("evidência: pergunta com peça ou sinergia fora do catálogo é 'fora do set'", () => {
   const now = Date.now();
   const tagged = (value) => ({ at: now, scope: SCOPE_TAG, value });
-  const ok = { avg: 4.2, games: 300, top4: 55 };
+  const ok = { avg: 4.2, games: 300, top4: 55, win: 14 };
   const saved = {
     [`total?${exactUnit(ornn, 2, 1)}&trait=DA_18_Elderwood_2`]: tagged(ok),
     [`total?${exactUnit("TFT17_Vex", 2, 1)}`]: tagged(ok),
@@ -196,7 +204,13 @@ test("evidência: pergunta com peça ou sinergia fora do catálogo é 'fora do s
     kept.map(([k]) => k),
     [`total?${exactUnit(ornn, 2, 1)}&trait=DA_18_Elderwood_2`],
   );
-  assert.deepEqual(rejected, { expired: 1, scope: 0, outOfSet: 2, empty: 0 });
+  assert.deepEqual(rejected, {
+    expired: 1,
+    scope: 0,
+    outOfSet: 2,
+    format: 0,
+    empty: 0,
+  });
   assert.deepEqual(
     evidenceIds(
       `units_unique?unit=!${ornn}&${exactUnit(lillia, 3, 2)}&level=8`,

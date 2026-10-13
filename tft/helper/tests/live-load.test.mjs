@@ -153,7 +153,12 @@ test("explorer: gravação do cache é atômica, igual ao JSON de antes e só ac
     return {
       ok: true,
       json: async () => [
-        { avg_placement: 4.2, total_games: 100, top4_percentage: 55.5 },
+        {
+          avg_placement: 4.2,
+          total_games: 100,
+          top4_percentage: 55.5,
+          win_percentage: 14.25,
+        },
       ],
     };
   };
@@ -163,6 +168,7 @@ test("explorer: gravação do cache é atômica, igual ao JSON de antes e só ac
       avg: 4.2,
       games: 100,
       top4: 55.5,
+      win: 14.25,
     });
     assert.ok(!fs.existsSync(file), "a gravação espera o lote (mín. 2 s)");
     await ex.flush();
@@ -172,6 +178,7 @@ test("explorer: gravação do cache é atômica, igual ao JSON de antes e só ac
       avg: 4.2,
       games: 100,
       top4: 55.5,
+      win: 14.25,
     });
     assert.ok(!fs.existsSync(`${file}.tmp`), "o temporário foi renomeado");
     assert.match(ex.takeStats(), /evidencia gravou=1 ms=\d+ KB=\d+/);

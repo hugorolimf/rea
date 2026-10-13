@@ -19,7 +19,34 @@ export const BADGE_ANCHORS = Object.freeze({
   roll: Object.freeze({ kind: "reroll", side: "left" }),
   level: Object.freeze({ kind: "xpButton", side: "left" }),
   gold: Object.freeze({ kind: "gold", side: "right" }),
+  // Bloquear rival: compacto, logo acima da loja (sobre o 1º cartão).
+  deny: Object.freeze({ kind: "shop", slot: 1, side: "top" }),
 });
+
+/**
+ * Selo "Bloquear" acima da loja: as peças fortes que um rival está perto de fechar (view.items.deny, engine.mjs
+ * `denialsOf`), em retratos com a estrela que ele busca; a que está na sua loja agora vem primeiro. null sem bloqueio.
+ */
+export function denyBadge(deny) {
+  const rows = (Array.isArray(deny) ? deny : [])
+    .slice()
+    .sort((a, b) => (b.inShop > 0) - (a.inShop > 0))
+    .slice(0, 3);
+  if (!rows.length) return null;
+  const inShop = rows.some((r) => r.inShop > 0);
+  return {
+    id: "deny",
+    icon: "⛔",
+    tone: inShop ? "amber" : "info",
+    text: "Bloquear",
+    targets: rows.map((r) => ({
+      id: r.unit?.id,
+      name: `${r.unit?.name ?? ""} de ${r.rival}${r.inShop ? " (na sua loja)" : ""}`,
+      goal: `${r.toStars}★`,
+    })),
+    why: rows.map((r) => r.reason).join(" | "),
+  };
+}
 
 /** Medidas do selo na escala base (multiplicadas por `--k`). */
 export const BADGE = Object.freeze({
@@ -333,10 +360,14 @@ export function buildBadges(view, opts = {}) {
         gold: view.bar?.gold?.value,
         interestOf: opts.interestOf,
       }),
+      denyBadge(view.items?.deny),
     ].filter(Boolean);
     return list.map((b) => ({
       ...b,
-      anchor: b.anchor ?? { kind: BADGE_ANCHORS[b.id].kind },
+      anchor: b.anchor ?? {
+        kind: BADGE_ANCHORS[b.id].kind,
+        ...(BADGE_ANCHORS[b.id].slot ? { slot: BADGE_ANCHORS[b.id].slot } : {}),
+      },
       side: b.side ?? BADGE_ANCHORS[b.id].side,
     }));
   } catch {
@@ -352,7 +383,9 @@ export function badgeSize(
 ) {
   // Com alvos, cada nome vira um retrato (~22 px) mais a estrela.
   const main = badge.targets?.length
-    ? measure(`↻ ${badge.rolls ? rollsText(badge.rolls) : ""}`) +
+    ? measure(
+        `${badge.icon ?? "↻"} ${badge.rolls ? rollsText(badge.rolls) : ""}`,
+      ) +
       badge.targets.length * (22 + 3 * BADGE.charW)
     : measure(badge.text);
   const w = Math.max(main, badge.sub ? measure(badge.sub) : 0);
@@ -404,7 +437,7 @@ export function drawBadges(placed, ui) {
       .join("");
   const label = (b) =>
     b.targets?.length
-      ? `↻ ${targetsHtml(b)}${b.rolls ? ` ${esc(rollsText(b.rolls))}` : ""}`
+      ? `${esc(b.icon ?? "↻")} ${targetsHtml(b)}${b.rolls ? ` ${esc(rollsText(b.rolls))}` : ""}`
       : b.unit && typeof richText === "function"
         ? richText(b.text, { size: 16 })
         : esc(b.text);

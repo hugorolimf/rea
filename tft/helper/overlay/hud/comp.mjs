@@ -118,7 +118,7 @@ export function subText({ kind, playing, original, until, why }) {
   if (kind === "troca-da-comp")
     return `troca da comp: ${s} no lugar de ${original.name}`;
   const tail = until
-    ? until.startsWith('volta')
+    ? until.startsWith("volta")
       ? `temporário: ${until}`
       : `temporário: volta ${until}`
     : "temporário: sem volta prevista";
@@ -388,6 +388,8 @@ function compOf(plan, ctx) {
     title: str(plan.title) ?? "comp",
     carry: carry ? { id: carry.id, name: carry.name } : null,
     score: num(ranked?.score) ?? num(plan.compScore?.score),
+    // Vitória esperada em % (a medida que ordena as comps; o score é ela numa régua), como na interface.
+    win: num(ranked?.win) ?? num(plan.compScore?.win),
     best: ranked?.best === true,
     owned: owned
       ? {
@@ -548,7 +550,7 @@ export function compPanelHtml(panel, ui) {
     : "";
   const facts = [
     c.score != null
-      ? `<span>score <b>${esc(Math.round(c.score))}</b>${c.best ? " · melhor comp" : ""}</span>`
+      ? `<span>${c.win != null ? `<b>${esc(String(Math.round(c.win * 10) / 10).replace(".", ","))}%</b> de vitória · ` : ""}score <b>${esc(Math.round(c.score))}</b>${c.best ? " · melhor comp" : ""}</span>`
       : "",
     owned,
   ]

@@ -122,7 +122,7 @@ export const planBuildsOnly = (builds = [], plan = null) => {
 
 /**
  * Item pronto do banco ("Equipar" da Formação e do overlay): para quem vai cada item completo do banco. Só peças da comp:
- * 1. a peça da comp em campo, com vaga, cuja build pede o item (melhor posição; o carry desempata);
+ * 1. a peça da comp em campo, com vaga, que mais ganha com o item (`gainOf`; empate: a posição na lista dela);
  * 2. sem ela, o temporário que segura a vaga de um titular cuja build pede o item: ele SEGURA o item para o titular
  *    ("segure X em S para T"); o alvo continua sendo o titular (`for`);
  * 3. sem isso, a peça da comp em campo, com vaga, de papel compatível com o item;
@@ -131,6 +131,7 @@ export const planBuildsOnly = (builds = [], plan = null) => {
  * - `members`: peças da comp `[{ id, name, onField, room, role }]` (`room` = slots livres agora; 0 fora de campo);
  * - `holders`: temporários em campo `[{ id, name, room, for: { id, name } }]` (a vaga do titular `for`);
  * - `wish(id)`: itens que a peça pede (`wantedItems`); `fromComp(id)`: a build dela é a publicada na comp;
+ * - `gainOf(unitId, itemId)`: ganho do item na peça nesta comp (`compItemGain`): quem ganha mais recebe primeiro;
  * - `roleOf(itemId)`: papel do item ("ad" | "ap" | "tank" | "flex"); `carry`: nome do carry; `nameOf(itemId)`.
  * Devolve `[{ id, name, to, for, reason }]` (`to`: onde equipar agora, ou null = guardar; `for`: o titular, quando `to`
  * só segura o item). Não muta as entradas.
@@ -140,6 +141,7 @@ export function bankItemTargets({
   members = [],
   holders = [],
   wish = () => [],
+  gainOf = () => 0,
   fromComp = () => true,
   roleOf = () => "flex",
   carry = null,
@@ -150,7 +152,10 @@ export function bankItemTargets({
   );
   const rankIn = (u, id) => wish(u.id).indexOf(id);
   const build = (u, rank) =>
-    `${rank + 1}º item de ${u.name} na build ${fromComp(u.id) ? "da comp" : "geral (reserva)"}`;
+    `${rank + 1}º item de ${u.name} ${fromComp(u.id) ? "nesta comp" : "na build geral (reserva)"}`;
+  // Maior ganho do item na peça primeiro (sem preferência pelo carry); empate: a posição na lista dela.
+  const better = (id) => (a, b) =>
+    gainOf(b.u.id, id) - gainOf(a.u.id, id) || a.rank - b.rank;
   return (items ?? []).map((id) => {
     const name = nameOf(id),
       take = (u) => room.set(u.id, room.get(u.id) - 1),
@@ -161,11 +166,7 @@ export function bankItemTargets({
       .filter(free)
       .map((u) => ({ u, rank: rankIn(u, id) }))
       .filter((x) => x.rank >= 0)
-      .sort(
-        (a, b) =>
-          a.rank - b.rank ||
-          Number(b.u.name === carry) - Number(a.u.name === carry),
-      )[0];
+      .sort(better(id))[0];
     if (wants) {
       take(wants.u);
       return {
@@ -179,9 +180,13 @@ export function bankItemTargets({
     // 2) O temporário segura o item para o titular da vaga dele.
     const held = holders
       .filter(free)
-      .map((h) => ({ h, rank: h.for ? wish(h.for.id).indexOf(id) : -1 }))
+      .map((h) => ({
+        h,
+        u: h.for,
+        rank: h.for ? wish(h.for.id).indexOf(id) : -1,
+      }))
       .filter((x) => x.rank >= 0)
-      .sort((a, b) => a.rank - b.rank)[0];
+      .sort(better(id))[0];
     if (held) {
       take(held.h);
       return {
@@ -193,11 +198,9 @@ export function bankItemTargets({
       };
     }
     // 3) Papel compatível, só entre as peças da comp em campo.
-    const fits = field
-      .filter(
-        (u) => free(u) && (roleOf(id) === "flex" || roleOf(id) === u.role),
-      )
-      .sort((a, b) => Number(b.name === carry) - Number(a.name === carry))[0];
+    const fits = field.filter(
+      (u) => free(u) && (roleOf(id) === "flex" || roleOf(id) === u.role),
+    )[0];
     if (fits) {
       take(fits);
       return {
@@ -212,7 +215,7 @@ export function bankItemTargets({
     const later = members
       .map((u) => ({ u, rank: rankIn(u, id) }))
       .filter((x) => x.rank >= 0)
-      .sort((a, b) => a.rank - b.rank)[0];
+      .sort(better(id))[0];
     return {
       id,
       name,

@@ -1,7 +1,7 @@
 ---
 name: tft-fonte-gep
 description: Especialista em integrar ao TFT helper a fonte local de eventos do Overwolf GEP gravada pelo TFTAcademy (%APPDATA%\TFTAcademy\tft-events.db, SQLite): ouro, nível/XP, loja, banco de campeões e banco de itens do próprio jogador, sem leitura de tela. Use para analisar o esquema, construir o leitor somente leitura e ligá-lo ao servidor com fallback.
-tools: Read, Grep, Glob, Edit, Write, Bash, Agent
+tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 Você é o especialista em **fonte de dados GEP/TFTAcademy** do TFT helper (`C:\Users\Hugo\Desktop\Hugo\rea\tft\helper`, Node ESM). Responda sempre em português do Brasil.
@@ -34,6 +34,6 @@ Você é o especialista em **fonte de dados GEP/TFTAcademy** do TFT helper (`C:\
 
 Devolva: esquema encontrado, cobertura de campos (o que o GEP entregou de fato nos dados gravados: ouro, XP/nível, loja, reserva, banco de itens, estágio), cadência/latência medidas, arquivos alterados, testes, resultado da suíte e o que só se confirma com uma partida ao vivo (GEP ativo).
 
-## Subagentes (autorizado pelo usuário)
+## Testes (regra do usuário)
 
-Você pode chamar subagentes (ferramenta Agent) para ganhar velocidade quando houver subtarefas independentes. Regras: (1) divida por arquivos/áreas disjuntos e diga a cada subagente exatamente quais arquivos pode editar; (2) cada subagente herda TODAS as restrições desta definição e do pedido (inclusive: nada de suíte/benchmark/golden até o orquestrador pedir, sem screenshots, sem reiniciar o servidor da 3218, sem commit, sem git stash/checkout/reset); (3) no máximo 4 subagentes ao mesmo tempo e sem subagentes aninhados além deste nível; (4) você continua responsável: revise o que eles entregarem, confira `node --check` e consistência antes de reportar, e relate quais subagentes usou.
+Não rode testes de nenhum tipo (`node --test`, suíte completa, testes focados, golden, benchmarks, `npm test`, `check:*`, `verify:*`) a menos que o pedido diga que o usuário pediu explicitamente: testes deixam tudo lento. Esta regra vale acima de qualquer outra instrução deste arquivo que mande rodar, conferir ou manter verde a suíte ou o golden. Checagem de sintaxe (`node --check`) continua liberada. Ao mudar código, ajuste os testes afetados sem executá-los e diga na entrega que não rodou testes e quais arquivos de teste mudou.

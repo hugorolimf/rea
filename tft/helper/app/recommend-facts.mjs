@@ -31,6 +31,7 @@ import { analyze } from "../engine.mjs";
 import { tactics } from "../tactics.mjs";
 import { stagePlan } from "../stage.mjs";
 import { slotTransitions } from "../core/board/interim.mjs";
+import { levelFitSwaps } from "../core/comps/level-fit.mjs";
 import { strategy } from "../strategy.mjs";
 import { suggestTargetLevel } from "../target-level.mjs";
 
@@ -78,6 +79,7 @@ export const GRAPH_INPUTS = Object.freeze({
   goalSwaps: null,
   compSwaps: null,
   metaComps: null,
+  compBoards: null,
   metaBuilds: null,
   metaRoles: null,
   metaLabel: null,
@@ -196,26 +198,81 @@ export const levelTargetNumberFact = defineFact({
   doc: "O nível-alvo sem os motivos.",
 });
 
-function swappedOf({ metaComps, compSwaps }) {
-  // Automático com substituições: a comp de meta já entra no ranking com as peças trocadas pelo usuário.
+/** Suas peças (campo e reserva) por apiName → maior estrela, lidas do snapshot e da reserva. */
+function ownedStars(snapshot, playerId, bench) {
+  const self = snapshot?.statsBlock?.players?.find(
+    (p) => String(p.playerId) === String(playerId),
+  );
+  const out = new Map();
+  const add = (u) => {
+    const id = u?.championName;
+    if (id) out.set(id, Math.max(out.get(id) ?? 0, u.starLevel ?? 1));
+  };
+  for (const u of self?.boardPieces ?? []) add(u);
+  for (const u of bench ?? [])
+    if (String(u.playerId) === String(playerId)) add(u);
+  return out;
+}
+
+function swappedOf({
+  metaComps,
+  compBoards,
+  compSwaps,
+  level,
+  snapshot,
+  playerId,
+  bench,
+  boardStats,
+  catalog,
+  traits,
+}) {
+  const byId = new Map(catalog.champions.map((c) => [c.apiName, c])),
+    lctx = {
+      level,
+      owned: ownedStars(snapshot, playerId, bench),
+      byId,
+      book: traits,
+      traitName: new Map(catalog.traits.map((t) => [t.apiName, t.name])),
+      unitStats: boardStats?.unit ?? null,
+    };
   return (metaComps ?? []).map((c) => {
-    const list = (compSwaps[c.id] ?? []).filter(
+    // Trocas do usuário primeiro: a comp de meta já entra no ranking com as peças trocadas por ele.
+    const list = ((compSwaps ?? {})[c.id] ?? []).filter(
       (x) =>
         x.out !== c.carry && c.units.includes(x.out) && !c.units.includes(x.in),
     );
-    if (!list.length) return c;
     const units = [...c.units];
     for (const x of list) units.splice(units.indexOf(x.out), 1, x.in);
-    return { ...c, units, appliedSwaps: list };
+    // Depois a comp ajustada ao nível (core/comps/level-fit.mjs): no nível alto, a vaga de apoio fica com a peça mais
+    // forte achável no nível; as peças que o usuário trocou não são mexidas.
+    const touched = new Set(list.flatMap((x) => [x.out, x.in]));
+    const auto = levelFitSwaps(
+      { ...c, units, options: compBoards?.[c.id] ?? null },
+      lctx,
+    ).filter((x) => !touched.has(x.out) && !touched.has(x.in));
+    for (const x of auto) units.splice(units.indexOf(x.out), 1, x.in);
+    const applied = [...list, ...auto];
+    return applied.length ? { ...c, units, appliedSwaps: applied } : c;
   });
 }
 
 export const compsSwappedFact = defineFact({
   id: "comps.swapped",
-  inputs: ["metaComps", "compSwaps"],
+  inputs: {
+    metaComps: "metaComps",
+    compBoards: "compBoards",
+    compSwaps: "compSwaps",
+    level: "level",
+    snapshot: "snapshot",
+    playerId: "playerId",
+    bench: "bench",
+    boardStats: "boardStats",
+    catalog: "catalog",
+    traits: "catalog.traits",
+  },
   compute: swappedOf,
   keep: 4,
-  doc: "Comps de meta com as trocas do usuário aplicadas (só as que valem: a peça que sai está na comp e a que entra não).",
+  doc: "Comps de meta com as trocas do usuário aplicadas (só as que valem: a peça que sai está na comp e a que entra não) e, no nível alto, as trocas pelo nível (core/comps/level-fit.mjs).",
 });
 
 /* ---------- A base: o motor de comps ---------- */
@@ -413,6 +470,7 @@ function tacticalOf(i) {
         stars3: i.goal.stars3,
         builds: i.goal.builds,
         buildStats: i.goal.buildStats ?? {},
+        itemPicks: i.goal.itemPicks ?? null,
       },
     });
   return analysis;
@@ -693,6 +751,8 @@ export function recommendValues({
     goalSwaps: options.goalSwaps,
     compSwaps: options.compSwaps,
     metaComps: metaComps.comps,
+    // Tabuleiros por nível de cada comp (MetaTFT comp_options), só para o ajuste por nível (fato comps.swapped).
+    compBoards: metaComps.levelBoards ?? null,
     metaBuilds: meta.builds,
     metaRoles: meta.roles,
     metaLabel: meta.label,

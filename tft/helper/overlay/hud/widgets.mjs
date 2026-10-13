@@ -20,6 +20,7 @@ import {
   ELEMENT_LABELS,
   moveElement,
   parseLayout,
+  autoHeight,
   resizeElement,
   setHidden,
 } from "./layout.mjs";
@@ -100,7 +101,7 @@ export function pointInRects(x, y, rects, pad = 0) {
  */
 export function gestureResult(kind, start, dxPx, dyPx, stage, heightPx = 0) {
   return kind === "resize"
-    ? resizeElement(start, dxPx, stage)
+    ? resizeElement(start, dxPx, stage, dyPx, heightPx)
     : moveElement(start, dxPx, dyPx, stage, heightPx);
 }
 
@@ -318,8 +319,15 @@ export function applyLayout(
     const want = wantedRect(id, layout[id], frame, k, 0, !interactive);
     if (want) map[id].wrap.style.width = `${want.width}px`;
   }
-  for (const id of shownIds)
-    heights[id] = map[id].inner.getBoundingClientRect().height;
+  // Altura escolhida no modo de edição (`h`, fração do HUD): o painel fica nela e o conteúdo rola dentro; sem ela, a medida.
+  for (const id of shownIds) {
+    const fixed = layout[id].h;
+    map[id].wrap.dataset.fixed = fixed ? "1" : "0";
+    heights[id] =
+      fixed && frame.hud?.height
+        ? Math.round(fixed * frame.hud.height)
+        : map[id].inner.getBoundingClientRect().height;
+  }
   // Segunda: a posição efetiva, já com as alturas medidas.
   const arrangement = arrangeElements({
     stage,
@@ -421,6 +429,18 @@ export function mountWidgets({ stage, host, getState, preview, map }) {
     });
   stage.addEventListener("lostpointercapture", (e) => {
     if (gesture && e.pointerId === gesture.pointerId) finish(true);
+  });
+  // Duplo clique na alça do canto: volta à altura do conteúdo.
+  stage.addEventListener("dblclick", (e) => {
+    const handle =
+      e.target instanceof Element
+        ? e.target.closest('[data-act="resize"]')
+        : null;
+    if (!handle) return;
+    const { interactive, layout } = getState(),
+      id = handle.closest("[data-el]")?.dataset.el;
+    if (interactive && id && layout[id]?.h)
+      call("saveLayout", autoHeight(layout, id));
   });
   stage.addEventListener("click", (e) => {
     const btn =

@@ -2,7 +2,7 @@
 // O que a casa da Formação desenha com substituto temporário, troca da comp e compra da loja (cell.sub, model.js slotView).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cellLook } from "./board-look.js";
+import { cellLook, cellMarks } from "./board-look.js";
 
 const cell = (over = {}) => ({
   id: "TFT_Aphelios",
@@ -141,4 +141,92 @@ test("sem vaga (sub nulo): a casa desenha como sempre", () => {
     swapped.label,
     "Aphelios 1★ · em campo · segure: Varus sai (1/3)",
   );
+});
+
+// O antigo "Agora" e as "Substituições" no tabuleiro: a compra, a troca sugerida e a aplicada viram selos da casa.
+const buyRow = (over = {}) => ({
+  key: "buy:TFT_Aphelios",
+  kind: "buy",
+  unit: { id: "TFT_Aphelios", name: "Aphelios", cost: 4 },
+  how: "bank",
+  chance: 0.12,
+  broke: false,
+  ...over,
+});
+const flexOf = (pick) => ({
+  id: "TFT_Aphelios",
+  name: "Aphelios",
+  cost: 4,
+  options: pick ? [pick] : [],
+  pick,
+});
+
+test("marcas da casa: compra, troca sugerida e aplicada por id; compra sem casa fica de fora", () => {
+  const plan = {
+    steps: [
+      {
+        id: "buy",
+        rows: [
+          buyRow(),
+          buyRow({ unit: { id: "TFT_Fora", name: "Fora", cost: 1 } }),
+        ],
+      },
+    ],
+    subs: [flexOf({ id: "TFT_Varus", name: "Varus", cost: 2 })],
+  };
+  const { marks, loose } = cellMarks(
+    plan,
+    [cell(), cell({ id: "TFT_Ashe", name: "Ashe" })],
+    [{ out: "TFT_Jinx", in: "TFT_Ashe" }],
+  );
+  assert.equal(marks.get("TFT_Aphelios").want.chance, 0.12);
+  assert.equal(marks.get("TFT_Aphelios").flex.pick.id, "TFT_Varus");
+  assert.equal(marks.get("TFT_Ashe").applied.out, "TFT_Jinx");
+  assert.deepEqual(
+    loose.map((r) => r.unit.id),
+    ["TFT_Fora"],
+  );
+  // Outra comp à vista (sem plano): nenhuma marca, e as compras não têm onde cair.
+  assert.equal(cellMarks(null, [cell()]).marks.size, 0);
+});
+
+test("casa com compra: fora da loja a chance por loja; na loja o selo de compra (cópia: a estrela que fecha)", () => {
+  const out = cellLook(cell({ status: "incoming" }), { want: buyRow() });
+  assert.deepEqual(out.want, { text: "12%", broke: false });
+  assert.equal(out.buy, null);
+  assert.match(out.label, /comprar \(12% por loja\), guardar no banco/);
+  const now = cellLook(cell({ status: "incoming" }), {
+    want: buyRow({ shop: { mark: "comprar 1 · #3" } }),
+  });
+  assert.equal(now.want, null);
+  assert.equal(now.buy.cost, 4);
+  assert.equal(now.badge, "buy");
+  assert.match(now.label, /na loja agora: compre/);
+  const copy = cellLook(cell({ status: "owned" }), {
+    want: buyRow({
+      how: "copy",
+      copy: { next: 2, text: "→2★" },
+      shop: { mark: "comprar 1" },
+    }),
+  });
+  assert.equal(copy.buy.cost, "→2★");
+  assert.equal(
+    cellLook(cell(), { want: buyRow({ chance: 0.089, broke: true }) }).want
+      .text,
+    "8.9%",
+  );
+});
+
+test("casa com troca: a sugerida com o retrato dela, sob pressão sem alternativa e a aplicada", () => {
+  const sug = cellLook(cell(), {
+    flex: flexOf({ id: "TFT_Varus", name: "Varus", cost: 2 }),
+  });
+  assert.deepEqual(sug.alt, { kind: "suggest", id: "TFT_Varus", cost: 2 });
+  assert.match(sug.label, /troca sugerida: Varus/);
+  assert.equal(cellLook(cell(), { flex: flexOf(null) }).alt.kind, "stuck");
+  const done = cellLook(cell(), {
+    applied: { out: "TFT_Jinx", in: "TFT_Aphelios" },
+  });
+  assert.equal(done.alt.kind, "applied");
+  assert.equal(cellLook(cell()).alt, null);
 });

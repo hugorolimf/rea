@@ -187,4 +187,12 @@
       color: var(--go);
     }
   }
+  /* Ganho do item no campeão nesta comp ("+0,29"): números alinhados, à direita da linha. */
+  .nx-gain {
+    margin-inline-start: auto;
+    color: var(--go);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
 }

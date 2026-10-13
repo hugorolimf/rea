@@ -1,9 +1,10 @@
-// Score de uma comp para o jogador agora (0 a 100): a COLOCAÇÃO ESPERADA (E, engine.mjs) numa régua, nada além dela.
-// E é a medida única das comps: o motor ordena as sugeridas por ela, decide a troca do plano em andamento por ela e a
-// tela a mostra ("4,3º esperado · 48% top 4"); o score é uma transformação monótona de E (2º esperado = 100, 6º = 0),
-// então a lista nunca mostra um score maior atrás de um menor por causa de pesos independentes. Puro e sem I/O.
+// Score de uma comp para o jogador agora (0 a 100): a VITÓRIA ESPERADA (W, engine.mjs: chance de terminar em 1º) numa
+// régua, nada além dela. W é a medida das comps: o motor ordena as sugeridas por ela e decide a troca do plano em
+// andamento por ela; a tela a mostra ("14,2% de vitória · 4,3º esperado"). O score é uma transformação monótona de W
+// (core/comps/win.mjs `scoreFromWin`: 2% = 0, 12,5% = 50, 25% ≈ 78, sem teto), então a lista nunca mostra um score maior atrás de um menor por
+// causa de pesos independentes. Sem W (quem chama sem ela), vale a régua antiga da colocação esperada E. Puro e sem I/O.
 //
-// E já leva tudo o que decide: a força medida (ou publicada) da comp com os seus itens, a chance de montá-la a tempo
+// W (e a colocação esperada E, que segue como informação) já leva tudo o que decide: a força medida (ou publicada) da comp com os seus itens, a chance de montá-la a tempo
 // (alcance, core/comps/reach.mjs: o que você tem, a pool, os rivais, o ouro, o nível, a vida), o tabuleiro em que você
 // fica se não montar, os aprimoramentos escolhidos e o plano de itens. As PARTES abaixo (itens, o que você tem, força,
 // alcance, loja e disputa) são só informação para a tela: não entram no score.
@@ -28,6 +29,8 @@ export const ITEM_PLAN_SHARE = 0.6;
 export const CONTEST_PER_POINT = 0.07;
 export const MAX_CONTEST = 0.45;
 
+import { scoreFromWin } from "./core/comps/win.mjs";
+
 const clamp = (v, lo = 0, hi = 1) =>
   Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo));
 const round = (v, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
@@ -45,14 +48,17 @@ export const scoreFromExpected = (expected) =>
       );
 
 /**
- * `expected`: a colocação esperada E (engine.mjs: com o alcance, a reserva, os aprimoramentos e os itens); `top4`: % de
+ * `win`: a vitória esperada W (fração; engine.mjs) — com ela, o score é W na régua; `expected`: a colocação esperada E
+ * (engine.mjs: com o alcance, a reserva, os aprimoramentos e os itens), que vale para o score só sem W; `top4`: % de
  * top 4 da mesma conta (null sem dado). Partes informativas: `itemGain`/`carryItems`/`carryWanted`/`itemPlan` (itens),
  * `reach` (0..1: parte esperada da comp no prazo, compReach().share), `chance` (montá-la inteira no prazo,
  * compReach().chance; padrão = `reach`), `held` (0..1: o que você já tem, engine.mjs heldOf), `shopHits` (peças que
  * faltam e estão na loja) e `dispute` (disputa do motor).
- * Devolve `{ score, expected, top4, chance, parts, contest }`; `score` = scoreFromExpected(expected).
+ * Devolve `{ score, win, expected, top4, chance, parts, contest }`; `score` = scoreFromWin(win) (sem W,
+ * scoreFromExpected(expected)); `win` em %.
  */
 export function compScore({
+  win = null,
   expected = null,
   top4 = null,
   itemGain = 0,
@@ -84,8 +90,10 @@ export function compScore({
               (1 - ITEM_PLAN_SHARE) * clamp(itemGain / ITEM_GAIN_FULL),
           ),
     contest = 1 - clamp(dispute * CONTEST_PER_POINT, 0, MAX_CONTEST);
+  const hasWin = win != null && Number.isFinite(win);
   return {
-    score: scoreFromExpected(expected),
+    score: hasWin ? scoreFromWin(win) : scoreFromExpected(expected),
+    win: hasWin ? round(win * 100, 1) : null,
     expected: expected == null ? null : round(expected, 2),
     top4: top4 == null ? null : round(top4, 1),
     chance: round(clamp(chance), 3),

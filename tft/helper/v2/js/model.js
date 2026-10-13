@@ -130,7 +130,8 @@ function scoreOfPlan(plan, rec, level) {
   if (score === null) return null;
   return {
     value: Math.round(score),
-    // Colocação esperada (a medida única do motor: o score é ela numa régua) e o top 4 da mesma conta.
+    // Vitória esperada em % (a medida do motor: o score é ela numa régua), a colocação esperada e o top 4 da mesma conta.
+    win: num(ranked?.win) ?? num(own?.win),
     expected: num(ranked?.expected) ?? num(own?.expected),
     top4: num(ranked?.top4) ?? num(own?.top4),
     chance: num(ranked?.chance) ?? num(own?.chance),
@@ -551,6 +552,10 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     next: "items",
     builds: "items",
     carousel: "items",
+    deny: "now",
+    "anvil-component": "items",
+    "anvil-completed": "items",
+    "anvil-artifact": "items",
   };
   const add = (id, title, tone, rows, note = null) =>
     rows.length &&
@@ -572,17 +577,8 @@ export function buildModel({ state, rec }, { review = null } = {}) {
     "go",
     dock.filter((d) => d.kind === "ready").map((d) => ({ ...d, kind: "swap" })),
   );
-  add("equip", "Equipar", "go", [
-    ...stageBoard
-      .filter((u) => u.equipNow?.length)
-      .map((u) => ({
-        key: `equip:${u.id}`,
-        kind: "equip",
-        unit: u,
-        items: u.equipNow,
-        inField: owned.has(u.id),
-      })),
-    ...(stage?.bankItems ?? []).map((i, n) => ({
+  // Item completo do banco e para quem (o que se MONTA está em "Próximo item": uma linha só por item).
+  add("equip", "Equipar", "go", (stage?.bankItems ?? []).map((i, n) => ({
       key: `bank:${i.id}:${n}`,
       kind: "bank",
       item: i,
@@ -591,8 +587,7 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       for: i.for ?? null,
       reason: i.reason,
       inField: i.to ? owned.has(i.to.id) : false,
-    })),
-  ]);
+    })));
   // Cópias que o plano quer de cada peça: o servidor lista uma linha por peça que falta (1 cópia); `want`/`copies`, se vierem, valem.
   const missing = (stage?.buyNow ?? []).map((u) => ({
     key: `buy:${u.id}`,
@@ -667,24 +662,128 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       method: m.method,
     })),
   );
+  // "Próximo item" (a lista principal de itens): a regra de prioridade do servidor (core/items/item-priority.mjs) com os
+  // itens que você tem. Primeiro o que monta agora, depois o que está a um componente; em cada parte, quem ganha mais com
+  // o item primeiro. Só campeões da comp (o titular; o temporário pode segurar o item, mas ele é do titular).
+  // Ao vivo primeiro (GET /api/state `itemsNow`: o banco e as peças de agora, sem esperar a análise das comps); sem ele, o da
+  // última análise.
+  const advice = state?.itemsNow ?? rec?.ownedItemAdvice ?? null,
+    // Componentes que a bigorna de componente oferece em ordem: o que falta a um item do "Próximo item" sai dela.
+    anvilParts = new Set(
+      (advice?.anvils ?? [])
+        .filter((a) => a.kind === "component")
+        .flatMap((a) => (a.picks ?? []).map((p) => p.id)),
+    ),
+    unitOf = (r) => {
+      const u = stageBoard.find((b) => b.id === r.championId);
+      return u ?? { id: r.championId, name: r.champion, stars: r.stars ?? 0 };
+    },
+    whole = (r) =>
+      (r.required ?? []).length === 1 && r.required[0] === r.item?.id,
+    nextRows = advice
+      ? [
+          ...(advice.ready ?? []).filter((r) => !whole(r)),
+          ...(advice.near ?? []),
+        ].map((r, n) => ({
+          key: `next:${r.championId}:${r.item?.id}:${n}`,
+          kind: "next",
+          unit: unitOf(r),
+          item: {
+            id: r.item?.id,
+            name: r.item?.name,
+            components: r.item?.components ?? [],
+            missingIds: r.missing ?? [],
+            usesHeld: r.item?.usesHeld ?? null,
+          },
+          gain: r.gain ?? null,
+          // Pronto para fazer agora (as linhas "a um componente" vêm depois).
+          ready: r.ready === true,
+          // Falta um componente que a sua bigorna de componente oferece: pegue-o nela.
+          anvil:
+            !r.ready && anvilParts.has(r.missing?.[0])
+              ? ((r.item?.components ?? []).find((c) => c.id === r.missing[0])
+                  ?.name ?? r.missing[0])
+              : null,
+          // Peça fora da comp que carrega o componente: o item é montado nela e passa para o titular depois.
+          holder: r.holder ? { id: r.holder.id, name: r.holder.name } : null,
+          // Peça que ainda não está em campo: o item fica guardado para ela.
+          later: !r.inField,
+          bank: Array.isArray(seen.items) ? seen.items : null,
+        }))
+      : stageBoard
+          .filter((u) => u.slotsFree > 0 && u.nextItem)
+          .map((u) => ({
+            key: `next:${u.id}`,
+            kind: "next",
+            unit: u,
+            item: u.nextItem,
+            // Banco de itens lido (GEP): a interface só o usa para mostrar os componentes quando o servidor não disse o que falta.
+            bank: Array.isArray(seen.items) ? seen.items : null,
+          }));
+  // Bloquear o rival (engine.mjs `denialsOf`): peças fortes que um rival está perto de fechar; comprar uma cópia baixa a
+  // chance dele. A peça na sua loja agora vem primeiro.
+  add(
+    "deny",
+    "Bloquear rival",
+    "amber",
+    [...(rec?.denials ?? [])]
+      .sort((a, b) => (b.inShop > 0) - (a.inShop > 0) || b.value - a.value)
+      .map((d) => ({
+        key: `deny:${d.rival?.id}:${d.id}`,
+        kind: "deny",
+        unit: { id: d.id, name: d.name, cost: d.cost },
+        rival: d.rival?.name ?? "",
+        toStars: d.toStars,
+        chance: d.chance,
+        chanceAfter: d.chanceAfter,
+        inShop: d.inShop ?? 0,
+        reason: d.reason ?? "",
+      })),
+  );
+  // Bigornas do banco como um carrossel de montagem (carousel.mjs `anvilPicks`): a ordem de escolha, porque a bigorna
+  // sorteia as opções. Um bloco por tipo, antes do "Próximo item".
+  const ANVIL = {
+    component: "Bigorna de componente",
+    completed: "Bigorna de item",
+    artifact: "Bigorna de artefato",
+  };
+  for (const a of advice?.anvils ?? [])
+    add(
+      `anvil-${a.kind}`,
+      `${ANVIL[a.kind] ?? "Bigorna"}${a.count > 1 ? ` ×${a.count}` : ""}: escolha nesta ordem`,
+      "go",
+      (a.picks ?? []).map((p) => ({
+        key: `anvil:${a.kind}:${p.id}`,
+        kind: "carousel",
+        item: { id: p.id, name: p.name },
+        rank: p.rank,
+        champion: p.champion ?? "",
+        championId: p.championId ?? null,
+        target: p.target?.id ? { id: p.target.id, name: p.target.name } : null,
+        completes: p.completesNow === true,
+        reason: p.reason ?? "",
+      })),
+    );
+  // Ganho somado do que dá para fazer agora (a distribuição de maior ganho total, core/items/item-priority.mjs).
+  const readyGain = nextRows
+    .filter((r) => r.ready && Number.isFinite(r.gain))
+    .reduce((n, r) => n + r.gain, 0);
   add(
     "next",
     "Próximo item",
     "blue",
-    stageBoard
-      .filter((u) => !u.equipNow?.length && u.slotsFree > 0 && u.nextItem)
-      .map((u) => ({
-        key: `next:${u.id}`,
-        kind: "next",
-        unit: u,
-        item: u.nextItem,
-        // Banco de itens lido (GEP): a interface só o usa para mostrar os componentes quando o servidor não disse o que falta.
-        bank: Array.isArray(seen.items) ? seen.items : null,
-      })),
+    nextRows,
+    readyGain > 0
+      ? {
+          text: `Montando tudo: +${readyGain.toFixed(2).replace(".", ",")} de colocação na comp`,
+          title:
+            "Cada item vai para o campeão da comp em que rende mais, escolhidos juntos pelo maior ganho somado (MetaTFT: quanto a colocação do campeão melhora com o item nesta comp). Em cada linha, o ganho daquele item.",
+        }
+      : null,
   );
   // Todos os itens recomendados de cada campeão em campo (até 3), com a situação de cada um segundo o banco lido
-  // (core/items/champion-items.mjs): o "Próximo item" acima é só o destaque. Só entra quem ainda tem item pendente; o
-  // carry primeiro. Sem banco lido não há o que dizer de "pronto"/"falta": a lista não aparece em vez de afirmar errado.
+  // (core/items/champion-items.mjs): o "Próximo item" acima é só o destaque. Só entra quem ainda tem item pendente,
+  // na ordem do plano (sem preferência pelo carry). Sem banco lido não há o que dizer de "pronto"/"falta": a lista não aparece em vez de afirmar errado.
   const bankNow = Array.isArray(seen.items) ? seen.items : null;
   add(
     "builds",
@@ -700,7 +799,6 @@ export function buildModel({ state, rec }, { review = null } = {}) {
       )
       .map((c) => ({ c, view: championItemsView(c, bankNow) }))
       .filter(({ view }) => view.items.some((i) => i.kind !== "on"))
-      .sort((a, b) => Number(b.c.carry) - Number(a.c.carry))
       .map(({ c, view }) => ({
         key: `builds:${c.id}`,
         kind: "builds",

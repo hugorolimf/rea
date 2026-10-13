@@ -515,12 +515,29 @@ function paintStage() {
   helpPanel?.render(mode, healthNow(), ui, fit, badgesHelpHtml(badgesNow, esc));
 }
 
+/**
+ * Painéis com conteúdo sobrando (`.items`, `.builds`, `.plan` mais altos que a altura máxima) viram regiões quentes
+ * (`data-hot`): com o cursor real sobre eles a janela recebe a roda do mouse e o painel rola; fora deles o click-through
+ * volta (main.mjs `syncHot`). Painel que cabe inteiro não captura nada.
+ */
+function markScrollable() {
+  for (const n of document.querySelectorAll(
+    '.items, .builds, .plan, .el[data-fixed="1"] .el-body',
+  )) {
+    const overflow = n.scrollHeight > n.clientHeight + 2;
+    if (overflow) n.setAttribute("data-hot", "scroll");
+    else if (n.getAttribute("data-hot") === "scroll")
+      n.removeAttribute("data-hot");
+  }
+}
+
 function redrawAll() {
   if (!modeReady) return;
   html.dataset.mode = mode.mode;
   placeSections();
   paintData();
   paintStage();
+  markScrollable();
   // O botão "Copiar comp" e o de recolher a legenda podem ter mudado de lugar: o host precisa saber onde estão.
   hit?.reportHot();
 }
@@ -704,6 +721,7 @@ const queueStage = () => {
   stageTimer = setTimeout(() => {
     stageTimer = 0;
     paintStage();
+    markScrollable();
     hit?.reportHot();
   }, STAGE_COALESCE_MS);
 };

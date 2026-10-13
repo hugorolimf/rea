@@ -82,7 +82,10 @@ test("index.html: marcos de p√°gina (landmarks), idioma, tema e ancora do conte√
   assert.match(html, /<header class="appbar" role="banner">/);
   assert.match(html, /<nav class="nav" aria-label="[^"]+">/);
   assert.match(html, /<main class="stage" id="stage"/);
-  assert.match(html, /<aside class="panel" id="panel" aria-label="[^"]+">/);
+  assert.match(
+    html,
+    /<aside class="panel[^"]*" id="panel" aria-label="[^"]+">/,
+  );
   assert.match(html, /<a class="skip-link" href="#stage">/);
   assert.match(html, /<meta name="color-scheme" content="dark light">/);
   assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);

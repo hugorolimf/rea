@@ -120,13 +120,58 @@ export const reserveItems = (championId, metaBuilds) => [
 ];
 
 /**
- * Itens que a peça pede, na ordem de prioridade: a build publicada da comp; sem ela, a reserva. É a lista que "Passar
- * itens", o item pronto do banco (loja), a dica de emblema e o plano de itens consultam (posição = `indexOf`).
+ * Itens bons do campeão NESTA comp, do maior ganho ao menor: os de `comp.itemPicks[id]` (MetaTFT `comp_builds`: ganho em
+ * colocação de cada item no campeão, já encolhido pela amostra; meta-comps.mjs) mais os da build publicada que não
+ * estiverem lá (ganho = a variação encolhida da build dividida pelos 3 itens). `[{ id, gain, n, inBuild }]`; vazio sem
+ * dado da comp para o campeão. É a lista da regra de prioridade de itens (core/items/item-priority.mjs).
+ */
+const optionsMemo = new WeakMap();
+export function compItemOptions(comp, championId) {
+  if (!comp || typeof comp !== "object") return [];
+  let memo = optionsMemo.get(comp);
+  if (!memo) optionsMemo.set(comp, (memo = new Map()));
+  if (!memo.has(championId))
+    memo.set(championId, computeOptions(comp, championId));
+  return memo.get(championId);
+}
+function computeOptions(comp, championId) {
+  const picks = comp?.itemPicks?.[championId],
+    build = compBuild(comp, championId),
+    inBuild = new Set((build?.items ?? []).map(baseItemId)),
+    out = new Map();
+  for (const p of Array.isArray(picks) ? picks : []) {
+    const [id, gain, n] = p;
+    if (id && Number.isFinite(gain) && gain > 0 && !out.has(baseItemId(id)))
+      out.set(baseItemId(id), {
+        id: baseItemId(id),
+        gain,
+        n: n ?? null,
+        inBuild: inBuild.has(baseItemId(id)),
+      });
+  }
+  const fallback = Math.max(0.01, -shrunkDelta(build ?? {}) / 3 || 0.01);
+  for (const id of inBuild)
+    if (!out.has(id))
+      out.set(id, { id, gain: fallback, n: build?.n ?? null, inBuild: true });
+  return [...out.values()].sort((a, b) => b.gain - a.gain);
+}
+
+/** Ganho do item no campeão nesta comp (`compItemOptions`); 0 sem dado. Radiante vale o item base. */
+export const compItemGain = (comp, championId, itemId) =>
+  compItemOptions(comp, championId).find((o) => o.id === baseItemId(itemId))
+    ?.gain ?? 0;
+
+/**
+ * Itens que a peça pede, na ordem de prioridade: os itens bons dela na comp (`compItemOptions`, maior ganho primeiro);
+ * sem esse dado, a build publicada da comp; sem ela, a reserva. É a lista que "Passar itens", o item pronto do banco
+ * (loja), a dica de emblema e o plano de itens consultam (posição = `indexOf`).
  */
 export function wantedItems(
   championId,
   { comp = null, metaBuilds = null } = {},
 ) {
+  const options = compItemOptions(comp, championId);
+  if (options.length) return options.map((o) => o.id);
   return (
     compBuild(comp, championId)?.items ?? reserveItems(championId, metaBuilds)
   );
@@ -147,6 +192,27 @@ export function pendingItems(list = [], equipped = []) {
  * Pontos da reserva (sem build publicada na comp): a lista da build geral mais os itens medidos no campeão, ajustados pelo
  * lobby; sem dado nenhum, a tabela por papel. Política do helper (não medida), a mesma de antes da centralização.
  */
+// Itens medidos de cada campeão (`stats.unitItem` "campeão|item"), indexados uma vez por cópia das estatísticas: varrer
+// todos os pares a cada campeão era a conta mais cara da reserva.
+const measuredIndex = new WeakMap();
+function measuredItemsOf(stats, championId) {
+  const pairs = stats?.unitItem;
+  if (!pairs) return [];
+  let index = measuredIndex.get(pairs);
+  if (!index) {
+    index = new Map();
+    for (const k of Object.keys(pairs)) {
+      const at = k.indexOf("|");
+      if (at < 0) continue;
+      const unit = k.slice(0, at);
+      if (!index.has(unit)) index.set(unit, []);
+      index.get(unit).push(k.slice(at + 1));
+    }
+    measuredIndex.set(pairs, index);
+  }
+  return index.get(championId) ?? [];
+}
+
 function reserveScores(c, ctx, add) {
   const r = ctx.role(c),
     desc = c.ability?.desc ?? "",
@@ -157,10 +223,9 @@ function reserveScores(c, ctx, add) {
     lobby = ctx.lobby ?? {},
     { armor = 0, resists = 0, heals = 0, crit = 0, strong = false } = lobby,
     physicalShare = lobby.physicalShare ?? 0.5;
-  const measuredIds = Object.keys(ctx.stats?.unitItem ?? {})
-    .filter((k) => k.startsWith(c.apiName + "|"))
-    .map((k) => k.slice(c.apiName.length + 1))
-    .filter((id) => ctx.measured(c, id));
+  const measuredIds = measuredItemsOf(ctx.stats, c.apiName).filter((id) =>
+    ctx.measured(c, id),
+  );
   const meta = [
     ...new Set([...reserveItems(c.apiName, ctx.metaBuilds), ...measuredIds]),
   ];

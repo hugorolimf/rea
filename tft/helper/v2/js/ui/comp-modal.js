@@ -139,7 +139,7 @@ export function mountCompModal({ onPick, onRelease }) {
           }),
           score = plainScore(x),
           exp = Number.isFinite(x.fit?.expected)
-            ? `${String(Math.round(x.fit.expected * 10) / 10).replace(".", ",")}º esperado${Number.isFinite(x.fit?.top4) ? ` · ${Math.round(x.fit.top4)}% top 4` : ""}`
+            ? `${Number.isFinite(x.fit?.win) ? `${String(Math.round(x.fit.win * 10) / 10).replace(".", ",")}% de vitória · ` : ""}${String(Math.round(x.fit.expected * 10) / 10).replace(".", ",")}º esperado${Number.isFinite(x.fit?.top4) ? ` · ${Math.round(x.fit.top4)}% top 4` : ""}`
             : null,
           // Suas peças desta comp em campo e na reserva: a mesma regra do cartão (roster.js).
           own = compOwnership(data.roster ?? null, x.units).text,

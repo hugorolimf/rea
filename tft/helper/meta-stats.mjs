@@ -16,9 +16,17 @@ const BASE = "https://api-hc.metatft.com/tft-explorer-api/";
 const MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const filePath = (root) => path.join(root, "meta-stats.json");
 
+// [média, partidas, vitória em %]: a vitória (1º lugar) é a medida das comps (core/comps/win.mjs); quem lê só a média usa
+// os dois primeiros. Cópias antigas não têm o terceiro número.
 const stat = (r) =>
   Number.isFinite(r?.avg_placement) && r.total_games > 0
-    ? [Math.round(r.avg_placement * 1000) / 1000, r.total_games]
+    ? [
+        Math.round(r.avg_placement * 1000) / 1000,
+        r.total_games,
+        ...(Number.isFinite(r.win_percentage)
+          ? [Math.round(r.win_percentage * 100) / 100]
+          : []),
+      ]
     : null;
 
 async function get(name, signal) {
@@ -32,7 +40,7 @@ async function get(name, signal) {
 }
 
 /**
- * Baixa as tabelas e regrava a cópia local. Formato compacto: cada estatística é [média, partidas].
+ * Baixa as tabelas e regrava a cópia local. Formato compacto: cada estatística é [média, partidas, vitória %].
  * - `unit["id|estrelas|itens"]` (itens 0..3), `unit["id|estrelas"]`, `unit["id"]`;
  * - `unitItem["id|item"]` (o campeão com aquele item, uma cópia);
  * - `trait["apiName|patamar"]` (patamar = índice do breakpoint, 1 = o primeiro).

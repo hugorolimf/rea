@@ -368,36 +368,29 @@
     }
   }
 
-  /* ============================================================ Grade do Ao vivo (Agora | Painel | Formação) */
+  /* ============================================================ Grade do Ao vivo (Formação | Itens; embaixo, o resto) */
+  /* A Formação é a vista principal: o tabuleiro com os widgets de Roll, Agora e Substituições dentro dela (field.css).
+     Itens fica ao lado; a rolagem por peça, o Plano e os Aprimoramentos descem para depois da Formação. */
   .deck {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "todo"
-      "panel"
-      "col";
+      "field"
+      "items"
+      "below";
     gap: var(--sp-6) var(--gap);
     align-items: start;
     margin-top: var(--sp-5);
   }
-  .todo {
-    grid-area: todo;
+  .field {
+    grid-area: field;
+  }
+  .items-sec {
+    grid-area: items;
     min-inline-size: 0;
   }
-  .panel {
-    grid-area: panel;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-inline-size: 0;
-    padding: var(--sp-4) var(--sp-4);
-    border: 1px solid var(--line-soft);
-    border-radius: var(--radius);
-    background: var(--surface);
-    box-shadow: var(--shadow-1);
-  }
-  .col {
-    grid-area: col;
+  .below {
+    grid-area: below;
     min-inline-size: 0;
     /* Seções fluem em colunas conforme a largura (uma em tela estreita); nenhuma seção parte ao meio. */
     columns: 380px;
@@ -407,31 +400,48 @@
       margin-block-end: var(--sp-6);
     }
   }
-  /* Médio: Agora e Painel lado a lado; a coluna da formação embaixo, em largura inteira. */
-  @container stage (min-width: 760px) {
+  /* O cartão do widget de Roll (o interior é do panel.css). */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+    padding: var(--sp-4);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+  }
+  .items-sec:has(.steps[data-empty="1"]):has(.inventory[hidden]) {
+    display: none;
+  }
+  /* Sem itens para mostrar (a mesma condição de cima): a grade não guarda lugar para eles, nem a coluna ao lado nem a
+     linha vazia entre a Formação e o resto. `:has()` não aninha, por isso as duas condições ficam lado a lado; a
+     especificidade vence a grade larga abaixo. */
+  .deck:has(> .items-sec .steps[data-empty="1"]):has(> .items-sec .inventory[hidden]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "field"
+      "below";
+  }
+  /* Largo: Itens ao lado da Formação, grudado e com rolagem própria; o resto desce na coluna da Formação. A linha
+     flexível embaixo absorve a altura de Itens, para não abrir vão entre a Formação e o que vem depois. */
+  @container stage (min-width: 980px) {
     .deck {
-      grid-template-columns: minmax(0, 1fr) minmax(300px, var(--panel-w));
+      grid-template-columns: minmax(0, 1fr) var(--items-w);
+      grid-template-rows: auto 1fr;
       grid-template-areas:
-        "todo panel"
-        "col col";
+        "field items"
+        "below items";
     }
-    .panel {
+    .items-sec {
       position: sticky;
       top: calc(var(--live-top-h, 0px) + var(--sp-3));
       max-block-size: calc(100dvh - var(--appbar-h) - var(--live-top-h, 0px) - var(--sp-6));
       overflow: auto;
       overscroll-behavior: contain;
     }
-  }
-  /* Largo: três colunas, sem rolar para ver o Painel junto do Agora e da Formação. */
-  @container stage (min-width: 1180px) {
-    .deck {
-      grid-template-columns: minmax(0, 1fr) var(--panel-w) minmax(0, 1.1fr);
-      grid-template-areas: "todo panel col";
-    }
-  }
-  .items-sec:has(.steps[data-empty="1"]):has(.inventory[hidden]) {
-    display: none;
   }
 
   /* ============================================================ Estados globais do Ao vivo */

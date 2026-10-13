@@ -304,7 +304,7 @@ export function planTracker({ file = null, now = Date.now } = {}) {
         log(
           {
             type: "switch",
-            text: `Troca de plano: ${switched.from} → ${top.title}${sw?.unit === "placement" && sw.expectedFrom != null ? ` (${comma(sw.expectedFrom)}º → ${comma(sw.expectedTo)}º esperado: ganho ${comma(sw.gain)} > custo ${comma(sw.cost)} + margem ${comma(sw.hysteresis ?? 0)})` : ""}`,
+            text: `Troca de plano: ${switched.from} → ${top.title}${sw?.unit === "win" && sw.winFrom != null ? ` (${comma(Math.round(sw.winFrom * 1000) / 10)}% → ${comma(Math.round(sw.winTo * 1000) / 10)}% de vitória: ganho ${comma(Math.round(sw.gain * 1000) / 10)} > custo ${comma(Math.round(sw.cost * 1000) / 10)} + margem ${comma(Math.round((sw.hysteresis ?? 0) * 1000) / 10)} pontos)` : sw?.unit === "placement" && sw.expectedFrom != null ? ` (${comma(sw.expectedFrom)}º → ${comma(sw.expectedTo)}º esperado: ganho ${comma(sw.gain)} > custo ${comma(sw.cost)} + margem ${comma(sw.hysteresis ?? 0)})` : ""}`,
             gain: sw?.gain ?? null,
           },
           stage,
